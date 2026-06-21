@@ -132,6 +132,7 @@ jobs:
           EOF
 
       - name: Publish fat JAR to GitHub Packages
+        continue-on-error: true
         if: startsWith(github.ref, 'refs/tags/')
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
