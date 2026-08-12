@@ -630,5 +630,11 @@
   "exercizer.unsup.export.type2": "Zone à remplir (images)",
   "exercizer.unsup.export.type3": "Mise en ordre",
   "exercizer.update.quit": "Enregistrer et quitter",
-  "exercizer.validate": "Valider"
+  "exercizer.validate": "Valider",
+  "exercizer.group.profile.Student": "Élèves",
+  "exercizer.group.profile.Teacher": "Enseignants",
+  "exercizer.group.profile.Relative": "Parents",
+  "exercizer.group.profile.Personnel": "Personnels",
+  "exercizer.group.profile.Guest": "Invités",
+  "exercizer.group.of": "du groupe"
 }

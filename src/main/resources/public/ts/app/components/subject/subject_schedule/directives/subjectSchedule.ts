@@ -442,6 +442,34 @@ export const subjectSchedule = ng.directive('subjectSchedule',
                     });
                 }
 
+                // Libellé lisible d'un groupe. Les groupes de profil arrivent sous forme technique
+                // (« 301-Student », « ULIS-Teacher »…) avec groupDisplayName null ; on les traduit
+                // en « 301 · Élèves », « ULIS · Enseignants »… (comme la barre de partage entcore).
+                // Les autres groupes (communautés, groupes fonctionnels) gardent leur nom d'origine.
+                var PROFILE_SUFFIXES = ['Student', 'Teacher', 'Relative', 'Personnel', 'Guest'];
+                function groupDisplayName(group) {
+                    if (group.groupDisplayName) {
+                        return idiom.translate(group.groupDisplayName);
+                    }
+                    var name = group.name || '';
+                    var idx = name.lastIndexOf('-');
+                    if (idx > 0) {
+                        var suffix = name.substring(idx + 1);
+                        if (PROFILE_SUFFIXES.indexOf(suffix) !== -1) {
+                            // format calqué sur la barre de partage entcore/Blog :
+                            // « Élèves du groupe 301 (CLG-PIERRE MENDES FRANCE-MORLAIX) »
+                            var label = name.substring(0, idx);
+                            var display = idiom.translate('exercizer.group.profile.' + suffix)
+                                + ' ' + idiom.translate('exercizer.group.of') + ' ' + label;
+                            if (group.structureName) {
+                                display += ' (' + group.structureName + ')';
+                            }
+                            return display;
+                        }
+                    }
+                    return name;
+                }
+
                 async function createLists(subject, startSearch) {
                     var array = [];
                     await GroupService.getList(subject, startSearch, (startSearch != null)).then(
@@ -451,7 +479,7 @@ export const subjectSchedule = ng.directive('subjectSchedule',
                                 array.push(obj);
                             });
                             angular.forEach(data.groups.visibles, function (group) {
-                                var obj = createObjectList(group.name, group.id, 'group', null, group.structureName, false);
+                                var obj = createObjectList(groupDisplayName(group), group.id, 'group', null, group.structureName, false);
                                 array.push(obj);
                             });
                             angular.forEach(data.users.visibles, function (user) {

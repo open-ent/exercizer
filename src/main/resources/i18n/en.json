@@ -630,5 +630,11 @@
   "exercizer.unsup.export.type2": "Fill-in area (images)",
   "exercizer.unsup.export.type3": "Ordering",
   "exercizer.update.quit": "Save and quit",
-  "exercizer.validate": "Validate"
+  "exercizer.validate": "Validate",
+  "exercizer.group.profile.Student": "Students",
+  "exercizer.group.profile.Teacher": "Teachers",
+  "exercizer.group.profile.Relative": "Parents",
+  "exercizer.group.profile.Personnel": "Staff",
+  "exercizer.group.profile.Guest": "Guests",
+  "exercizer.group.of": "of group"
 }
