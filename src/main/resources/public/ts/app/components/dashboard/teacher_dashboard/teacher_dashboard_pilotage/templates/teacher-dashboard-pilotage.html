@@ -1,0 +1,162 @@
+<article class="mt-8" data-ng-if="state">
+    <div class="flex align-items-center justify-space-between flex-wrap-wrap mb-24">
+        <h2 class="no-margin">
+            <i18n>exercizer.pilotage.title</i18n> "[[state.title]]"
+        </h2>
+        <span class="small-text italic-text">
+            <span data-ng-if="wsConnected"><i18n>exercizer.pilotage.connection.live</i18n></span>
+            <span data-ng-if="!wsConnected"><i18n>exercizer.pilotage.connection.poll</i18n></span>
+        </span>
+    </div>
+
+    <message-info status="warning" data-ng-if="state.sessionState === 'en_pause'">
+        <i18n>exercizer.pilotage.paused.banner</i18n>
+    </message-info>
+
+    <div class="flex align-items-center gap-8 flex-wrap-wrap mb-24 mt-16">
+        <button class="button button-accent" data-ng-if="state.sessionState !== 'en_pause'" data-ng-click="pause()">
+            <i18n>exercizer.pilotage.pause</i18n>
+        </button>
+        <button class="button button-accent" data-ng-if="state.sessionState === 'en_pause'" data-ng-click="resume()">
+            <i18n>exercizer.pilotage.resume</i18n>
+        </button>
+        <button class="button button-secondary" data-ng-click="openExtendClass()">
+            <i18n>exercizer.pilotage.extend.time.class</i18n>
+        </button>
+        <button class="button button-secondary" data-ng-click="openMessageClass()">
+            <i18n>exercizer.pilotage.message.class</i18n>
+        </button>
+    </div>
+
+    <div class="row vertical-spacing" style="overflow-x: auto;">
+        <table class="list-view">
+            <thead>
+                <tr>
+                    <th scope="col"><span translate content="exercizer.copy.from"></span></th>
+                    <th scope="col"><span translate content="exercizer.state"></span></th>
+                    <th scope="col"><span translate content="exercizer.pilotage.remaining.time"></span></th>
+                    <th scope="col"><span translate content="exercizer.pilotage.actions"></span></th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr data-ng-repeat="student in state.students">
+                    <td>
+                        <span>[[student.studentName]]</span>
+                    </td>
+                    <td>
+                        <span translate content="[[stateKey(student)]]"></span>
+                    </td>
+                    <td>
+                        <span data-ng-if="student.remainingSeconds !== undefined && student.remainingSeconds !== null">
+                            [[remainingLabel(student)]]
+                        </span>
+                    </td>
+                    <td style="min-width: 260px;">
+                        <div class="flex-inline gap-8 flex-wrap-wrap">
+                            <button class="button button-secondary no-margin" data-ng-if="canAct(student)"
+                                    data-ng-click="openExtendStudent(student)">
+                                <i18n>exercizer.pilotage.extend.time.student</i18n>
+                            </button>
+                            <button class="button button-secondary no-margin" data-ng-if="canAct(student)"
+                                    data-ng-click="openForceSubmit(student)">
+                                <i18n>exercizer.pilotage.force.submit</i18n>
+                            </button>
+                            <button class="button button-secondary no-margin" data-ng-click="openMessageStudent(student)">
+                                <i18n>exercizer.pilotage.message.student</i18n>
+                            </button>
+                            <button class="button button-secondary no-margin" data-ng-if="!student.submittedDate"
+                                    data-ng-click="openReminder(student)">
+                                <i18n>exercizer.reminder</i18n>
+                            </button>
+                            <button class="button button-secondary no-margin" data-ng-if="!student.submittedDate"
+                                    data-ng-click="openExclude(student)">
+                                <i18n>exercizer.exclude</i18n>
+                            </button>
+                        </div>
+                    </td>
+                </tr>
+                <tr data-ng-if="state.students.length === 0">
+                    <td colspan="4">
+                        <i18n>exercizer.pilotage.no.students</i18n>
+                    </td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+</article>
+
+<div class="row" data-ng-if="loading && !state">
+    <i18n>exercizer.loading</i18n>
+</div>
+
+<lightbox show="extend.isDisplayed" on-close="extend.isDisplayed=false">
+    <h2 data-ng-if="extend.scope === 'class'">
+        <i18n>exercizer.pilotage.extend.time.class</i18n>
+    </h2>
+    <h2 data-ng-if="extend.scope === 'student'">
+        <i18n>exercizer.pilotage.extend.time.student</i18n> - [[extend.target.studentName]]
+    </h2>
+    <div class="row vertical-spacing-four">
+        <label class="cell twelve">
+            <i18n>exercizer.pilotage.extend.minutes.label</i18n>
+        </label>
+        <input type="number" min="1" step="1" class="cell four" data-ng-model="extend.minutes" />
+    </div>
+    <div class="row vertical-spacing">
+        <div class="cell right-magnet">
+            <button class="button button-secondary" data-ng-click="extend.isDisplayed=false">
+                <i18n>exercizer.cancel</i18n>
+            </button>
+            <button class="button button-accent" data-ng-click="confirmExtend()">
+                <i18n>exercizer.pilotage.extend.confirm</i18n>
+            </button>
+        </div>
+    </div>
+</lightbox>
+
+<lightbox show="messageForm.isDisplayed" on-close="messageForm.isDisplayed=false">
+    <h2 data-ng-if="messageForm.scope === 'class'">
+        <i18n>exercizer.pilotage.message.class</i18n>
+    </h2>
+    <h2 data-ng-if="messageForm.scope === 'student'">
+        <i18n>exercizer.pilotage.message.student</i18n> - [[messageForm.target.studentName]]
+    </h2>
+    <div class="row vertical-spacing-four">
+        <textarea class="cell twelve" rows="4" data-ng-model="messageForm.text"
+                  i18n-placeholder="exercizer.pilotage.message.placeholder"></textarea>
+    </div>
+    <div class="row vertical-spacing">
+        <div class="cell right-magnet">
+            <button class="button button-secondary" data-ng-click="messageForm.isDisplayed=false">
+                <i18n>exercizer.cancel</i18n>
+            </button>
+            <button class="button button-accent" data-ng-click="confirmMessage()">
+                <i18n>exercizer.pilotage.message.send</i18n>
+            </button>
+        </div>
+    </div>
+</lightbox>
+
+<lightbox show="forceSubmitConfirm.isDisplayed" on-close="forceSubmitConfirm.isDisplayed=false">
+    <h2>
+        <i18n>exercizer.pilotage.force.submit.title</i18n>
+    </h2>
+    <p>
+        <i18n>exercizer.pilotage.force.submit.confirm1</i18n>
+        [[forceSubmitConfirm.target.studentName]]
+        <i18n>exercizer.pilotage.force.submit.confirm2</i18n>
+    </p>
+    <div class="cell right-magnet">
+        <button class="button button-secondary" data-ng-click="forceSubmitConfirm.isDisplayed=false">
+            <i18n>exercizer.cancel</i18n>
+        </button>
+        <button class="button button-accent" data-ng-click="confirmForceSubmit()">
+            <i18n>exercizer.pilotage.force.submit</i18n>
+        </button>
+    </div>
+</lightbox>
+
+<reminders is-displayed="reminderDisplayed" selected-subject-scheduled="selectedSubjectScheduled"
+           reminder-copies="reminderCopies"></reminders>
+<exclude is-displayed="excludeDisplayed" subject-copy-list="excludeCopyList"
+         selected-subject-scheduled="selectedSubjectScheduled" toaster-displayed="toasterDisplayedDummy"></exclude>

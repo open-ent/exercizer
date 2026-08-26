@@ -13,6 +13,7 @@ import { teacherDashboardCorrectionCopyList } from './app/components/dashboard/t
 import { teacherDashboardCorrectionStats } from './app/components/dashboard/teacher_dashboard/teacher_dashboard_correction_tab/directives/teacherDashboardCorrectionStats';
 import { teacherDashboardCorrectionSubjectScheduledList } from './app/components/dashboard/teacher_dashboard/teacher_dashboard_correction_tab/directives/teacherDashboardCorrectionSubjectScheduledList';
 import { teacherDashboardSimpleCorrectionCopyList } from './app/components/dashboard/teacher_dashboard/teacher_dashboard_correction_tab/directives/teacherDashboardSimpleCorrectionCopyList';
+import { teacherDashboardPilotage } from './app/components/dashboard/teacher_dashboard/teacher_dashboard_pilotage/directives/teacherDashboardPilotage';
 import { teacherDashboardCopyPaste } from './app/components/dashboard/teacher_dashboard/teacher_dashboard_subject_tab/directives/teacherDashboardCopyPaste';
 import { teacherDashboardFolderEdit } from './app/components/dashboard/teacher_dashboard/teacher_dashboard_subject_tab/directives/teacherDashboardFolderEdit';
 import { teacherDashboardMove } from './app/components/dashboard/teacher_dashboard/teacher_dashboard_subject_tab/directives/teacherDashboardMove';
@@ -72,9 +73,13 @@ import { subjectCopyMobileLeftNav } from './app/components/subject/common/subjec
 import { subjectEditSubjectList } from './app/components/subject/subject_edit/directives/subjectEditSubjectList';
 import { subjectPerformCopyBottomNav } from './app/components/subject/subject_perform_copy/directives/subjectPerformCopyBottomNav';
 import { subjectPerformCopyDisplayCurrentGrainCopy } from './app/components/subject/subject_perform_copy/directives/subjectPerformCopyDisplayCurrentGrainCopy';
+import { subjectPerformCopyPilotage } from './app/components/subject/subject_perform_copy/directives/subjectPerformCopyPilotage';
 import { subjectPerformCopyPreviewHeader } from './app/components/subject/subject_perform_copy/directives/subjectPerformCopyPreviewHeader';
 import { subjectPerformCopyStudentHeader } from './app/components/subject/subject_perform_copy/directives/subjectPerformCopyStudentHeader';
 import { subjectSchedule } from './app/components/subject/subject_schedule/directives/subjectSchedule';
+import { subjectSequenceSchedule } from './app/components/subject_sequence/subject_sequence_schedule/directives/subjectSequenceSchedule';
+import { subjectExternalResources } from './app/components/subject/subject_external_resources/directives/subjectExternalResources';
+import { studentDashboardSubjectSequenceBanner } from './app/components/dashboard/student_dashboard/common/directives/studentDashboardSubjectSequenceBanner';
 import { subjectViewCopyGrainCopyList } from './app/components/subject/subject_view_copy/directives/subjectViewCopyGrainCopyList';
 import { subjectViewCopyPreviewHeader } from './app/components/subject/subject_view_copy/directives/subjectViewCopyPreviewHeader';
 import { subjectViewCopyStudentHeader } from './app/components/subject/subject_view_copy/directives/subjectViewCopyStudentHeader';
@@ -98,11 +103,14 @@ import {
     groupService,
     importService,
     localStorageService,
+    pilotageService,
     subjectCopyService,
     subjectLessonLevelService,
     subjectLessonTypeService,
     subjectLibraryService,
     subjectScheduledService,
+    subjectSequenceScheduledService,
+    subjectSequenceService,
     subjectService,
     subjectTagService
 } from './app/services';
@@ -145,6 +153,7 @@ ng.directives.push(subjectScheduleAssignAt);
 ng.directives.push(teacherDashboardCorrectionCopyList, teacherDashboardCorrectionStats);
 ng.directives.push(teacherDashboardCorrectionSubjectScheduledList);
 ng.directives.push(teacherDashboardSimpleCorrectionCopyList, teacherDashboardCopyPaste, teacherDashboardFolderEdit, teacherDashboardMove, teacherDashboardPrint);
+ng.directives.push(teacherDashboardPilotage);
 ng.directives.push(teacherDashboardPublishToLibrary);
 ng.directives.push(teacherDashboardRemoveSelectedFolderAndSubject);
 ng.directives.push(teacherDashboardSubjectEdit, teacherDashboardSubjectList);
@@ -172,9 +181,13 @@ ng.directives.push(subjectCopyMobileLeftNav);
 ng.directives.push(subjectEditSubjectList);
 ng.directives.push(subjectPerformCopyBottomNav);
 ng.directives.push(subjectPerformCopyDisplayCurrentGrainCopy);
+ng.directives.push(subjectPerformCopyPilotage);
 ng.directives.push(subjectPerformCopyPreviewHeader);
 ng.directives.push(subjectPerformCopyStudentHeader);
 ng.directives.push(subjectSchedule);
+ng.directives.push(subjectSequenceSchedule);
+ng.directives.push(subjectExternalResources);
+ng.directives.push(studentDashboardSubjectSequenceBanner);
 ng.directives.push(subjectViewCopyGrainCopyList);
 ng.directives.push(subjectViewCopyPreviewHeader);
 ng.directives.push(subjectViewCopyStudentHeader);
@@ -193,6 +206,8 @@ ng.services.push(subjectLessonTypeService);
 ng.services.push(subjectLessonLevelService);
 ng.services.push(subjectTagService);
 ng.services.push(subjectScheduledService);
+ng.services.push(subjectSequenceService);
+ng.services.push(subjectSequenceScheduledService);
 ng.services.push(subjectCopyService);
 ng.services.push(grainService);
 ng.services.push(grainScheduledService);
@@ -207,6 +222,7 @@ ng.services.push(orderService);
 ng.services.push(dragService);
 ng.services.push(folderService);
 ng.services.push(dateService);
+ng.services.push(pilotageService);
 ng.services.push(groupService);
 ng.services.push(accessService);
 ng.services.push(archivesService);
@@ -235,8 +251,20 @@ routes.define(function ($routeProvider) {
         .when('/dashboard/teacher/correction/:subjectScheduledId?', {
             action: 'dashboardTeacherCorrection'
         })
+        .when('/dashboard/teacher/pilotage/:subjectScheduledId', {
+            action: 'dashboardTeacherPilotage'
+        })
         .when('/subject/edit/:subjectId/', {
             action: 'editSubject'
+        })
+        .when('/subject-sequence/list', {
+            action: 'subjectSequenceList'
+        })
+        .when('/subject-sequence/edit/:subjectSequenceId/', {
+            action: 'editSubjectSequence'
+        })
+        .when('/subject-sequence-scheduled/:subjectSequenceScheduledId/', {
+            action: 'subjectSequenceScheduled'
         })
         .when('/subject/print/:subjectId', {
             action: 'printSubject',

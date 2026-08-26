@@ -586,4 +586,99 @@ public class SubjectScheduledServiceSqlImpl extends AbstractExercizerServiceSqlI
 		sql.prepared(query, params, SqlResult.validUniqueResultHandler(handler, "subject_scheduled", "subject_copy"));
 	}
 
+	/**
+	 * @see fr.openent.exercizer.services.ISubjectScheduledService
+	 */
+	@Override
+	public void setSessionState(final String subjectScheduledId, final boolean pause, final Handler<Either<String, JsonObject>> handler) {
+		final String query;
+		if (pause) {
+			// idempotent : ne (re)pose paused_at que si on n'était pas déjà en pause.
+			query = "UPDATE " + resourceTable +
+					" SET paused_at = CASE WHEN session_state = 'en_cours' THEN NOW() ELSE paused_at END," +
+					" session_state = 'en_pause', modified = NOW()" +
+					" WHERE id = ? RETURNING id, session_state, paused_at, paused_duration_seconds";
+		} else {
+			// le temps déjà passé en pause est capitalisé dans paused_duration_seconds avant de relâcher paused_at,
+			// pour que le décompte du temps restant reste suspendu pendant la pause et non simplement masqué.
+			query = "UPDATE " + resourceTable +
+					" SET paused_duration_seconds = CASE WHEN session_state = 'en_pause' AND paused_at IS NOT NULL" +
+					" THEN paused_duration_seconds + GREATEST(0, EXTRACT(EPOCH FROM (NOW() - paused_at))::INTEGER)" +
+					" ELSE paused_duration_seconds END," +
+					" paused_at = NULL, session_state = 'en_cours', modified = NOW()" +
+					" WHERE id = ? RETURNING id, session_state, paused_duration_seconds";
+		}
+
+		sql.prepared(query, new JsonArray().add(Sql.parseId(subjectScheduledId)), SqlResult.validUniqueResultHandler(handler));
+	}
+
+	/**
+	 * @see fr.openent.exercizer.services.ISubjectScheduledService
+	 */
+	@Override
+	public void extendTime(final String subjectScheduledId, final String studentId, final int minutes, final Handler<Either<String, JsonArray>> handler) {
+		final JsonArray values = new JsonArray().add(minutes).add(Sql.parseId(subjectScheduledId));
+		String query = "UPDATE " + schema + "subject_copy SET extra_time_minutes = extra_time_minutes + ?, modified = NOW()" +
+				" WHERE subject_scheduled_id = ? AND NOT is_training_copy AND submitted_date IS NULL";
+		if (studentId != null) {
+			query += " AND owner = ?";
+			values.add(studentId);
+		}
+		query += " RETURNING id, owner, extra_time_minutes";
+
+		sql.prepared(query, values, SqlResult.validResultHandler(handler));
+	}
+
+	/**
+	 * @see fr.openent.exercizer.services.ISubjectScheduledService
+	 */
+	@Override
+	public void forceSubmit(final String subjectScheduledId, final String studentId, final Handler<Either<String, JsonObject>> handler) {
+		final String query = "UPDATE " + schema + "subject_copy" +
+				" SET submitted_date = NOW(), is_forced_submit = true, modified = NOW()" +
+				" WHERE subject_scheduled_id = ? AND owner = ? AND NOT is_training_copy AND submitted_date IS NULL" +
+				" RETURNING id, owner, owner_username, submitted_date, is_forced_submit";
+
+		sql.prepared(query, new JsonArray().add(Sql.parseId(subjectScheduledId)).add(studentId), SqlResult.validUniqueResultHandler(handler));
+	}
+
+	/**
+	 * @see fr.openent.exercizer.services.ISubjectScheduledService
+	 */
+	@Override
+	public void getPilotageState(final String subjectScheduledId, final Handler<Either<String, JsonObject>> handler) {
+		final String query = "SELECT ss.id, ss.title, ss.session_state, ss.begin_date, ss.due_date," +
+				" ss.paused_at, ss.paused_duration_seconds," +
+				" COALESCE(jsonb_agg(jsonb_build_object(" +
+				"   'copyId', sc.id, 'studentId', sc.owner, 'studentName', sc.owner_username," +
+				"   'hasBeenStarted', sc.has_been_started, 'submittedDate', sc.submitted_date," +
+				"   'isCorrectionOnGoing', sc.is_correction_on_going, 'isCorrected', sc.is_corrected," +
+				"   'extraTimeMinutes', sc.extra_time_minutes, 'isForcedSubmit', sc.is_forced_submit" +
+				" )) FILTER (WHERE sc.id IS NOT NULL), '[]'::jsonb) AS students" +
+				" FROM " + resourceTable + " AS ss" +
+				" LEFT JOIN " + schema + "subject_copy AS sc ON sc.subject_scheduled_id = ss.id AND NOT sc.is_training_copy" +
+				" WHERE ss.id = ?" +
+				" GROUP BY ss.id";
+
+		sql.prepared(query, new JsonArray().add(Sql.parseId(subjectScheduledId)), SqlResult.validUniqueResultHandler(handler, "students"));
+	}
+
+	/**
+	 * @see fr.openent.exercizer.services.ISubjectScheduledService
+	 */
+	@Override
+	public void canAccessPilotage(final String subjectScheduledId, final String userId, final Handler<Either<String, Boolean>> handler) {
+		final String query = "SELECT (ss.owner = ? OR EXISTS(" +
+				" SELECT 1 FROM " + schema + "subject_copy sc WHERE sc.subject_scheduled_id = ss.id AND sc.owner = ?" +
+				")) AS \"canAccess\" FROM " + resourceTable + " AS ss WHERE ss.id = ?";
+		final JsonArray values = new JsonArray().add(userId).add(userId).add(Sql.parseId(subjectScheduledId));
+		sql.prepared(query, values, SqlResult.validUniqueResultHandler(result -> {
+			if (result.isRight()) {
+				handler.handle(new Either.Right<>(result.right().getValue().getBoolean("canAccess", false)));
+			} else {
+				handler.handle(new Either.Left<>(result.left().getValue()));
+			}
+		}));
+	}
+
 }

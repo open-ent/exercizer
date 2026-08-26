@@ -1,0 +1,17 @@
+<div class="row mb-24" data-ng-if="parcoursList.length > 0">
+    <h2 class="mb-16"><i18n>exercizer.sequence.dashboard.title</i18n></h2>
+    <div class="grid grid-3 gap-16">
+        <article class="card select-border" data-ng-repeat="parcours in parcoursList" data-ng-click="openSequence(parcours)" style="cursor:pointer;">
+            <div class="row flex align-items-center gap-8">
+                <svg class="icon-list" width="20" height="20"><use href="exercizer/public/assets/icons/icons.svg#list"></use></svg>
+                <strong>[[ parcours.title ]]</strong>
+            </div>
+            <div class="row mt-8">
+                <div class="progress-bar" style="background:#e0e0e0;border-radius:8px;height:8px;overflow:hidden;">
+                    <div style="background:#6FBE2E;height:8px;" ng-style="{width: parcours.progressPercent + '%'}"></div>
+                </div>
+                <small>[[ parcours.progressPercent ]]%</small>
+            </div>
+        </article>
+    </div>
+</div>

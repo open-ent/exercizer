@@ -1,0 +1,17 @@
+{
+  "$schema": "http://json-schema.org/draft-04/schema#",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "subjectId": {
+      "type": "number"
+    },
+    "orderBy": {
+      "type": "number"
+    }
+  },
+  "required": [
+    "subjectId",
+    "orderBy"
+  ]
+}

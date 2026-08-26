@@ -118,4 +118,57 @@ public interface ISubjectScheduledService {
     void recreateGrainCopies(final String subjectScheduledId, final String subjectCopyId, final Handler<Either<String, JsonObject>> handler);
 
     void getSubjectCopyBySubjectScheduled(final Long subjectScheduledId, final String userId, final Handler<Either<String, JsonObject>> handler);
+
+    /**
+     * Pilotage (D3) : met en pause ou reprend une séance planifiée.
+     * Idempotent : appeler pause sur une séance déjà en pause (ou resume sur une séance déjà en cours)
+     * ne fait rien de plus que renvoyer l'état courant.
+     *
+     * @param subjectScheduledId the id
+     * @param pause true to pause the session, false to resume it
+     * @param handler the handler, returns the updated session_state/paused_at/paused_duration_seconds
+     */
+    void setSessionState(final String subjectScheduledId, final boolean pause, final Handler<Either<String, JsonObject>> handler);
+
+    /**
+     * Pilotage (D3) : prolonge le temps d'un élève ou de toute la classe.
+     * Les copies déjà rendues (submitted_date non nul) sont ignorées.
+     *
+     * @param subjectScheduledId the id
+     * @param studentId scope: null for the whole class, a student id otherwise
+     * @param minutes minutes to add to the current deadline
+     * @param handler the handler, returns the list of updated copies (id, owner, extra_time_minutes)
+     */
+    void extendTime(final String subjectScheduledId, final String studentId, final int minutes, final Handler<Either<String, JsonArray>> handler);
+
+    /**
+     * Pilotage (D3) : force la remise de la copie d'un élève (comme un "Rendre" fait par l'élève).
+     * Refuse si la copie est déjà rendue.
+     *
+     * @param subjectScheduledId the id
+     * @param studentId the student id
+     * @param handler the handler, returns the updated copy
+     */
+    void forceSubmit(final String subjectScheduledId, final String studentId, final Handler<Either<String, JsonObject>> handler);
+
+    /**
+     * Pilotage (D3) : agrégation pour l'écran enseignant, état de la séance + une ligne par élève
+     * (statut de copie, prolongation, remise forcée).
+     *
+     * @param subjectScheduledId the id
+     * @param handler the handler
+     */
+    void getPilotageState(final String subjectScheduledId, final Handler<Either<String, JsonObject>> handler);
+
+    /**
+     * Pilotage (D3) : autorise l'accès au canal WebSocket de pilotage d'une séance.
+     * Vrai pour l'enseignant propriétaire, ou pour un élève ayant une copie sur cette séance.
+     * Utilisé par PilotageWebSocketController (pas de {@link org.entcore.common.http.filter.ResourceFilter}
+     * possible sur un Handler&lt;ServerWebSocket&gt; brut, contrairement aux routes REST).
+     *
+     * @param subjectScheduledId the id
+     * @param userId the connecting user id
+     * @param handler the handler
+     */
+    void canAccessPilotage(final String subjectScheduledId, final String userId, final Handler<Either<String, Boolean>> handler);
 }

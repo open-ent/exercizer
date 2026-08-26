@@ -1,0 +1,67 @@
+<div data-ng-controller="SubjectSequenceScheduledController as subjectSequenceScheduledController">
+
+    <!-- LOADER -->
+    <div class="row" data-ng-if="!subjectSequenceScheduledController.hasDataLoaded">
+        <div class="info"><i18n>exercizer.loading</i18n></div>
+    </div>
+
+    <div data-ng-if="subjectSequenceScheduledController.hasDataLoaded">
+
+        <!-- TOP HEADER -->
+        <div class="flex align-items-center justify-space-between flex-wrap-wrap mb-24 mt-8">
+            <h1 class="cell flex-inline align-items-center gap-8 only-desktop mb-0 title">
+                <svg class="icon-exercizer" width="30" height="30"><use href="exercizer/public/assets/icons/illustrations.svg#exercizer"></use></svg>
+                <span class="no-responsive"><span class="hover-orange" data-ng-click="subjectSequenceScheduledController.redirectToDashboard()"><i18n>exercizer.title</i18n></span> / </span>
+                <span>[[ subjectSequenceScheduledController.header.title ]]</span>
+            </h1>
+            <div class="flex-inline gap-8 flex-wrap-wrap justify-content-end">
+                <button class="cell button button-secondary" data-ng-if="subjectSequenceScheduledController.isOwner" data-ng-click="subjectSequenceScheduledController.exportCsv()">
+                    <i18n>exercizer.sequence.export.csv</i18n>
+                </button>
+                <button class="right-magnet cell button button-secondary" data-ng-click="subjectSequenceScheduledController.redirectToDashboard()">
+                    <svg class="icon-chevronLeft" width="20" height="20"><use href="exercizer/public/assets/icons/icons.svg#chevronLeft"></use></svg>
+                    <i18n>exercizer.back.subject</i18n>
+                </button>
+            </div>
+        </div>
+
+        <p class="row mb-16" data-ng-if="subjectSequenceScheduledController.header.description">
+            [[ subjectSequenceScheduledController.header.description ]]
+        </p>
+
+        <!-- GLOBAL PROGRESS -->
+        <div class="row mb-24">
+            <div class="flex align-items-center gap-16">
+                <div style="flex:1; background:#e0e0e0; border-radius:8px; height:14px; overflow:hidden;">
+                    <div style="background:#6FBE2E; height:14px;" ng-style="{width: subjectSequenceScheduledController.progressPercent + '%'}"></div>
+                </div>
+                <strong>[[ subjectSequenceScheduledController.progressPercent ]]%</strong>
+            </div>
+            <div class="mt-4">
+                <i18n>exercizer.sequence.scheduled.progress</i18n>
+                <span>[[ subjectSequenceScheduledController.doneItems ]] / [[ subjectSequenceScheduledController.totalItems ]]</span>
+            </div>
+        </div>
+
+        <!-- ORDERED ITEM LIST -->
+        <div class="row">
+            <ul class="thought-out-actions">
+                <li data-ng-repeat="item in subjectSequenceScheduledController.itemList" class="mb-8">
+                    <div class="flex align-items-center justify-space-between gap-16 p-8"
+                         ng-class="{'hover-orange': subjectSequenceScheduledController.canOpenItem(item)}"
+                         style="cursor: pointer; border: 1px solid #e0e0e0; border-radius: 8px;"
+                         data-ng-click="subjectSequenceScheduledController.canOpenItem(item) && subjectSequenceScheduledController.openItem(item)">
+                        <div class="flex align-items-center gap-12">
+                            <span class="token" ng-class="subjectSequenceScheduledController.copyStateColorClass(item)">[[ $index + 1 ]]</span>
+                            <div>
+                                <strong>[[ item.title ]]</strong>
+                                <div class="fs-2">[[ subjectSequenceScheduledController.copyStateText(item) ]]</div>
+                            </div>
+                        </div>
+                        <svg data-ng-if="subjectSequenceScheduledController.canOpenItem(item)" class="icon-chevronRight" width="18" height="18"><use href="exercizer/public/assets/icons/icons.svg#chevronRight"></use></svg>
+                    </div>
+                </li>
+            </ul>
+        </div>
+    </div>
+</div>

@@ -100,4 +100,15 @@ public interface ISubjectCopyService {
     void subjectCopyTrainingExists(UserInfos user, final String subjectScheduledId, Handler<Either<String, Boolean>> handler);
 
     void setCurrentGrain(final String subjectCopyId, final String grainCopyId, Handler<Either<String, JsonObject>> handler);
+
+    /**
+     * Pilotage (D3) : vérifie qu'une copie accepte encore une écriture (saisie de réponse).
+     * Refusé si la séance de son sujet planifié est en pause, ou si la copie est déjà rendue
+     * (remise normale ou forcée) : ce contrôle doit être fait ici, au niveau des routes d'écriture
+     * existantes de la copie, pas seulement dans les nouvelles routes de pilotage.
+     *
+     * @param subjectCopyId the id
+     * @param handler the handler, returns {"sessionState":..., "isSubmitted": boolean}
+     */
+    void checkCopyWritable(final String subjectCopyId, final Handler<Either<String, JsonObject>> handler);
 }

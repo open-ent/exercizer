@@ -43,6 +43,12 @@ export interface ISubjectCopyService {
     retry(subjectCopy:ISubjectCopy, grainCopyList:IGrainCopy[]): Promise<ISubjectCopy>;
     canPerformACopyAsStudent(subjectScheduled: ISubjectScheduled, copy: ISubjectCopy): boolean;
     canAccessViewAsStudent(subjectScheduled: ISubjectScheduled, copy: ISubjectCopy): boolean;
+    // Déjà implémentées plus bas (utilisées par subject-copy-domino.ts) mais absentes de cette interface -
+    // ajoutées ici (additif, sans changer le comportement) pour être consommées depuis
+    // SubjectSequenceScheduledController.ts (statut par item du Parcours, mêmes exercizer.copy.state.*).
+    copyState(copy: ISubjectCopy): string;
+    copyStateColorClass(copy: ISubjectCopy): string;
+    copyStateText(copy: ISubjectCopy): string;
 }
 
 export class SubjectCopyService implements ISubjectCopyService {

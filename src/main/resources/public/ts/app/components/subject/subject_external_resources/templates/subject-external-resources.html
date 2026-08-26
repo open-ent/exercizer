@@ -1,0 +1,21 @@
+<div class="row mt-16">
+    <h4><i18n>exercizer.external.resource.title</i18n></h4>
+
+    <ul class="mb-8" data-ng-if="resources.length">
+        <li data-ng-repeat="resource in resources" class="flex align-items-center justify-space-between gap-8 mb-4">
+            <a data-ng-href="[[ downloadUrl(resource) ]]" target="_blank">[[ resource.title ]]</a>
+            <button class="button button-secondary" data-ng-click="removeResource(resource)">
+                <i18n>exercizer.external.resource.remove</i18n>
+            </button>
+        </li>
+    </ul>
+    <p data-ng-if="!resources.length" class="fs-2"><i18n>exercizer.external.resource.emptyscreen</i18n></p>
+
+    <div class="flex gap-8 flex-wrap-wrap align-items-center mt-8">
+        <input type="text" data-ng-model="newUrl" placeholder="{{ 'exercizer.external.resource.url.placeholder' | translate }}" style="flex:2; min-width:200px;" />
+        <input type="text" data-ng-model="newTitle" placeholder="{{ 'exercizer.external.resource.title.placeholder' | translate }}" style="flex:1; min-width:150px;" />
+        <button class="button" data-ng-disabled="!newUrl || !newTitle || importing" data-ng-click="importResource()">
+            <i18n>exercizer.external.resource.import</i18n>
+        </button>
+    </div>
+</div>

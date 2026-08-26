@@ -48,8 +48,10 @@ import fr.openent.exercizer.filters.MassShareAndOwner;
 import fr.openent.exercizer.filters.SubjectDocumentOwner;
 import fr.openent.exercizer.parsers.ResourceParser;
 import fr.openent.exercizer.services.IGrainService;
+import fr.openent.exercizer.services.ISubjectExternalResourceService;
 import fr.openent.exercizer.services.ISubjectService;
 import fr.openent.exercizer.services.impl.GrainServiceSqlImpl;
+import fr.openent.exercizer.services.impl.SubjectExternalResourceServiceSqlImpl;
 import fr.openent.exercizer.services.impl.SubjectServiceSqlImpl;
 import fr.openent.exercizer.services.impl.DocToExercizer;
 import fr.wseduc.rs.ApiDoc;
@@ -84,6 +86,7 @@ public class SubjectController extends ControllerHelper {
 	private final EventHelper eventHelper;
 	private final HttpClient httpClient;
 	private final DocToExercizer docToExercizer;
+	private final ISubjectExternalResourceService subjectExternalResourceService;
 
 	public SubjectController(final Storage storage, final ExercizerExplorerPlugin plugin, Vertx vertx, JsonObject configuration) {
 		this.subjectService = new SubjectServiceSqlImpl(plugin);
@@ -93,6 +96,7 @@ public class SubjectController extends ControllerHelper {
 		this.eventHelper = new EventHelper(eventStore);
 		this.httpClient = vertx.createHttpClient();
 		this.docToExercizer = new DocToExercizer(vertx, plugin, configuration);
+		this.subjectExternalResourceService = new SubjectExternalResourceServiceSqlImpl();
 	}
 
     @Post("/canSchedule")
@@ -1167,6 +1171,131 @@ public class SubjectController extends ControllerHelper {
 			} catch( Exception e ) {
 				badRequest(request);
 			}
+		});
+	}
+
+	// D4 (import de contenu externe, CCTP AO ENT ÉCLAT-BFC MOD03) : télécharge côté serveur une ressource
+	// externe (URL fournie par l'enseignant) et la dépose dans le stockage de l'ENT, rattachée au sujet.
+	// Limite volontaire : taille max 20 Mo, schéma http/https uniquement (pas de blocage réseau interne
+	// avancé de type SSRF, hors périmètre de ce lot ; à durcir avant une exposition à des tiers non
+	// approuvés). Réutilise le champ httpClient (déjà déclaré, jusqu'ici inutilisé dans ce contrôleur).
+	private static final long EXTERNAL_RESOURCE_MAX_SIZE = 20L * 1024 * 1024;
+
+	@Post("/subject/:id/external-resource")
+	@ApiDoc("Downloads an external URL server-side and attaches it to a subject as an imported resource.")
+	@ResourceFilter(SubjectDocumentOwner.class)
+	@SecuredAction(value="", type = ActionType.RESOURCE)
+	public void importExternalResource(final HttpServerRequest request) {
+		checkAuth(request).onSuccess(user -> {
+			final Long subjectId;
+			try {
+				subjectId = Long.parseLong(request.params().get("id"));
+			} catch (Exception e) {
+				badRequest(request);
+				return;
+			}
+			RequestUtils.bodyToJson(request, body -> {
+				final String url = body.getString("url");
+				final String title = body.getString("title");
+				if (StringUtils.isEmpty(url) || StringUtils.isEmpty(title)
+						|| !(url.startsWith("http://") || url.startsWith("https://"))) {
+					badRequest(request, "exercizer.external.resource.invalid.url");
+					return;
+				}
+				httpClient.request(new io.vertx.core.http.RequestOptions()
+						.setAbsoluteURI(url)
+						.setMethod(io.vertx.core.http.HttpMethod.GET))
+					.flatMap(req -> req.send())
+					.onSuccess(response -> {
+						if (response.statusCode() != 200) {
+							badRequest(request, "exercizer.external.resource.fetch.failed");
+							return;
+						}
+						response.body().onSuccess(buffer -> {
+							if (buffer.length() == 0 || buffer.length() > EXTERNAL_RESOURCE_MAX_SIZE) {
+								badRequest(request, "exercizer.external.resource.too.large");
+								return;
+							}
+							final String contentType = response.getHeader("Content-Type");
+							final String filename = title;
+							storage.writeBuffer(buffer, contentType, filename, storageEvent -> {
+								if (!"ok".equals(storageEvent.getString("status"))) {
+									renderError(request, new JsonObject().put("error", "exercizer.external.resource.storage.failed"));
+									return;
+								}
+								final String fileId = storageEvent.getString("_id");
+								subjectExternalResourceService.persist(subjectId, fileId, title, url, contentType,
+										(long) buffer.length(), user.getUserId(), notEmptyResponseHandler(request));
+							});
+						}).onFailure(err -> renderError(request, new JsonObject().put("error", err.getMessage())));
+					})
+					.onFailure(err -> renderError(request, new JsonObject().put("error", "exercizer.external.resource.fetch.failed")));
+			});
+		});
+	}
+
+	@Get("/subject/:id/external-resources")
+	@ApiDoc("Lists the external resources imported into a subject.")
+	@ResourceFilter(SubjectDocumentOwner.class)
+	@SecuredAction(value="", type = ActionType.RESOURCE)
+	public void listExternalResources(final HttpServerRequest request) {
+		try {
+			final Long subjectId = Long.parseLong(request.params().get("id"));
+			subjectExternalResourceService.list(subjectId, arrayResponseHandler(request));
+		} catch (Exception e) {
+			badRequest(request);
+		}
+	}
+
+	@Get("/subject/:id/external-resource/:resourceId/download")
+	@ApiDoc("Downloads an imported external resource (served by exercizer itself, not the generic workspace endpoint).")
+	@ResourceFilter(SubjectDocumentOwner.class)
+	@SecuredAction(value="", type = ActionType.RESOURCE)
+	public void downloadExternalResource(final HttpServerRequest request) {
+		final Long subjectId;
+		final Long resourceId;
+		try {
+			subjectId = Long.parseLong(request.params().get("id"));
+			resourceId = Long.parseLong(request.params().get("resourceId"));
+		} catch (Exception e) {
+			badRequest(request);
+			return;
+		}
+		subjectExternalResourceService.getById(resourceId, subjectId, event -> {
+			if (event.isLeft()) {
+				Renders.notFound(request);
+				return;
+			}
+			final JsonObject resource = event.right().getValue();
+			final JsonObject metadata = new JsonObject()
+					.put("content-type", resource.getString("content_type"))
+					.put("filename", resource.getString("title"));
+			storage.sendFile(resource.getString("file_id"), resource.getString("title"), request, false, metadata);
+		});
+	}
+
+	@Delete("/subject/:id/external-resource/:resourceId")
+	@ApiDoc("Removes an imported external resource from a subject.")
+	@ResourceFilter(SubjectDocumentOwner.class)
+	@SecuredAction(value="", type = ActionType.RESOURCE)
+	public void removeExternalResource(final HttpServerRequest request) {
+		final Long subjectId;
+		final Long resourceId;
+		try {
+			subjectId = Long.parseLong(request.params().get("id"));
+			resourceId = Long.parseLong(request.params().get("resourceId"));
+		} catch (Exception e) {
+			badRequest(request);
+			return;
+		}
+		subjectExternalResourceService.getById(resourceId, subjectId, event -> {
+			if (event.isLeft()) {
+				Renders.notFound(request);
+				return;
+			}
+			final String fileId = event.right().getValue().getString("file_id");
+			storage.removeFile(fileId, storageEvent ->
+					subjectExternalResourceService.remove(resourceId, subjectId, defaultResponseHandler(request)));
 		});
 	}
 }

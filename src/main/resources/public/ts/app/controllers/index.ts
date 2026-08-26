@@ -8,8 +8,12 @@ export * from './PerformSimpleSubjectCopyController';
 export * from './PerformSubjectCopyController';
 export * from './StudentDashboardController';
 export * from './SubjectCopyListController';
+export * from './SubjectSequenceListController';
+export * from './EditSubjectSequenceController';
+export * from './SubjectSequenceScheduledController';
 export * from './TeacherDasboardCorrectionTabController';
 export * from './TeacherDasboardSubjectTabController';
 export * from './TeacherDashboardLibraryTabController';
+export * from './TeacherDashboardPilotageController';
 export * from './TeacherDashboardArchiveController'
 export * from './ViewSubjectCopyController';

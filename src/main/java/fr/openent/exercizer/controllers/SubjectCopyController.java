@@ -266,6 +266,16 @@ public class SubjectCopyController extends ControllerHelper {
 		};
 	}
 
+	/**
+	 * D3 pilotage : une copie n'accepte plus d'écriture (soumission de réponse) une fois que la séance
+	 * de son sujet planifié est en pause, ou que la copie a déjà été remise (normalement ou de force
+	 * par l'enseignant). Ce contrôle est fait ici, au niveau des routes d'écriture existantes de la
+	 * copie (pas seulement dans les nouvelles routes de pilotage), cf. spec D3.
+	 */
+	private boolean isPilotageBlocked(final JsonObject writableState) {
+		return "en_pause".equals(writableState.getString("session_state")) || writableState.getBoolean("isSubmitted", false);
+	}
+
 	private void writeCopy(final HttpServerRequest request, final CopyAction copyAction) {
 		UserUtils.getUserInfos(eb, request, new Handler<UserInfos>() {
 			@Override
@@ -283,6 +293,30 @@ public class SubjectCopyController extends ControllerHelper {
 								if (!copyAction.getFields().contains(fieldName))
 									it.remove();
 							}
+							if (CopyAction.SUBMITCOPY.equals(copyAction)) {
+								subjectCopyService.checkCopyWritable(ressourceId, writable -> {
+									if (writable.isLeft() || isPilotageBlocked(writable.right().getValue())) {
+										Renders.badRequest(request, "exercizer.pilotage.copy.submitted");
+										return;
+									}
+									doWriteCopy(request, user, copyAction, ressourceId, resource);
+								});
+							} else {
+								doWriteCopy(request, user, copyAction, ressourceId, resource);
+							}
+						}
+					});
+				} else {
+					log.debug("User not found in session.");
+					unauthorized(request);
+				}
+
+			}
+		});
+	}
+
+	private void doWriteCopy(final HttpServerRequest request, final UserInfos user, final CopyAction copyAction, final String ressourceId, final JsonObject resource) {
+							final Integer offset = resource.getInteger("offset", 0);
 							subjectCopyService.getById(ressourceId, user, new Handler<Either<String, JsonObject>>() {
 								@Override
 								public void handle(Either<String, JsonObject> r) {
@@ -326,15 +360,6 @@ public class SubjectCopyController extends ControllerHelper {
 									}
 								}
 							});
-						}
-					});
-				}
-				else {
-					log.debug("User not found in session.");
-					unauthorized(request);
-				}
-			}
-		});
 	}
 
 	@Put("/subject-copy/submit")
@@ -521,7 +546,14 @@ public class SubjectCopyController extends ControllerHelper {
 				if (grainCopyMode.CORRECT.equals(mode)) {
 					grainCopyService.updateAndScore(resource, mode.getSubjectCopyState(), notEmptyResponseHandler(request));
 				} else {
-					grainCopyService.update(resource, mode.getSubjectCopyState(), notEmptyResponseHandler(request));
+					// D3 pilotage : PERFORM = l'élève écrit sa réponse, cf. isPilotageBlocked/checkCopyWritable.
+					subjectCopyService.checkCopyWritable(Long.toString(resource.getLong("subject_copy_id")), writable -> {
+						if (writable.isLeft() || isPilotageBlocked(writable.right().getValue())) {
+							Renders.badRequest(request, "exercizer.pilotage.copy.submitted");
+							return;
+						}
+						grainCopyService.update(resource, mode.getSubjectCopyState(), notEmptyResponseHandler(request));
+					});
 				}
 			}
 		});
@@ -661,7 +693,15 @@ public class SubjectCopyController extends ControllerHelper {
 		final String id = request.params().get("id");
 		try {
 			checkAuth(request).onSuccess( user -> {
-				addFile(request, id, ISubjectCopyService.FileType.HOMEWORK, user);
+				// D3 pilotage : dépôt du fichier réponse (sujet "simple") = écriture sur la copie, même contrôle
+				// que submitCopy/updateGrain (cf. isPilotageBlocked).
+				subjectCopyService.checkCopyWritable(id, writable -> {
+					if (writable.isLeft() || isPilotageBlocked(writable.right().getValue())) {
+						Renders.badRequest(request, "exercizer.pilotage.copy.submitted");
+						return;
+					}
+					addFile(request, id, ISubjectCopyService.FileType.HOMEWORK, user);
+				});
 			});
 		} catch (Exception e) {
 			badRequest(request);
@@ -1150,7 +1190,14 @@ public class SubjectCopyController extends ControllerHelper {
 		jo.put("message", message);
 		jo.put("userId", user.getUserId());
 		jo.put("username", user.getUsername());
+		// "method" est requis : org.entcore.common.http.request.JsonHttpServerRequest#method() fait
+		// HttpMethod.valueOf(object.getString("method", "")) - sans cette clé, ContentTransformerEventRecorder
+		// (appelé par SqlConversationService#transformMessageContent lors de l'envoi du message) lève une
+		// IllegalArgumentException AVANT que la promesse de transformation ne se complète, ce qui bloque
+		// indéfiniment cette requête (aucune réponse ne revient jamais sur l'event-bus). Bug trouvé en
+		// vérifiant l'action "relance" (POST /subject-copy/custom/reminder) le 2026-08-26.
 		jo.put("request", new JsonObject()
+						.put("method", request.method().name())
 						.put("headers", new JsonObject()
 								.put("Host", Renders.getHost(request))
 								.put("X-Forwarded-Proto", Renders.getScheme(request))

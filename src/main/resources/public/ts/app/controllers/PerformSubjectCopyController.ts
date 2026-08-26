@@ -49,6 +49,10 @@ class PerformSubjectCopyController implements IObjectGuardDelegate {
     public shouldShowNavigationAlert:boolean;
     public saving = false;
     private _previewMode = false;
+    // D3 - pilotage actif en direct : mis à jour par <subject-perform-copy-pilotage> (binding two-way
+    // "=") dès qu'un événement de pause ou de remise forcée est reçu. Sert de verrou côté client, en plus
+    // du blocage déjà fait côté backend (checkCopyWritable) sur les mêmes routes d'écriture.
+    public pilotageReadOnly = false;
 
     constructor
     (
@@ -380,6 +384,12 @@ class PerformSubjectCopyController implements IObjectGuardDelegate {
             return self._grainStreams.get(grain.id);
         }
         self._$scope.$on('E_UPDATE_GRAIN_COPY', function(event, grainCopy:IGrainCopy) {
+            if (self.pilotageReadOnly) {
+                // D3 pilotage : séance en pause ou copie remise de force par l'enseignant, on
+                // n'envoie même pas la requête (le backend la refuserait de toute façon via
+                // checkCopyWritable) - inhibition effective côté client, pas seulement visuelle.
+                return;
+            }
             if (!self._previewing) {
                 //debounce
                 //self._handleUpdateGrainCopy(grainCopy);
@@ -395,6 +405,13 @@ class PerformSubjectCopyController implements IObjectGuardDelegate {
         });
 
         self._$scope.$on('E_SUBJECT_COPY_SUBMITTED', function(event, subjectCopy:ISubjectCopy) {
+            if (self.pilotageReadOnly) {
+                // D3 pilotage : même verrou que pour E_UPDATE_GRAIN_COPY (le bouton "Voir mon score"
+                // des copies d'entrainement n'est, lui, pas conditionné à isCanSubmit).
+                self._$scope.$broadcast('E_SUBMIT_SUBJECT_ERROR');
+                notify.error('exercizer.pilotage.copy.submitted');
+                return;
+            }
             let selfSubjectCopy:any = subjectCopy;
             self._subjectCopyService.checkIsNotCorrectionOnGoingOrCorrected(subjectCopy.id).then(function (isOk) {
                 if (isOk !== true) {
@@ -472,7 +489,9 @@ class PerformSubjectCopyController implements IObjectGuardDelegate {
     }
     
     get isCanSubmit():boolean {
-        return this._isCanSubmit;
+        // D3 pilotage : une séance en pause ou une copie remise de force par l'enseignant ne peut plus
+        // être soumise par l'élève (cf. isPilotageBlocked côté backend, checkCopyWritable).
+        return this._isCanSubmit && !this.pilotageReadOnly;
     }
 
     get currentGrainCopy():IGrainCopy {

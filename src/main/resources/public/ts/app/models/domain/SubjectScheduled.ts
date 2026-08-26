@@ -25,6 +25,20 @@ export interface ISubjectScheduled {
     is_training_mode: boolean;
     is_training_permitted: boolean;
     files: Array<ISubjectDocument>;
+    // D3 - pilotage actif en direct (migration 036-add-pilotage-session-state.sql) : ces 3 champs sont
+    // déjà renvoyés tels quels par les endpoints élève existants (SELECT ss.* / SELECT ss1.*), donc déjà
+    // présents à l'exécution même si absents de la classe ci-dessous avant ce commentaire - déclarés ici
+    // pour que le typage TypeScript les connaisse (cf. subjectPerformCopyPilotage.ts).
+    session_state?: string; // 'en_cours' | 'en_pause'
+    paused_at?: string;
+    paused_duration_seconds?: number;
+    // Parcours (subject_sequence) : colonnes ajoutées par sql/037-add-subject-sequence.sql, nullables,
+    // NULL = "hors Parcours" (cf. SPEC-PARCOURS-multi-sequences.md §2.3). Déjà renvoyées telles quelles par
+    // les routes existantes (SELECT ss.*), donc déjà présentes à l'exécution même sans être déclarées ici
+    // - déclarées pour que le typage TypeScript les connaisse (regroupement "Mes parcours" au dashboard
+    // élève, cf. studentDashboardSubjectSequenceBanner.ts).
+    subject_sequence_scheduled_id?: number;
+    sequence_order_by?: number;
 }
 
 export class SubjectScheduled implements ISubjectScheduled {

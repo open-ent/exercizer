@@ -68,6 +68,9 @@ public class SubjectScheduledController extends ControllerHelper {
 	private final ISubjectCopyService subjectCopyService;
 	private final Storage storage;
 	private final EventHelper eventHelper;
+	// Null when the "real-time" config block is absent (cf. Exercizer.initExercizer) : pilotage REST
+	// routes still work, they just don't push live updates to connected browsers.
+	private PilotageWebSocketController pilotageWebSocketController;
 	private enum ScheduledType  {
 		SIMPLE,
 		INTERACTIVE
@@ -79,6 +82,16 @@ public class SubjectScheduledController extends ControllerHelper {
 		this.storage = storage;
 		final EventStore eventStore = EventStoreFactory.getFactory().getEventStore(Exercizer.class.getSimpleName());
 		this.eventHelper = new EventHelper(eventStore);
+	}
+
+	public void setPilotageWebSocketController(final PilotageWebSocketController pilotageWebSocketController) {
+		this.pilotageWebSocketController = pilotageWebSocketController;
+	}
+
+	private void broadcastPilotage(final String subjectScheduledId, final JsonObject event) {
+		if (pilotageWebSocketController != null) {
+			pilotageWebSocketController.broadcast(subjectScheduledId, event);
+		}
 	}
 
 	@Post("/schedule-subject/:id")
@@ -922,6 +935,209 @@ public class SubjectScheduledController extends ControllerHelper {
 					Renders.badRequest(request);
 				}
 			});
+		});
+	}
+
+	// ------------------------------------------------------------------------------------------
+	// D3 - Pilotage actif en direct d'une séance planifiée.
+	// Toutes les routes ci-dessous sont scopées par :id = subjectScheduledId et protégées par
+	// SubjectScheduledOwner (seul l'enseignant propriétaire du sujet planifié peut piloter sa séance),
+	// comme unSchedule/modifySchedule plus haut. Les actions 5 (relance) et 6 (exclusion) existent déjà
+	// (POST /subject-copy/custom/reminder, POST /subject-copy/action/exclude) : rien à ajouter côté
+	// backend, seulement à exposer depuis le nouvel écran de pilotage (frontend, hors périmètre ici).
+	// ------------------------------------------------------------------------------------------
+
+	@Get("/subject-scheduled/:id/pilotage")
+	@ApiDoc("Pilotage (D3) : état de la séance et statut de chaque élève, pour l'écran enseignant.")
+	@ResourceFilter(SubjectScheduledOwner.class)
+	@SecuredAction(value = "", type = ActionType.RESOURCE)
+	public void pilotageState(final HttpServerRequest request) {
+		final String subjectScheduledId = request.params().get("id");
+		subjectScheduledService.getPilotageState(subjectScheduledId, event -> {
+			if (event.isLeft()) {
+				renderError(request, new JsonObject().put("error", event.left().getValue()));
+				return;
+			}
+			renderJson(request, buildPilotageStateResponse(event.right().getValue()));
+		});
+	}
+
+	/**
+	 * Ajoute, pour chaque élève, un statut consolidé ("state") et un temps restant calculé côté
+	 * backend (due_date + prolongation éventuelle + durée totale de pause), pour éviter de faire
+	 * porter ce calcul (fuseaux horaires, pause en cours) au frontend.
+	 */
+	private JsonObject buildPilotageStateResponse(final JsonObject raw) {
+		final Date nowUtc = new DateTime(DateTimeZone.UTC).toLocalDateTime().toDate();
+		Date dueDate = null;
+		try {
+			dueDate = DateUtils.parseTimestampWithoutTimezone(raw.getString("due_date"));
+		} catch (ParseException e) {
+			log.error("can't parse due_date of scheduled subject for pilotage", e);
+		}
+
+		final String sessionState = raw.getString("session_state");
+		long pausedSeconds = raw.getLong("paused_duration_seconds", 0L);
+		if ("en_pause".equals(sessionState) && raw.getString("paused_at") != null) {
+			try {
+				final Date pausedAt = DateUtils.parseTimestampWithoutTimezone(raw.getString("paused_at"));
+				pausedSeconds += Math.max(0, (nowUtc.getTime() - pausedAt.getTime()) / 1000);
+			} catch (ParseException e) {
+				log.error("can't parse paused_at of scheduled subject for pilotage", e);
+			}
+		}
+
+		final JsonArray outStudents = new JsonArray();
+		for (Object o : raw.getJsonArray("students", new JsonArray())) {
+			if (!(o instanceof JsonObject)) continue;
+			final JsonObject s = (JsonObject) o;
+			final JsonObject out = s.copy();
+			final boolean isSubmitted = s.getString("submittedDate") != null;
+			final boolean isCorrected = s.getBoolean("isCorrected", false);
+
+			final String state;
+			if (isCorrected) {
+				state = "corrected";
+			} else if (isSubmitted) {
+				state = "submitted";
+			} else if (s.getBoolean("hasBeenStarted", false)) {
+				state = "started";
+			} else {
+				state = "not_started";
+			}
+			out.put("state", state);
+
+			if (dueDate != null && !isSubmitted) {
+				final long effectiveMs = dueDate.getTime() + s.getInteger("extraTimeMinutes", 0) * 60000L + pausedSeconds * 1000L;
+				out.put("remainingSeconds", (effectiveMs - nowUtc.getTime()) / 1000);
+			}
+			outStudents.add(out);
+		}
+
+		return new JsonObject()
+				.put("subjectScheduledId", raw.getLong("id"))
+				.put("title", raw.getString("title"))
+				.put("sessionState", sessionState)
+				.put("beginDate", raw.getString("begin_date"))
+				.put("dueDate", raw.getString("due_date"))
+				.put("pausedDurationSeconds", pausedSeconds)
+				.put("students", outStudents);
+	}
+
+	@Put("/subject-scheduled/:id/pilotage/pause")
+	@ApiDoc("Pilotage (D3) : met la séance en pause (saisie bloquée côté élève, décompte suspendu).")
+	@ResourceFilter(SubjectScheduledOwner.class)
+	@SecuredAction(value = "", type = ActionType.RESOURCE)
+	public void pilotagePause(final HttpServerRequest request) {
+		pilotageSetSessionState(request, true, "pause");
+	}
+
+	@Put("/subject-scheduled/:id/pilotage/resume")
+	@ApiDoc("Pilotage (D3) : reprend une séance en pause.")
+	@ResourceFilter(SubjectScheduledOwner.class)
+	@SecuredAction(value = "", type = ActionType.RESOURCE)
+	public void pilotageResume(final HttpServerRequest request) {
+		pilotageSetSessionState(request, false, "resume");
+	}
+
+	private void pilotageSetSessionState(final HttpServerRequest request, final boolean pause, final String eventType) {
+		final String subjectScheduledId = request.params().get("id");
+		subjectScheduledService.setSessionState(subjectScheduledId, pause, event -> {
+			if (event.isLeft()) {
+				renderError(request, new JsonObject().put("error", event.left().getValue()));
+				return;
+			}
+			final JsonObject session = event.right().getValue();
+			renderJson(request, session);
+			broadcastPilotage(subjectScheduledId, new JsonObject()
+					.put("type", eventType)
+					.put("subjectScheduledId", subjectScheduledId)
+					.put("sessionState", session.getString("session_state")));
+		});
+	}
+
+	@Put("/subject-scheduled/:id/pilotage/extend-time")
+	@ApiDoc("Pilotage (D3) : prolonge le temps d'un élève, ou de toute la classe si studentId est absent.")
+	@ResourceFilter(SubjectScheduledOwner.class)
+	@SecuredAction(value = "", type = ActionType.RESOURCE)
+	public void pilotageExtendTime(final HttpServerRequest request) {
+		final String subjectScheduledId = request.params().get("id");
+		RequestUtils.bodyToJson(request, body -> {
+			final Integer minutes = body.getInteger("minutes");
+			final String studentId = body.getString("studentId");
+			if (minutes == null || minutes <= 0) {
+				badRequest(request, "exercizer.pilotage.extend.invalid.minutes");
+				return;
+			}
+			subjectScheduledService.extendTime(subjectScheduledId, studentId, minutes, event -> {
+				if (event.isLeft()) {
+					renderError(request, new JsonObject().put("error", event.left().getValue()));
+					return;
+				}
+				// les copies déjà rendues sont silencieusement ignorées par extendTime (WHERE submitted_date IS
+				// NULL) plutôt que de faire échouer toute l'action de classe pour un seul élève déjà rendu.
+				final JsonArray updated = event.right().getValue();
+				renderJson(request, updated);
+				broadcastPilotage(subjectScheduledId, new JsonObject()
+						.put("type", "extend-time")
+						.put("subjectScheduledId", subjectScheduledId)
+						.put("studentId", studentId)
+						.put("minutes", minutes)
+						.put("updatedCopies", updated));
+			});
+		});
+	}
+
+	@Put("/subject-scheduled/:id/pilotage/force-submit")
+	@ApiDoc("Pilotage (D3) : force la remise de la copie d'un élève (comme un \"Rendre\" fait par l'élève).")
+	@ResourceFilter(SubjectScheduledOwner.class)
+	@SecuredAction(value = "", type = ActionType.RESOURCE)
+	public void pilotageForceSubmit(final HttpServerRequest request) {
+		final String subjectScheduledId = request.params().get("id");
+		RequestUtils.bodyToJson(request, body -> {
+			final String studentId = body.getString("studentId");
+			if (StringUtils.isEmpty(studentId)) {
+				badRequest(request, "exercizer.pilotage.force.submit.missing.student");
+				return;
+			}
+			subjectScheduledService.forceSubmit(subjectScheduledId, studentId, event -> {
+				if (event.isLeft()) {
+					// 0 ligne mise à jour : copie déjà rendue, ou élève sans copie sur cette séance (cf. spec D3, action 3).
+					badRequest(request, "exercizer.pilotage.force.submit.refused");
+					return;
+				}
+				final JsonObject copy = event.right().getValue();
+				renderJson(request, copy);
+				broadcastPilotage(subjectScheduledId, new JsonObject()
+						.put("type", "force-submit")
+						.put("subjectScheduledId", subjectScheduledId)
+						.put("studentId", studentId)
+						.put("copyId", copy.getLong("id")));
+			});
+		});
+	}
+
+	@Post("/subject-scheduled/:id/pilotage/message")
+	@ApiDoc("Pilotage (D3) : diffuse un message ciblé (un élève ou toute la classe), non persisté.")
+	@ResourceFilter(SubjectScheduledOwner.class)
+	@SecuredAction(value = "", type = ActionType.RESOURCE)
+	public void pilotageMessage(final HttpServerRequest request) {
+		final String subjectScheduledId = request.params().get("id");
+		RequestUtils.bodyToJson(request, body -> {
+			final String message = body.getString("message");
+			final String studentId = body.getString("studentId");
+			if (StringUtils.isEmpty(message)) {
+				badRequest(request, "exercizer.pilotage.message.empty");
+				return;
+			}
+			// pas de persistance (hors périmètre CCTP, ce n'est pas de la messagerie) : uniquement diffusé
+			// aux sockets connectés sur cette séance, cf. spec D3 action 4.
+			broadcastPilotage(subjectScheduledId, new JsonObject()
+					.put("type", "message")
+					.put("subjectScheduledId", subjectScheduledId)
+					.put("studentId", studentId)
+					.put("message", message));
+			Renders.ok(request);
 		});
 	}
 }
