@@ -12,8 +12,8 @@
     <p data-ng-if="!resources.length" class="fs-2"><i18n>exercizer.external.resource.emptyscreen</i18n></p>
 
     <div class="flex gap-8 flex-wrap-wrap align-items-center mt-8">
-        <input type="text" data-ng-model="newUrl" placeholder="{{ 'exercizer.external.resource.url.placeholder' | translate }}" style="flex:2; min-width:200px;" />
-        <input type="text" data-ng-model="newTitle" placeholder="{{ 'exercizer.external.resource.title.placeholder' | translate }}" style="flex:1; min-width:150px;" />
+        <input type="text" data-ng-model="newUrl" i18n-placeholder="exercizer.external.resource.url.placeholder" style="flex:2; min-width:200px;" />
+        <input type="text" data-ng-model="newTitle" i18n-placeholder="exercizer.external.resource.title.placeholder" style="flex:1; min-width:150px;" />
         <button class="button" data-ng-disabled="!newUrl || !newTitle || importing" data-ng-click="importResource()">
             <i18n>exercizer.external.resource.import</i18n>
         </button>

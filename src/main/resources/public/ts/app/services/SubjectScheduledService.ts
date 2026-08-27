@@ -39,6 +39,13 @@ export class SubjectScheduledService implements ISubjectScheduledService {
     private _listMappedById:{[id:number]:ISubjectScheduled;};
     private _currentSubjectScheduledId:number;
     private _today;
+    // Dédoublonne les appels concurrents à resolve() (constaté : le bandeau "Mes parcours" du dashboard
+    // élève et l'écran de navigation d'un Parcours affecté appellent tous deux resolve(false) lors d'un
+    // changement de route Angular - même service singleton, deux $http en vol simultanément si le
+    // premier n'a pas fini avant le second : chacun écrase _listMappedById à son tour, et l'un des deux
+    // appelants peut rester bloqué en pratique - cf. rapport de bug SubjectSequenceScheduledController
+    // "Chargement des données..." intermittent).
+    private _pendingResolve:Promise<boolean>;
 
     constructor
     (
@@ -64,33 +71,42 @@ export class SubjectScheduledService implements ISubjectScheduledService {
     }
 
     public resolve = function(isTeacher:boolean):Promise<boolean> {
-        var self = this,
-            deferred = this._$q.defer(),
-            request = {
-                method: 'GET',
-                url: isTeacher ? 'exercizer/subjects-scheduled' : ('exercizer/subjects-scheduled-by-subjects-copy/'+(-1*new Date().getTimezoneOffset())) // #40732, getTimezoneOffset is the opposite of what we expect, so let *-1 it.
-            };
+        var self = this;
 
         if (this._listMappedById) {
+            var deferred = this._$q.defer();
             deferred.resolve(true);
-        } else {
-            this._$http(request).then(
-                function(response) {
-                    self._listMappedById = {};
-                    var subjectScheduled;
-                    angular.forEach(response.data, function(subjectScheduledObject) {
-                        subjectScheduled = SerializationHelper.toInstance(new SubjectScheduled(), JSON.stringify(subjectScheduledObject)) as any;
-                        subjectScheduled.scheduled_at = JSON.parse(subjectScheduled.scheduled_at);
-                        self._listMappedById[subjectScheduled.id] = subjectScheduled;
-                    });
-                    deferred.resolve(true);
-                },
-                function() {
-                    deferred.reject('exercizer.error');
-                }
-            );
+            return deferred.promise;
         }
-        return deferred.promise;
+        // Un appel est déjà en vol (ex. bandeau dashboard + écran de navigation d'un Parcours, même
+        // changement de route) : renvoyer CE MÊME promise plutôt que d'en déclencher un second.
+        if (this._pendingResolve) {
+            return this._pendingResolve;
+        }
+
+        var request = {
+            method: 'GET',
+            url: isTeacher ? 'exercizer/subjects-scheduled' : ('exercizer/subjects-scheduled-by-subjects-copy/'+(-1*new Date().getTimezoneOffset())) // #40732, getTimezoneOffset is the opposite of what we expect, so let *-1 it.
+        };
+
+        this._pendingResolve = this._$http(request).then(
+            function(response) {
+                self._listMappedById = {};
+                var subjectScheduled;
+                angular.forEach(response.data, function(subjectScheduledObject) {
+                    subjectScheduled = SerializationHelper.toInstance(new SubjectScheduled(), JSON.stringify(subjectScheduledObject)) as any;
+                    subjectScheduled.scheduled_at = JSON.parse(subjectScheduled.scheduled_at);
+                    self._listMappedById[subjectScheduled.id] = subjectScheduled;
+                });
+                self._pendingResolve = null;
+                return true;
+            },
+            function() {
+                self._pendingResolve = null;
+                return self._$q.reject('exercizer.error');
+            }
+        );
+        return this._pendingResolve;
     };
 
     public persist = function(subjectScheduled:ISubjectScheduled):Promise<ISubjectScheduled> {

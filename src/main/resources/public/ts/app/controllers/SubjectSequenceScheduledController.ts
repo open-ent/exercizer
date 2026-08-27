@@ -1,5 +1,5 @@
 import { ng, model, notify } from 'entcore';
-import { ISubjectScheduled, ISubjectSequenceScheduled } from '../models/domain';
+import { ISubjectScheduled, ISubjectSequenceScheduled, ISubjectSequenceProgress } from '../models/domain';
 import { ISubjectScheduledService, ISubjectCopyService, ISubjectSequenceScheduledService } from '../services';
 
 // Élève — navigation dans un Parcours affecté (cf. SPEC-PARCOURS-multi-sequences.md §4.4, §5.1).
@@ -19,6 +19,7 @@ export class SubjectSequenceScheduledController {
     static $inject = [
         '$routeParams',
         '$location',
+        '$q',
         'SubjectSequenceScheduledService',
         'SubjectScheduledService',
         'SubjectCopyService'
@@ -28,18 +29,27 @@ export class SubjectSequenceScheduledController {
     private _header: ISubjectSequenceScheduled;
     private _itemList: ISubjectScheduled[] = [];
     private _hasDataLoaded = false;
+    private _progress: ISubjectSequenceProgress;
 
     constructor
     (
         private _$routeParams,
         private _$location,
+        private _$q,
         private _subjectSequenceScheduledService: ISubjectSequenceScheduledService,
         private _subjectScheduledService: ISubjectScheduledService,
         private _subjectCopyService: ISubjectCopyService
     ) {
         this._id = parseInt(_$routeParams['subjectSequenceScheduledId'], 10);
 
-        Promise.all([
+        // $q.all (pas le Promise.all natif) : un Promise.all natif enveloppant des promesses $q casse
+        // l'intégration au cycle de digest Angular pour SON PROPRE .then() - les valeurs se résolvent
+        // bien (confirmé : hasDataLoaded passe à true, itemList se remplit) mais la vue ne se
+        // rafraîchit jamais tant qu'aucun autre événement ne déclenche un digest par ailleurs, d'où le
+        // "Chargement des données..." bloqué de façon intermittente (dépend du hasard d'un digest
+        // concurrent). Diagnostiqué en confirmant qu'un $apply() manuel dans la console débloque
+        // immédiatement l'écran figé.
+        this._$q.all([
             this._subjectSequenceScheduledService.getById(this._id),
             this._subjectScheduledService.resolve(false),
             this._subjectCopyService.resolve(false)
@@ -49,6 +59,15 @@ export class SubjectSequenceScheduledController {
                 .filter((ss: ISubjectScheduled) => ss.subject_sequence_scheduled_id == this._id)
                 .sort((a: ISubjectScheduled, b: ISubjectScheduled) => (a.sequence_order_by || 0) - (b.sequence_order_by || 0));
             this._hasDataLoaded = true;
+            // Suivi de la classe (D5) : réservé au propriétaire, le backend filtre déjà
+            // (SubjectSequenceScheduledAccess accepte owner OR élève, mais /progress ne renvoie une
+            // liste utile que du point de vue enseignant - un élève y verrait aussi les autres élèves,
+            // d'où la restriction ci-dessous côté affichage en plus du filtre CSV déjà en place).
+            if (this.isOwner) {
+                this._subjectSequenceScheduledService.getProgress(this._id).then((progress) => {
+                    this._progress = progress;
+                });
+            }
         }, (err) => {
             notify.error(err);
             this.redirectToDashboard();
@@ -143,6 +162,14 @@ export class SubjectSequenceScheduledController {
 
     public exportCsv() {
         window.open('/exercizer/subject-sequence-scheduled/' + this._id + '/export-csv', '_blank');
+    }
+
+    get progressStudents() {
+        return this._progress ? this._progress.students : [];
+    }
+
+    get hasProgressLoaded(): boolean {
+        return !!this._progress;
     }
 }
 

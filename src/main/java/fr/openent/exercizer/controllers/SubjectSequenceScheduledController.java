@@ -272,12 +272,16 @@ public class SubjectSequenceScheduledController extends ControllerHelper {
 					if (isNotify) {
 						notifySequence(request, user, header.getString("title"), userIds, body);
 					}
-					// Renders.created(request) ne prend pas de corps : on écrit la réponse avant, comme
-					// SubjectScheduledController#getHandlerScheduleAndNotifies le fait déjà pour /schedule-subject/:id.
+					// Le code de statut doit être posé AVANT le premier write() (qui envoie déjà l'en-tête
+					// avec le code par défaut 200 sinon) : Renders.created() appelé après write() levait
+					// IllegalStateException "Response head already sent", non rattrapée - même bug que
+					// SubjectScheduledController#getHandlerScheduleAndNotifies, corrigé là-bas de la même
+					// façon (constaté en reproduisant /schedule-subject-sequence/:id réel).
 					final String result = new JsonObject().put("id", subjectSequenceScheduledId).toString();
+					request.response().setStatusCode(201).setStatusMessage("Created");
 					request.response().putHeader("Content-Length", String.valueOf(result.length()));
 					request.response().write(result);
-					Renders.created(request);
+					request.response().end();
 				});
 			});
 		});
@@ -446,25 +450,37 @@ public class SubjectSequenceScheduledController extends ControllerHelper {
 	@SecuredAction(value = "", type = ActionType.RESOURCE)
 	public void progress(final HttpServerRequest request) {
 		final String id = request.params().get("id");
-		subjectSequenceScheduledService.getProgress(id, event -> {
+		checkAuth(request).onSuccess(user -> subjectSequenceScheduledService.getProgress(id, event -> {
 			if (event.isLeft()) {
 				renderError(request, new JsonObject().put("error", event.left().getValue()));
 				return;
 			}
-			renderJson(request, buildProgressResponse(event.right().getValue()));
-		});
+			// IDOR : SubjectSequenceScheduledAccess autorise tout élève engagé dans le Parcours (pas
+			// seulement le propriétaire), mais la requête SQL renvoie la classe entière (noms + scores
+			// de tous les élèves). Un élève n'a le droit de voir QUE sa propre ligne ; seul le
+			// propriétaire (enseignant) voit l'agrégat complet - même distinction que l'export CSV,
+			// déjà réservé au propriétaire via SubjectSequenceScheduledOwner.
+			subjectSequenceScheduledService.isOwner(id, user.getUserId(), isOwnerEvent -> {
+				final boolean isOwner = isOwnerEvent.isRight() && Boolean.TRUE.equals(isOwnerEvent.right().getValue());
+				renderJson(request, buildProgressResponse(event.right().getValue(), isOwner ? null : user.getUserId()));
+			});
+		}));
 	}
 
 	/**
 	 * Ajoute, pour chaque élève, un taux de complétion calculé côté backend (submittedItems/totalItems),
 	 * même logique que SubjectScheduledController#buildPilotageStateResponse pour le pilotage D3.
+	 * @param restrictToStudentId non null pour un appelant non-propriétaire : ne renvoie que sa propre ligne.
 	 */
-	private JsonObject buildProgressResponse(final JsonObject raw) {
+	private JsonObject buildProgressResponse(final JsonObject raw, final String restrictToStudentId) {
 		final long totalItems = raw.getLong("total_items", 0L);
 		final JsonArray outStudents = new JsonArray();
 		for (Object o : raw.getJsonArray("students", new JsonArray())) {
 			if (!(o instanceof JsonObject)) continue;
 			final JsonObject s = (JsonObject) o;
+			if (restrictToStudentId != null && !restrictToStudentId.equals(s.getString("studentId"))) {
+				continue;
+			}
 			final JsonObject out = s.copy();
 			final long submittedItems = s.getLong("submittedItems", 0L);
 			out.put("totalItems", totalItems);
@@ -485,7 +501,7 @@ public class SubjectSequenceScheduledController extends ControllerHelper {
 				renderError(request, new JsonObject().put("error", event.left().getValue()));
 				return;
 			}
-			final JsonObject data = buildProgressResponse(event.right().getValue());
+			final JsonObject data = buildProgressResponse(event.right().getValue(), null);
 			final StringBuilder csv = new StringBuilder("Élève;Sujets rendus;Sujets corrigés;Total sujets;Taux de complétion;Score moyen\n");
 			for (Object o : data.getJsonArray("students", new JsonArray())) {
 				if (!(o instanceof JsonObject)) continue;

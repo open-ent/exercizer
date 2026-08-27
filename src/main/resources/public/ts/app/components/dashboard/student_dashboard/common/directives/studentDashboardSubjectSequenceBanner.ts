@@ -7,8 +7,8 @@ import { ng } from 'entcore';
 // aujourd'hui, la fonctionnalité étant neuve) - composant conteneur léger, ne modifie aucun des
 // composants d'affichage existants (subject-copy-domino inchangé, cf. contrainte de la tâche).
 export const studentDashboardSubjectSequenceBanner = ng.directive('studentDashboardSubjectSequenceBanner',
-    ['SubjectScheduledService', 'SubjectCopyService', 'SubjectSequenceScheduledService', '$location',
-        (SubjectScheduledService, SubjectCopyService, SubjectSequenceScheduledService, $location) => {
+    ['SubjectScheduledService', 'SubjectCopyService', 'SubjectSequenceScheduledService', '$location', '$q',
+        (SubjectScheduledService, SubjectCopyService, SubjectSequenceScheduledService, $location, $q) => {
             return {
                 restrict: 'E',
                 scope: {},
@@ -28,7 +28,9 @@ export const studentDashboardSubjectSequenceBanner = ng.directive('studentDashbo
                         return childIds.length > 0 ? Math.round((done / childIds.length) * 100) : 0;
                     }
 
-                    Promise.all([
+                    // $q.all (pas Promise.all natif) : cf. SubjectSequenceScheduledController.ts pour
+                    // le détail du bug de digest Angular cassé par le Promise.all natif.
+                    $q.all([
                         SubjectScheduledService.resolve(false),
                         SubjectCopyService.resolve(false)
                     ]).then(function () {

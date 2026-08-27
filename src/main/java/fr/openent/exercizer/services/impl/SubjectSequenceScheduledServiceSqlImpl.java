@@ -28,6 +28,7 @@ import org.entcore.common.user.UserInfos;
 import io.vertx.core.Future;
 import io.vertx.core.Handler;
 import io.vertx.core.Promise;
+import io.vertx.core.eventbus.Message;
 import io.vertx.core.json.JsonArray;
 import io.vertx.core.json.JsonObject;
 
@@ -147,5 +148,20 @@ public class SubjectSequenceScheduledServiceSqlImpl extends AbstractExercizerSer
 				") AS t";
 
 		sql.prepared(query, new JsonArray().add(Sql.parseId(id)).add(Sql.parseId(id)), SqlResult.validUniqueResultHandler(handler, "students"));
+	}
+
+	// Même requête que le filtre SubjectSequenceScheduledOwner, exposée en service pour que le contrôleur
+	// puisse distinguer propriétaire/élève DANS le corps de la route /progress (déjà passée par
+	// SubjectSequenceScheduledAccess, plus permissif), sans dupliquer la requête SQL à cet endroit.
+	@Override
+	public void isOwner(final String id, final String userId, final Handler<Either<String, Boolean>> handler) {
+		final String query = "SELECT COUNT(*) FROM " + schema + "subject_sequence_scheduled WHERE id = ? AND owner = ?";
+		sql.prepared(query, new JsonArray().add(Sql.parseId(id)).add(userId), new Handler<Message<JsonObject>>() {
+			@Override
+			public void handle(Message<JsonObject> message) {
+				final Long count = SqlResult.countResult(message);
+				handler.handle(new Either.Right<>(count != null && count > 0));
+			}
+		});
 	}
 }

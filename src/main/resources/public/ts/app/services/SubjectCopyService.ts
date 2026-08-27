@@ -64,6 +64,8 @@ export class SubjectCopyService implements ISubjectCopyService {
     private _listMappedById:{[id:number]:ISubjectCopy;};
     private _listBySubjectScheduled:ISubjectCopy[];
     private _tmpPreviewData:{subjectScheduled:ISubjectScheduled, subjectCopy:ISubjectCopy, grainScheduledList:IGrainScheduled[], grainCopyList:IGrainCopy[]};
+    // Cf. SubjectScheduledService.resolve() : dédoublonne les appels concurrents (même bug).
+    private _pendingResolve:Promise<boolean>;
 
     constructor
     (
@@ -82,37 +84,44 @@ export class SubjectCopyService implements ISubjectCopyService {
     }
 
     public resolve = function(isTeacher:boolean):Promise<boolean> {
-        var self = this,
-            deferred = this._$q.defer(),
-            request = {
-                method: 'GET',
-                url: isTeacher ? 'exercizer/subjects-copy-by-subjects-scheduled' : 'exercizer/subjects-copy'
-            };
+        var self = this;
 
         if (!angular.isUndefined(this._listMappedById)) {
+            var deferred = this._$q.defer();
             deferred.resolve(true);
-        } else {
-            this._$http(request).then(
-                function(response) {
-                    self._listMappedById = {};
-                    self._listBySubjectScheduled = {};
-                    var subjectCopy:ISubjectCopy;
-                    angular.forEach(response.data, function(subjectCopyObject) {
-                        subjectCopy = SerializationHelper.toInstance(new SubjectCopy(), JSON.stringify(subjectCopyObject));
-                        if(!self._listBySubjectScheduled[subjectCopy.subject_scheduled_id]){
-                            self._listBySubjectScheduled[subjectCopy.subject_scheduled_id] = [];
-                        }
-                        self._listBySubjectScheduled[subjectCopy.subject_scheduled_id].push(subjectCopy);
-                        self._listMappedById[subjectCopy.id] = subjectCopy;
-                    });
-                    deferred.resolve(true);
-                },
-                function() {
-                    deferred.reject('exercizer.error');
-                }
-            );
+            return deferred.promise;
         }
-        return deferred.promise;
+        if (this._pendingResolve) {
+            return this._pendingResolve;
+        }
+
+        var request = {
+            method: 'GET',
+            url: isTeacher ? 'exercizer/subjects-copy-by-subjects-scheduled' : 'exercizer/subjects-copy'
+        };
+
+        this._pendingResolve = this._$http(request).then(
+            function(response) {
+                self._listMappedById = {};
+                self._listBySubjectScheduled = {};
+                var subjectCopy:ISubjectCopy;
+                angular.forEach(response.data, function(subjectCopyObject) {
+                    subjectCopy = SerializationHelper.toInstance(new SubjectCopy(), JSON.stringify(subjectCopyObject));
+                    if(!self._listBySubjectScheduled[subjectCopy.subject_scheduled_id]){
+                        self._listBySubjectScheduled[subjectCopy.subject_scheduled_id] = [];
+                    }
+                    self._listBySubjectScheduled[subjectCopy.subject_scheduled_id].push(subjectCopy);
+                    self._listMappedById[subjectCopy.id] = subjectCopy;
+                });
+                self._pendingResolve = null;
+                return true;
+            },
+            function() {
+                self._pendingResolve = null;
+                return self._$q.reject('exercizer.error');
+            }
+        );
+        return this._pendingResolve;
     };
 
     public resolve_force = function(isTeacher:boolean):Promise<boolean> {

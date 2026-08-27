@@ -608,9 +608,16 @@ public class SubjectScheduledController extends ControllerHelper {
 					}
 
 					String result = event.right().getValue().toString();
+					// Le code de statut DOIT être posé avant le premier write() : write() envoie déjà
+					// l'en-tête HTTP (implicitement 200) s'il n'a pas été fixé avant, et Renders.created()
+					// (setStatusCode(201) puis end()) appelé APRÈS ce write() levait alors
+					// IllegalStateException "Response head already sent" - exception non rattrapée,
+					// remontée jusqu'à l'event loop Vert.x (log "Unhandled exception"), constatée en
+					// reproduisant un POST /schedule-subject/:id réel (curl + log applicatif).
+					request.response().setStatusCode(201).setStatusMessage("Created");
 					request.response().putHeader("Content-Length", String.valueOf(result.length()));
 					request.response().write(result);
-					Renders.created(request);
+					request.response().end();
 					eventHelper.onCreateResource(request, RESOURCE_NAME);
 				} else {
 					renderError(request, new JsonObject().put("error","exercizer.subject.scheduled.error"));
@@ -1101,12 +1108,18 @@ public class SubjectScheduledController extends ControllerHelper {
 				return;
 			}
 			subjectScheduledService.forceSubmit(subjectScheduledId, studentId, event -> {
-				if (event.isLeft()) {
+				// event.isLeft() ne suffit PAS à détecter "0 ligne mise à jour" : SqlResult#validUnique
+				// (libs/entcore/common, utilisé platform-wide) renvoie un Either.Right(JsonObject VIDE),
+				// pas un Left, quand la requête RETURNING ne retourne aucune ligne - constaté en
+				// reproduisant l'appel (0 rows => 200 avec corps "{}" au lieu du 400 attendu). Corrigé
+				// ICI (pas dans le helper partagé, trop risqué à modifier sans auditer tous ses autres
+				// appelants) : traiter un JsonObject sans "id" comme le même refus que isLeft().
+				final JsonObject copy = event.isRight() ? event.right().getValue() : null;
+				if (event.isLeft() || copy == null || !copy.containsKey("id")) {
 					// 0 ligne mise à jour : copie déjà rendue, ou élève sans copie sur cette séance (cf. spec D3, action 3).
 					badRequest(request, "exercizer.pilotage.force.submit.refused");
 					return;
 				}
-				final JsonObject copy = event.right().getValue();
 				renderJson(request, copy);
 				broadcastPilotage(subjectScheduledId, new JsonObject()
 						.put("type", "force-submit")

@@ -43,6 +43,31 @@
             </div>
         </div>
 
+        <!-- SUIVI DE LA CLASSE (D5, propriétaire uniquement) -->
+        <div class="row mb-24" data-ng-if="subjectSequenceScheduledController.isOwner && subjectSequenceScheduledController.hasProgressLoaded">
+            <h2 class="mb-16"><i18n>exercizer.sequence.tracking.title</i18n></h2>
+            <table class="twelve">
+                <thead>
+                <tr>
+                    <th><i18n>exercizer.sequence.tracking.student</i18n></th>
+                    <th><i18n>exercizer.sequence.tracking.submitted</i18n></th>
+                    <th><i18n>exercizer.sequence.tracking.corrected</i18n></th>
+                    <th><i18n>exercizer.sequence.tracking.rate</i18n></th>
+                    <th><i18n>exercizer.sequence.tracking.score</i18n></th>
+                </tr>
+                </thead>
+                <tbody>
+                <tr data-ng-repeat="student in subjectSequenceScheduledController.progressStudents">
+                    <td>[[ student.studentName ]]</td>
+                    <td>[[ student.submittedItems ]] / [[ student.totalItems ]]</td>
+                    <td>[[ student.correctedItems ]] / [[ student.totalItems ]]</td>
+                    <td>[[ (student.completionRate * 100) | number:0 ]]%</td>
+                    <td>[[ student.averageScore ? (student.averageScore | number:2) : '-' ]]</td>
+                </tr>
+                </tbody>
+            </table>
+        </div>
+
         <!-- ORDERED ITEM LIST -->
         <div class="row">
             <ul class="thought-out-actions">

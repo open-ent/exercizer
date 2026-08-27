@@ -76,4 +76,10 @@ public interface ISubjectSequenceScheduledService {
 	 * moyen (moyenne simple des scores des sujets déjà corrigés) — cf. spec §5.1 et §7-pt.6.
 	 */
 	void getProgress(final String id, final Handler<Either<String, JsonObject>> handler);
+
+	/**
+	 * Le propriétaire voit l'agrégat complet de {@link #getProgress}, un autre appelant autorisé
+	 * (élève engagé, cf. SubjectSequenceScheduledAccess) ne voit que sa propre ligne.
+	 */
+	void isOwner(final String id, final String userId, final Handler<Either<String, Boolean>> handler);
 }
