@@ -33,8 +33,10 @@ import org.entcore.common.user.UserUtils;
 import fr.openent.exercizer.filters.MassShareAndOwner;
 import fr.openent.exercizer.services.ISubjectSequenceItemService;
 import fr.openent.exercizer.services.ISubjectSequenceService;
+import fr.openent.exercizer.services.ISubjectSequenceScheduledService;
 import fr.openent.exercizer.services.impl.SubjectSequenceItemServiceSqlImpl;
 import fr.openent.exercizer.services.impl.SubjectSequenceServiceSqlImpl;
+import fr.openent.exercizer.services.impl.SubjectSequenceScheduledServiceSqlImpl;
 import fr.wseduc.rs.ApiDoc;
 import fr.wseduc.rs.Delete;
 import fr.wseduc.rs.Get;
@@ -57,10 +59,12 @@ public class SubjectSequenceController extends ControllerHelper {
 
 	private final ISubjectSequenceService subjectSequenceService;
 	private final ISubjectSequenceItemService subjectSequenceItemService;
+	private final ISubjectSequenceScheduledService subjectSequenceScheduledService;
 
 	public SubjectSequenceController() {
 		this.subjectSequenceService = new SubjectSequenceServiceSqlImpl();
 		this.subjectSequenceItemService = new SubjectSequenceItemServiceSqlImpl();
+		this.subjectSequenceScheduledService = new SubjectSequenceScheduledServiceSqlImpl();
 	}
 
 	@Post("/subject-sequence")
@@ -158,6 +162,21 @@ public class SubjectSequenceController extends ControllerHelper {
 			return;
 		}
 		subjectSequenceItemService.list(subjectSequenceId, arrayResponseHandler(request));
+	}
+
+	@Get("/subject-sequence/:id/scheduled")
+	@ApiDoc("Lists the distributions (subject_sequence_scheduled) of a subject sequence (Parcours), to navigate to their tracking screen (D5).")
+	@ResourceFilter(ShareAndOwner.class)
+	@SecuredAction(value = "exercizer.read", type = ActionType.RESOURCE)
+	public void listScheduled(final HttpServerRequest request) {
+		final Long subjectSequenceId;
+		try {
+			subjectSequenceId = Long.parseLong(request.params().get("id"));
+		} catch (NumberFormatException e) {
+			badRequest(request, e.getMessage());
+			return;
+		}
+		subjectSequenceScheduledService.listBySequence(subjectSequenceId, arrayResponseHandler(request));
 	}
 
 	@Post("/subject-sequence/:id/item")

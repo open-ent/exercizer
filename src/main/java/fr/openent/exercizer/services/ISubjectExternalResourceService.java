@@ -36,4 +36,6 @@ public interface ISubjectExternalResourceService {
 	void getById(Long resourceId, Long subjectId, Handler<Either<String, JsonObject>> handler);
 
 	void remove(Long resourceId, Long subjectId, Handler<Either<String, JsonObject>> handler);
+
+	void rename(Long resourceId, Long subjectId, String title, Handler<Either<String, JsonObject>> handler);
 }

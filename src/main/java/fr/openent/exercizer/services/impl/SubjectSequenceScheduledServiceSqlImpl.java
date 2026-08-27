@@ -164,4 +164,11 @@ public class SubjectSequenceScheduledServiceSqlImpl extends AbstractExercizerSer
 			}
 		});
 	}
+
+	@Override
+	public void listBySequence(final Long subjectSequenceId, final Handler<Either<String, JsonArray>> handler) {
+		final String query = "SELECT id, title, begin_date, due_date, created FROM " + resourceTable +
+				" WHERE subject_sequence_id = ? ORDER BY created DESC";
+		sql.prepared(query, new JsonArray().add(subjectSequenceId), SqlResult.validResultHandler(handler));
+	}
 }

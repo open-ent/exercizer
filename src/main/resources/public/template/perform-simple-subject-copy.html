@@ -7,6 +7,13 @@
 
     <div data-ng-if="performSimpleSubjectCopyController.hasDataLoaded">
 
+        <!-- D3 - PILOTAGE (réaction en direct côté élève) -->
+        <subject-perform-copy-pilotage
+                data-subject-scheduled="performSimpleSubjectCopyController.subjectScheduled"
+                data-subject-copy="performSimpleSubjectCopyController.subjectCopy"
+                data-read-only="performSimpleSubjectCopyController.pilotageReadOnly">
+        </subject-perform-copy-pilotage>
+
         <div class="flex align-items-center justify-space-between flex-wrap-wrap mb-24 mt-8">
             <h1 class="cell flex-inline align-items-center gap-8 only-desktop mb-0 title">
                 <svg class="icon-exercizer" width="30" height="30"><use href="exercizer/public/assets/icons/illustrations.svg#exercizer"></use></svg>
@@ -97,7 +104,7 @@
                     </div>
                 </div>
                 <!-- ADD -->
-                <div class="row media-library mt-16" ng-if="performSimpleSubjectCopyController.subjectCopy.homework_files.length < 5">
+                <div class="row media-library mt-16" ng-if="performSimpleSubjectCopyController.subjectCopy.homework_files.length < 5 && !performSimpleSubjectCopyController.pilotageReadOnly">
                     <div
                         id="simple-correction-id"
                         class="drop-zone import-files import-files-custom"

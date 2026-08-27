@@ -177,7 +177,7 @@ export const teacherDashboardPilotage = ng.directive('teacherDashboardPilotage',
 
                 scope.confirmExtend = function() {
                     var minutes = parseInt(scope.extend.minutes, 10);
-                    if (!minutes || minutes <= 0) {
+                    if (!minutes || minutes === 0 || isNaN(minutes)) {
                         notify.error('exercizer.pilotage.extend.invalid.minutes');
                         return;
                     }

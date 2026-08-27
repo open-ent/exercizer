@@ -3,7 +3,21 @@
 
     <ul class="mb-8" data-ng-if="resources.length">
         <li data-ng-repeat="resource in resources" class="flex align-items-center justify-space-between gap-8 mb-4">
-            <a data-ng-href="[[ downloadUrl(resource) ]]" target="_blank">[[ resource.title ]]</a>
+            <span data-ng-if="resource.editingTitle === undefined" class="flex align-items-center gap-8">
+                <a data-ng-href="[[ downloadUrl(resource) ]]" target="_blank">[[ resource.title ]]</a>
+                <button class="button button-link" data-ng-click="startRename(resource)">
+                    <i18n>exercizer.external.resource.rename</i18n>
+                </button>
+            </span>
+            <span data-ng-if="resource.editingTitle !== undefined" class="flex align-items-center gap-8">
+                <input type="text" data-ng-model="resource.editingTitle" style="min-width:200px;" />
+                <button class="button button-link" data-ng-disabled="!resource.editingTitle" data-ng-click="confirmRename(resource)">
+                    <i18n>exercizer.validate</i18n>
+                </button>
+                <button class="button button-link" data-ng-click="cancelRename(resource)">
+                    <i18n>exercizer.cancel</i18n>
+                </button>
+            </span>
             <button class="button button-secondary" data-ng-click="removeResource(resource)">
                 <i18n>exercizer.external.resource.remove</i18n>
             </button>

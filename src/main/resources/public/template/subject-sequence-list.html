@@ -48,6 +48,10 @@
                 </td>
                 <td>[[ subjectSequence.modified | date:'dd/MM/yyyy HH:mm' ]]</td>
                 <td style="text-align:right;">
+                    <button class="button button-link" data-ng-click="subjectSequenceListController.openScheduledModal(subjectSequence)">
+                        <svg class="icon-list" width="18" height="18"><use href="exercizer/public/assets/icons/icons.svg#list"></use></svg>
+                        <i18n>exercizer.sequence.scheduled.list</i18n>
+                    </button>
                     <button class="button button-link" data-ng-click="subjectSequenceListController.openEdit(subjectSequence)">
                         <svg class="icon-edit" width="18" height="18"><use href="exercizer/public/assets/icons/icons.svg#edit"></use></svg>
                         <i18n>exercizer.edit</i18n>
@@ -90,6 +94,33 @@
         <div class="row">
             <button data-ng-click="subjectSequenceListController.confirmRemove()" class="cell right-magnet"><i18n>exercizer.remove</i18n></button>
             <button data-ng-click="subjectSequenceListController.closeRemoveModal()" class="cell right-magnet cancel"><i18n>exercizer.cancel</i18n></button>
+        </div>
+    </lightbox>
+
+    <!-- SCHEDULED LIST MODAL (accès à l'écran de suivi D5 d'une distribution passée) -->
+    <lightbox data-show="subjectSequenceListController.isScheduledModalDisplayed" data-on-close="subjectSequenceListController.closeScheduledModal()">
+        <h2><i18n>exercizer.sequence.scheduled.list</i18n></h2>
+
+        <div class="row" data-ng-if="subjectSequenceListController.scheduledLoading">
+            <div class="info"><i18n>exercizer.loading</i18n></div>
+        </div>
+
+        <p data-ng-if="!subjectSequenceListController.scheduledLoading && !subjectSequenceListController.scheduledList.length">
+            <i18n>exercizer.sequence.scheduled.emptyscreen</i18n>
+        </p>
+
+        <ul data-ng-if="!subjectSequenceListController.scheduledLoading && subjectSequenceListController.scheduledList.length">
+            <li data-ng-repeat="scheduled in subjectSequenceListController.scheduledList" class="flex align-items-center justify-space-between gap-8 mb-4">
+                <a class="hover-orange" href="#/subject-sequence-scheduled/[[ scheduled.id ]]/">
+                    [[ scheduled.title ]] — [[ scheduled.begin_date | date:'dd/MM/yyyy' ]] → [[ scheduled.due_date | date:'dd/MM/yyyy' ]]
+                </a>
+            </li>
+        </ul>
+
+        <div class="row mt-16 right-magnet">
+            <button class="button button-secondary right-magnet cell" data-ng-click="subjectSequenceListController.closeScheduledModal()">
+                <i18n>exercizer.cancel</i18n>
+            </button>
         </div>
     </lightbox>
 </div>

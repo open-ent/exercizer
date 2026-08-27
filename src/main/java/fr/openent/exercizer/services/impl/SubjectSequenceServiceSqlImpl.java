@@ -66,7 +66,7 @@ public class SubjectSequenceServiceSqlImpl extends AbstractExercizerServiceSqlIm
 	public void remove(final JsonArray subjectSequenceIds, final Handler<Either<String, JsonObject>> handler) {
 		final String query = "UPDATE " + resourceTable + " SET is_deleted = true, modified = NOW() WHERE id IN " +
 				Sql.listPrepared(subjectSequenceIds.getList());
-		sql.prepared(query, new JsonArray(subjectSequenceIds.getList()), SqlResult.validRowsResultHandler(1, handler));
+		sql.prepared(query, new JsonArray(subjectSequenceIds.getList()), SqlResult.validRowsResultHandler(handler));
 	}
 
 	/**

@@ -328,6 +328,11 @@ public class SubjectScheduledServiceSqlImpl extends AbstractExercizerServiceSqlI
 		/*the potential target : final String query = "INSERT INTO " + schema + "grain_scheduled (subject_scheduled_id, grain_type_id, created, order_by, grain_data, grain_custom_data) " +
 				"SELECT ?, g.grain_type_id, NOW(), g.order_by, g.grain_data, g.grain_custom_data FROM " + schema + "subject as s INNER JOIN " + schema + "grain as g on (s.id = g.subject_id) " +
 				"WHERE s.id=? AND g.grain_type_id > 2";*/
+		if (grainJa.isEmpty()) {
+			// Sujet sans grain (aucun contenu ajouté) : rien à programmer, insert vide invalide en SQL.
+			return;
+		}
+
 		final StringBuilder bulkInsertScheduledGrain = new StringBuilder("INSERT INTO " + schema + "grain_scheduled (subject_scheduled_id, grain_type_id, order_by, grain_data, grain_custom_data) VALUES ");
 		final JsonArray values = new JsonArray();
 

@@ -46,6 +46,28 @@ export const subjectExternalResources = ng.directive('subjectExternalResources',
                     });
                 };
 
+                scope.startRename = function (resource) {
+                    resource.editingTitle = resource.title;
+                };
+
+                scope.cancelRename = function (resource) {
+                    delete resource.editingTitle;
+                };
+
+                scope.confirmRename = function (resource) {
+                    if (!resource.editingTitle) {
+                        return;
+                    }
+                    $http.put('/exercizer/subject/' + scope.subjectId + '/external-resource/' + resource.id, {
+                        title: resource.editingTitle
+                    }).then(() => {
+                        delete resource.editingTitle;
+                        scope.load();
+                    }, () => {
+                        notify.error('exercizer.external.resource.rename.failed');
+                    });
+                };
+
                 scope.removeResource = function (resource) {
                     $http.delete('/exercizer/subject/' + scope.subjectId + '/external-resource/' + resource.id).then(() => {
                         scope.load();

@@ -1274,6 +1274,30 @@ public class SubjectController extends ControllerHelper {
 		});
 	}
 
+	@Put("/subject/:id/external-resource/:resourceId")
+	@ApiDoc("Renames an imported external resource.")
+	@ResourceFilter(SubjectDocumentOwner.class)
+	@SecuredAction(value="", type = ActionType.RESOURCE)
+	public void renameExternalResource(final HttpServerRequest request) {
+		final Long subjectId;
+		final Long resourceId;
+		try {
+			subjectId = Long.parseLong(request.params().get("id"));
+			resourceId = Long.parseLong(request.params().get("resourceId"));
+		} catch (Exception e) {
+			badRequest(request);
+			return;
+		}
+		RequestUtils.bodyToJson(request, body -> {
+			final String title = body.getString("title");
+			if (StringUtils.isEmpty(title)) {
+				badRequest(request, "exercizer.external.resource.invalid.title");
+				return;
+			}
+			subjectExternalResourceService.rename(resourceId, subjectId, title, notEmptyResponseHandler(request));
+		});
+	}
+
 	@Delete("/subject/:id/external-resource/:resourceId")
 	@ApiDoc("Removes an imported external resource from a subject.")
 	@ResourceFilter(SubjectDocumentOwner.class)

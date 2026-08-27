@@ -26,6 +26,7 @@ export interface ISubjectSequenceService {
     getList(): ISubjectSequence[];
     getById(id: number): ISubjectSequence;
     listItems(subjectSequenceId: number): Promise<ISubjectSequenceItem[]>;
+    listScheduled(subjectSequenceId: number): Promise<any[]>;
     addItem(subjectSequenceId: number, subjectId: number, subjectTitle: string, subjectDescription: string, subjectMaxScore: number, orderBy: number): Promise<ISubjectSequenceItem>;
     updateItem(subjectSequenceId: number, item: ISubjectSequenceItem): Promise<ISubjectSequenceItem>;
     removeItems(subjectSequenceId: number, itemIds: number[]): Promise<boolean>;
@@ -176,6 +177,26 @@ export class SubjectSequenceService implements ISubjectSequenceService {
                     items.push(SerializationHelper.toInstance(new SubjectSequenceItem(), JSON.stringify(itemObject)) as any);
                 });
                 deferred.resolve(items);
+            },
+            function () {
+                deferred.reject('exercizer.error');
+            }
+        );
+        return deferred.promise;
+    };
+
+    // Distributions (subject_sequence_scheduled) d'un Parcours modèle : seul point d'entrée IHM vers
+    // l'écran de suivi (D5) une fois quitté, cf. gap constaté en recette - aucun lien n'y menait.
+    public listScheduled = function (subjectSequenceId: number): Promise<any[]> {
+        const deferred = this._$q.defer(),
+            request = {
+                method: 'GET',
+                url: 'exercizer/subject-sequence/' + subjectSequenceId + '/scheduled'
+            };
+
+        this._$http(request).then(
+            function (response) {
+                deferred.resolve(response.data);
             },
             function () {
                 deferred.reject('exercizer.error');

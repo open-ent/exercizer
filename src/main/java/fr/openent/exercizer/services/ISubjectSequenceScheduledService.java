@@ -82,4 +82,11 @@ public interface ISubjectSequenceScheduledService {
 	 * (élève engagé, cf. SubjectSequenceScheduledAccess) ne voit que sa propre ligne.
 	 */
 	void isOwner(final String id, final String userId, final Handler<Either<String, Boolean>> handler);
+
+	/**
+	 * Liste des distributions (subject_sequence_scheduled) d'un Parcours modèle, pour permettre à
+	 * l'enseignant de retrouver l'écran de suivi (D5) d'une distribution passée depuis la liste des
+	 * Parcours — jusqu'ici aucun lien dans l'IHM ne menait à cet écran une fois quitté.
+	 */
+	void listBySequence(final Long subjectSequenceId, final Handler<Either<String, JsonArray>> handler);
 }

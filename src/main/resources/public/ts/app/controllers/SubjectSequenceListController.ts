@@ -21,6 +21,9 @@ export class SubjectSequenceListController {
     private _newSubjectSequence: ISubjectSequence = new SubjectSequence();
     private _subjectSequenceToRemove: ISubjectSequence;
     private _creating = false;
+    private _isScheduledModalDisplayed = false;
+    private _scheduledList: any[] = [];
+    private _scheduledLoading = false;
 
     constructor
     (
@@ -46,6 +49,29 @@ export class SubjectSequenceListController {
 
     public openEdit(subjectSequence: ISubjectSequence) {
         this._$location.path('/subject-sequence/edit/' + subjectSequence.id + '/');
+    }
+
+    // Seul point d'entrée IHM vers l'écran de suivi (D5) d'une distribution passée : jusqu'ici,
+    // une fois quitté, aucun lien n'y ramenait (gap constaté en recette).
+    public openScheduledModal(subjectSequence: ISubjectSequence) {
+        this._isScheduledModalDisplayed = true;
+        this._scheduledList = [];
+        this._scheduledLoading = true;
+        this._subjectSequenceService.listScheduled(subjectSequence.id).then((list) => {
+            this._scheduledList = list;
+            this._scheduledLoading = false;
+        }, (err) => {
+            this._scheduledLoading = false;
+            notify.error(err);
+        });
+    }
+
+    public closeScheduledModal() {
+        this._isScheduledModalDisplayed = false;
+    }
+
+    public openScheduledTracking(scheduled: any) {
+        this._$location.path('/subject-sequence-scheduled/' + scheduled.id + '/');
     }
 
     public openCreateModal() {
@@ -121,6 +147,18 @@ export class SubjectSequenceListController {
 
     get creating(): boolean {
         return this._creating;
+    }
+
+    get isScheduledModalDisplayed(): boolean {
+        return this._isScheduledModalDisplayed;
+    }
+
+    get scheduledList(): any[] {
+        return this._scheduledList;
+    }
+
+    get scheduledLoading(): boolean {
+        return this._scheduledLoading;
     }
 }
 

@@ -17,6 +17,7 @@ import { ISubjectScheduledService, ISubjectCopyService, ISubjectSequenceSchedule
 export class SubjectSequenceScheduledController {
 
     static $inject = [
+        '$scope',
         '$routeParams',
         '$location',
         '$q',
@@ -33,6 +34,7 @@ export class SubjectSequenceScheduledController {
 
     constructor
     (
+        private _$scope,
         private _$routeParams,
         private _$location,
         private _$q,
@@ -40,7 +42,30 @@ export class SubjectSequenceScheduledController {
         private _subjectScheduledService: ISubjectScheduledService,
         private _subjectCopyService: ISubjectCopyService
     ) {
-        this._id = parseInt(_$routeParams['subjectSequenceScheduledId'], 10);
+        this._load(_$routeParams['subjectSequenceScheduledId']);
+
+        // Le routeur custom entcore (template.open()) ne détruit/recrée pas systématiquement ce
+        // contrôleur en changeant seulement l'id dans l'URL (même template cible) : sans ce watch,
+        // naviguer d'une distribution à une autre (ex. depuis la nouvelle liste "Suivi") réaffiche les
+        // données de la PREMIÈRE distribution chargée dans l'onglet, jamais rafraîchies (constaté en
+        // recette : /progress plus jamais rappelé après le tout premier chargement).
+        this._$scope.$watch(() => this._$routeParams['subjectSequenceScheduledId'], (newId, oldId) => {
+            // Garde-fou : $routeParams peut transitoirement perdre l'id (undefined) en quittant CET
+            // écran vers une autre route (pas seulement en changeant d'id sur cette même route) - sans
+            // ce filtre, _load(undefined) déclenche un GET .../NaN qui échoue et redirige vers le
+            // dashboard en pleine navigation (constaté : régression introduite par ce watch lui-même).
+            if (newId && newId !== oldId) {
+                this._load(newId);
+            }
+        });
+    }
+
+    private _load(routeId: string) {
+        this._id = parseInt(routeId, 10);
+        this._hasDataLoaded = false;
+        this._header = undefined;
+        this._itemList = [];
+        this._progress = undefined;
 
         // $q.all (pas le Promise.all natif) : un Promise.all natif enveloppant des promesses $q casse
         // l'intégration au cycle de digest Angular pour SON PROPRE .then() - les valeurs se résolvent

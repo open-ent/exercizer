@@ -1072,7 +1072,7 @@ public class SubjectScheduledController extends ControllerHelper {
 		RequestUtils.bodyToJson(request, body -> {
 			final Integer minutes = body.getInteger("minutes");
 			final String studentId = body.getString("studentId");
-			if (minutes == null || minutes <= 0) {
+			if (minutes == null || minutes == 0) {
 				badRequest(request, "exercizer.pilotage.extend.invalid.minutes");
 				return;
 			}

@@ -59,4 +59,10 @@ public class SubjectExternalResourceServiceSqlImpl extends AbstractExercizerServ
 		final String query = "DELETE FROM " + resourceTable + " WHERE id = ? AND subject_id = ? RETURNING *";
 		sql.prepared(query, new JsonArray().add(resourceId).add(subjectId), SqlResult.validUniqueResultHandler(handler));
 	}
+
+	@Override
+	public void rename(final Long resourceId, final Long subjectId, final String title, final Handler<Either<String, JsonObject>> handler) {
+		final String query = "UPDATE " + resourceTable + " SET title = ? WHERE id = ? AND subject_id = ? RETURNING *";
+		sql.prepared(query, new JsonArray().add(title).add(resourceId).add(subjectId), SqlResult.validUniqueResultHandler(handler));
+	}
 }
