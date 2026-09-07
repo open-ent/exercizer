@@ -243,6 +243,10 @@ public class SubjectSequenceScheduledController extends ControllerHelper {
 			}
 			final JsonObject header = headerEvent.right().getValue();
 			final Long subjectSequenceScheduledId = header.getLong("id");
+			if (subjectSequenceScheduledId == null) {
+				renderError(request, new JsonObject().put("error", "subject.sequence.model.deleted"), 409, "Conflict");
+				return;
+			}
 
 			final Date nowUTC = new DateTime(DateTimeZone.UTC).toLocalDateTime().toDate();
 			Date beginDate;

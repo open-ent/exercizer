@@ -1313,8 +1313,8 @@ public class SubjectController extends ControllerHelper {
 			return;
 		}
 		subjectExternalResourceService.getById(resourceId, subjectId, event -> {
-			if (event.isLeft()) {
-				Renders.notFound(request);
+			if (event.isLeft() || !event.right().getValue().containsKey("file_id")) {
+				Renders.notFound(request, "exercizer.external.resource.not.found.for.subject");
 				return;
 			}
 			final String fileId = event.right().getValue().getString("file_id");
