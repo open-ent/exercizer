@@ -104,7 +104,10 @@ jobs:
         run: |
           ENTCORE_OPT=""
           if [ -n "$ENTCORE_VERSION" ]; then ENTCORE_OPT="-DentCoreVersion=$ENTCORE_VERSION"; fi
-          mvn clean package -DskipTests -B $ENTCORE_OPT -DbuildNumber=${GITHUB_SHA::8} -DscmBranch=${GITHUB_REF_NAME}
+          # -Dmaven.test.skip=true (et pas seulement -DskipTests) : évite la COMPILATION des tests,
+          # qui déclenche maven-scala-plugin:2.15.2 (hérité d'app-parent) — ce vieux compilateur
+          # crashe sous JDK 21 (scala.reflect.internal.FatalError: bad constant pool index).
+          mvn clean package -Dmaven.test.skip=true -B $ENTCORE_OPT -DbuildNumber=${GITHUB_SHA::8} -DscmBranch=${GITHUB_REF_NAME}
         env:
           ENTCORE_VERSION: ${{ github.event.inputs.entcore_version }}
 
