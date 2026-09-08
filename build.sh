@@ -55,9 +55,19 @@ buildNode () {
   #try jenkins branch name => then local git branch name => then jenkins params
   echo "[buildNode] Get branch name from jenkins env..."
 
+  # ENTCORE_EXPLICIT=true seulement si une version d'entcore a été EXPLICITEMENT demandée
+  # (FRONT_BRANCH/FRONT_TAG, ex. Jenkins) — voir plus bas : dans ce seul cas BRANCH_NAME
+  # désigne un tag npm entcore réel à installer. Sans ça, BRANCH_NAME retombe sur la branche
+  # git LOCALE DU MODULE (ex. "4.3.6-patched-dev") qui n'a jamais été un tag entcore publié
+  # → `npm install entcore@4.3.6-patched-dev` échoue toujours (ETARGET). Le CI du module
+  # (.github/workflows/build-and-publish.yml) ne fait d'ailleurs jamais ce npm rm/install
+  # ciblé : simple `npm install`, en confiance sur la version déjà pinnée dans package.json.
+  ENTCORE_EXPLICIT=false
+
   if [ ! -z "$FRONT_BRANCH" ]; then
     echo "[buildNode] Get tag name from jenkins param... $FRONT_BRANCH"
     BRANCH_NAME="$FRONT_BRANCH"
+    ENTCORE_EXPLICIT=true
   else
     BRANCH_NAME=`echo $GIT_BRANCH | sed -e "s|origin/||g"`
     if [ "$BRANCH_NAME" = "" ]; then
@@ -67,6 +77,7 @@ buildNode () {
     if [ ! -z "$FRONT_TAG" ]; then
       echo "[buildNode] Get tag name from jenkins param... $FRONT_TAG"
       BRANCH_NAME="$FRONT_TAG"
+      ENTCORE_EXPLICIT=true
     fi
     if [ "$BRANCH_NAME" = "" ]; then
       echo "[buildNode] Branch name should not be empty!"
@@ -74,7 +85,7 @@ buildNode () {
     fi
   fi
 
-  if [ "$BRANCH_NAME" = 'master' ] || [ "$BRANCH_NAME" = 'v3.6.1.x' ]; then
+  if [ "$ENTCORE_EXPLICIT" = false ] || [ "$BRANCH_NAME" = 'master' ] || [ "$BRANCH_NAME" = 'v3.6.1.x' ]; then
       echo "[buildNode] Use entcore version from package.json ($BRANCH_NAME)"
       case `uname -s` in
         MINGW*)
