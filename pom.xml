@@ -35,7 +35,7 @@
 
     <properties>
         <entCoreVersion>6.16.14-patched</entCoreVersion>
-        <entCoreLibsVersion>6.16.7-patched</entCoreLibsVersion>
+        <entCoreLibsVersion>6.16.8-patched</entCoreLibsVersion>
         <mongodb-helper.version>3.1.1</mongodb-helper.version>
         <vertxCronTimerVersion>3.0.0</vertxCronTimerVersion>
         <junitVersion>4.13.2</junitVersion>
