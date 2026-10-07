@@ -4,6 +4,7 @@ import http from 'axios';
 export interface IGroupService {
     findMembers(id:string):Promise<any>;
     getList(subject, startSearch, forceReload): Promise<any>;
+    getListForSubjectSequence(subjectSequence, startSearch, forceReload): Promise<any>;
     getMembersFromBookmark(bookmark) : Promise<any>
     getUserFromGroup(group) : Promise<any>;
     getClassFromStructures(structureId : any) : Promise<any>;
@@ -20,12 +21,14 @@ export class GroupService implements IGroupService {
     private _$http;
     private _$q;
     private _groupBySubjectId;
+    private _groupBySubjectSequenceId;
     private _groupByStructureId;
 
     constructor($http, $q){
         this._$http = $http;
         this._$q = $q;
         this._groupBySubjectId = {};
+        this._groupBySubjectSequenceId = {};
         this._groupByStructureId = {};
     }
 
@@ -91,6 +94,44 @@ export class GroupService implements IGroupService {
                 function(res) {
                     res.data.bookmarks = bookmarks;
                     self._groupBySubjectId[subject.id] = res.data;
+                    deferred.resolve(res.data);
+                },
+                function() {
+                    deferred.reject('exercizer.error');
+                }
+            );
+        }
+        return deferred.promise;
+    };
+
+    // Même mécanisme que getList ci-dessus (recherche/liste des groupes-utilisateurs à qui affecter une
+    // ressource), pointé vers le partage du Parcours (GET /subject-sequence/share/json/:id, cf.
+    // SubjectSequenceController#share) plutôt que celui d'un sujet - réutilisation à l'identique du
+    // composant subjectSchedule pour l'affectation d'un Parcours (cf. SPEC-PARCOURS-multi-sequences.md
+    // §4.2), sans dupliquer sa logique de picker groupes/utilisateurs.
+    public getListForSubjectSequence = async function(subjectSequence, startSearch, forceReload = false): Promise<any> {
+        var self = this,
+            deferred = this._$q.defer();
+        if(this._groupBySubjectSequenceId[subjectSequence.id] && !forceReload){
+            deferred.resolve(this._groupBySubjectSequenceId[subjectSequence.id]);
+        } else {
+            var response = await http.get('/directory/sharebookmark/all');
+            var bookmarks = _.map(response.data, function(bookmark) {
+                bookmark.type = 'sharebookmark';
+                return bookmark;
+            });
+            var url = 'exercizer/subject-sequence/share/json/'+subjectSequence.id;
+            if (startSearch) {
+                url += '?search=' + startSearch;
+            }
+            var request = {
+                method: 'GET',
+                url: url
+            };
+            this._$http(request).then(
+                function(res) {
+                    res.data.bookmarks = bookmarks;
+                    self._groupBySubjectSequenceId[subjectSequence.id] = res.data;
                     deferred.resolve(res.data);
                 },
                 function() {

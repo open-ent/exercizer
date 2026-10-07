@@ -24,15 +24,19 @@ import fr.openent.exercizer.cron.ScheduledNotification;
 import fr.openent.exercizer.events.ExercizerRepositoryEvents;
 import fr.openent.exercizer.explorer.ExercizerExplorerPlugin;
 import fr.openent.exercizer.services.impl.ExercizerStorage;
+import fr.openent.exercizer.services.impl.SubjectScheduledServiceSqlImpl;
 import fr.wseduc.cron.CronTrigger;
 import fr.wseduc.webutils.Server;
 import io.vertx.core.Future;
 import io.vertx.core.Promise;
+import io.vertx.core.http.HttpServerOptions;
+import io.vertx.core.json.JsonObject;
 import org.entcore.common.explorer.IExplorerPluginClient;
 import org.entcore.common.explorer.impl.ExplorerRepositoryEvents;
 import org.entcore.common.http.BaseServer;
 import org.entcore.common.notification.TimelineHelper;
 import org.entcore.common.service.impl.SqlCrudService;
+import org.entcore.common.share.impl.SqlShareService;
 import org.entcore.common.sql.SqlConf;
 import org.entcore.common.sql.SqlConfs;
 import org.entcore.common.storage.Storage;
@@ -107,16 +111,65 @@ public class Exercizer extends BaseServer {
             subjectCopyConf.setSchema("exercizer");
             subjectCopyConf.setTable("subject_scheduled");
 
+            // « Parcours » (nom fonctionnel) / subject_sequence (nom technique), cf.
+            // SPEC-PARCOURS-multi-sequences.md. Partage entre enseignants sur le même modèle que subject
+            // (ShareAndOwner + subject_sequence_shares), mais sans passer par l'ExercizerExplorerPlugin :
+            // l'indexation moteur de recherche du Parcours est explicitement hors périmètre (spec §7-pt.10).
+            SqlConf subjectSequenceConf = SqlConfs.createConf(SubjectSequenceController.class.getName());
+            subjectSequenceConf.setSchema("exercizer");
+            subjectSequenceConf.setTable("subject_sequence");
+            subjectSequenceConf.setShareTable("subject_sequence_shares");
+
+            // Même table/shareTable que ci-dessus (le paramètre :id des routes de planification est
+            // l'id du Parcours modèle, pas de l'instance affectée) : mirrore subjectScheduledConf/
+            // grainScheduledConf, qui pointent eux aussi vers la table "subject" du modèle.
+            SqlConf subjectSequenceScheduledConf = SqlConfs.createConf(SubjectSequenceScheduledController.class.getName());
+            subjectSequenceScheduledConf.setSchema("exercizer");
+            subjectSequenceScheduledConf.setTable("subject_sequence");
+            subjectSequenceScheduledConf.setShareTable("subject_sequence_shares");
+
+            SubjectSequenceController subjectSequenceController = new SubjectSequenceController();
+            subjectSequenceController.setShareService(new SqlShareService("exercizer", "subject_sequence_shares", eb, securedActions, null));
+            subjectSequenceController.setCrudService(new SqlCrudService("exercizer", "subject_sequence"));
+
             addController(new ExercizerController());
             addController(new FolderController(plugin));
             addController(subjectController);
             addController(new GrainTypeController());
-            addController(new SubjectScheduledController(storage));
+            final SubjectScheduledController subjectScheduledController = new SubjectScheduledController(storage);
+            addController(subjectScheduledController);
             addController(new GrainScheduledController());
             addController(new SubjectCopyController(plugin, vertx.fileSystem(), storage, exportPath));
             addController(new SubjectLessonLevelController());
             addController(new SubjectLessonTypeController());
             addController(new SubjectTagController());
+            addController(subjectSequenceController);
+            addController(new SubjectSequenceScheduledController(storage));
+
+            // D3 - pilotage actif en direct : WebSocket applicatif dédié, sur le modèle de
+            // collaborative-wall (WallWebSocketController), avec son propre port. Optionnel : si le bloc
+            // "real-time" est absent de la config, la fonctionnalité de pilotage reste utilisable via les
+            // routes REST, seule la diffusion en direct aux navigateurs connectés est indisponible
+            // (mêmes routes REST, pas de régression pour les instances non reconfigurées).
+            final JsonObject rtConfig = config.getJsonObject("real-time");
+            if (rtConfig == null) {
+                log.info("[Exercizer] no 'real-time' config : pilotage websocket disabled, REST routes only.");
+            } else {
+                final PilotageWebSocketController pilotageWebSocketController =
+                        new PilotageWebSocketController(vertx, new SubjectScheduledServiceSqlImpl());
+                subjectScheduledController.setPilotageWebSocketController(pilotageWebSocketController);
+                final int port = rtConfig.getInteger("port");
+                final HttpServerOptions options = new HttpServerOptions().setMaxWebSocketFrameSize(1024 * 1024);
+                vertx.createHttpServer(options)
+                        .webSocketHandler(pilotageWebSocketController)
+                        .listen(port, asyncResult -> {
+                            if (asyncResult.succeeded()) {
+                                log.info("[Exercizer] pilotage websocket server listening on port " + port);
+                            } else {
+                                log.error("[Exercizer] cannot start pilotage websocket server", asyncResult.cause());
+                            }
+                        });
+            }
 
             final String notifyCron = config.getString("scheduledNotificationCron", "0 0 4 * * ?");
             final TimelineHelper timelineHelper = new TimelineHelper(vertx, vertx.eventBus(), config);

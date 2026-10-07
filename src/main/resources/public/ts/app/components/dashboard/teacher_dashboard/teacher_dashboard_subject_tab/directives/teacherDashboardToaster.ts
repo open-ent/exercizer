@@ -204,7 +204,13 @@ export const teacherDashboardToaster = ng.directive('teacherDashboardToaster', [
                                     libraryService.openPublishControllerWithResource(subject);
                                 },
                                 display : function(){
-                                    return scope.subjectList.length == 1 && scope.folderList.length == 0 && ( scope.lowerRight == 'owner') && model.me.hasWorkflow(Behaviours.applicationsBehaviours.exercizer.rights.workflow.publish);
+                                    // Bouton « Publier dans la bibliothèque » masqué : la Bibliothèque de
+                                    // ressources n'est PAS provisionnée sur cet ENT (config app-registry
+                                    // library-enabled absente) -> POST /appregistry/library/resource = 500.
+                                    // On masque uniquement CETTE action (sans toucher aux droits/workflows).
+                                    // À rétablir (return la condition d'origine) quand la Bibliothèque sera
+                                    // configurée, idéalement en la conditionnant à un flag library-enabled.
+                                    return false;
                                 }
                             },
                             {

@@ -1,0 +1,24 @@
+<div class="mb-24" data-ng-if="sessionState === 'en_pause' || isForcedSubmit || messages.length > 0 || remainingLabel">
+
+    <message-info status="warning" data-ng-if="sessionState === 'en_pause'">
+        <i18n>exercizer.pilotage.student.paused.banner</i18n>
+    </message-info>
+
+    <message-info status="error" data-ng-if="isForcedSubmit">
+        <i18n>exercizer.pilotage.student.force.submit.banner</i18n>
+    </message-info>
+
+    <message-info status="info" data-ng-repeat="message in messages track by message.id">
+        <div class="flex align-items-center justify-space-between gap-8 twelve">
+            <span>[[message.text]]</span>
+            <button class="button button-secondary no-margin" data-ng-click="dismissMessage(message)">
+                <i18n>exercizer.close</i18n>
+            </button>
+        </div>
+    </message-info>
+
+    <div class="small-text italic-text mt-8" data-ng-if="remainingLabel">
+        <i18n>exercizer.pilotage.remaining.time</i18n> : [[remainingLabel]]
+        <span data-ng-if="!wsConnected">(<i18n>exercizer.pilotage.connection.poll</i18n>)</span>
+    </div>
+</div>

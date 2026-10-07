@@ -12,4 +12,6 @@ export * from './SubjectCopy';
 export * from './SubjectLessonLevel';
 export * from './SubjectLessonType';
 export * from './SubjectScheduled';
+export * from './SubjectSequence';
+export * from './SubjectSequenceScheduled';
 export * from './SubjectTag';

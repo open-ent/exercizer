@@ -22,6 +22,10 @@ class PerformSimpleSubjectCopyController {
     private _hasDataLoaded:boolean;
     private _isModalConfirmDisplayed:boolean;
 
+    // D3 pilotage : bascule à true par <subject-perform-copy-pilotage> (binding "=") dès qu'un
+    // événement de pause ou de remise forcée est reçu. Même pattern que PerformSubjectCopyController.
+    public pilotageReadOnly = false;
+
     constructor
     (
         private _$routeParams,
@@ -88,6 +92,10 @@ class PerformSimpleSubjectCopyController {
 
     public saveStudentCopy() {
         this.closeConfirmModal();
+        if (this.pilotageReadOnly) {
+            notify.error('exercizer.pilotage.copy.submitted');
+            return;
+        }
         if (!this._subjectCopy.homework_files.length) {
             notify.error('exercizer.simple.check');
         } else {
@@ -105,6 +113,10 @@ class PerformSimpleSubjectCopyController {
     };
     
     public uploadFile= function(){
+        if (this.pilotageReadOnly) {
+            notify.error('exercizer.pilotage.copy.submitted');
+            return;
+        }
         if (this.newFiles.length > 0) {
             notify.info('exercizer.notify.file.loading', false);
             const self:PerformSimpleSubjectCopyController=this;
@@ -160,7 +172,7 @@ class PerformSimpleSubjectCopyController {
     public canHomeworkSubmit = function(){
         //it's possible to submit a homework if the begin date is passed even if due date is exceeded (Unless it has already submit)
         return this._dateService.compare_after(new Date(), this._dateService.isoToDate(this._subjectScheduled.begin_date), true)
-            && this.canUpdate;
+            && this.canUpdate && !this.pilotageReadOnly;
     };
     
     public canShowFuturSubmitLabel = function(){

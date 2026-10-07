@@ -313,6 +313,17 @@ export const teacherDashboardSimpleCorrectionCopyList = ng.directive('teacherDas
                     });
                 };
 
+                scope.isPilotageAvailable = function() {
+                    if (!scope.selectedSubjectScheduled) return false;
+                    var now = new Date();
+                    return now >= new Date(scope.selectedSubjectScheduled.begin_date) &&
+                        now <= new Date(scope.selectedSubjectScheduled.due_date);
+                };
+
+                scope.goToPilotage = function() {
+                    $location.path('/dashboard/teacher/pilotage/' + scope.selectedSubjectScheduled.id);
+                };
+
                 scope.checkTime = function (time, def) {
                     return time.match("^([01][0-9]|2[0-3]):[0-5][0-9]$") ? time : $filter('date')(def, 'HH:mm');
                 }

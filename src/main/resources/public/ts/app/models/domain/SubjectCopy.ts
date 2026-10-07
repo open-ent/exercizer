@@ -23,6 +23,11 @@ export interface ISubjectCopy {
     getTracker():EditTrackingEvent;
     corrected_files: Array<ISubjectCopyFile>;
     homework_files: Array<ISubjectCopyFile>;
+    // D3 - pilotage actif en direct (migration 036-add-pilotage-session-state.sql) : déjà renvoyés tels
+    // quels par les endpoints élève existants (SELECT o.* / fromJSON = Object.assign), déclarés ici pour
+    // le typage (cf. subjectPerformCopyPilotage.ts).
+    extra_time_minutes?: number;
+    is_forced_submit?: boolean;
 }
 
 export class SubjectCopy implements  ISubjectCopy {

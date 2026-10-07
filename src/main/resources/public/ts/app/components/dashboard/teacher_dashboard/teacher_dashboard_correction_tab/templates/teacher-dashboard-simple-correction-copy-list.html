@@ -34,6 +34,7 @@
     
         <div class="row m-8">
             <div class="cell right-magnet flex-inline gap-8" data-ng-show="!option.editedDates">
+                <button class="button button-primary" data-ng-if="isPilotageAvailable()" data-ng-click="goToPilotage()"><i18n>exercizer.pilotage.access</i18n></button>
                 <button class="button button-secondary" data-ng-click="option.showUnScheduled=true"><i18n>exercizer.unschedule</i18n></button>
                 <button class="button button-accent" data-ng-click="option.editedDates=true"> <i18n>edit</i18n></button>
             </div>

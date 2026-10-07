@@ -7,6 +7,13 @@
 
     <div data-ng-if="performSubjectCopyController.hasDataLoaded && performSubjectCopyController.grainCopyList.length > 0">
 
+        <!-- D3 - PILOTAGE (réaction en direct côté élève, hors mode aperçu) -->
+        <subject-perform-copy-pilotage data-ng-if="!performSubjectCopyController.previewing"
+                                       data-subject-scheduled="performSubjectCopyController.subjectScheduled"
+                                       data-subject-copy="performSubjectCopyController.subjectCopy"
+                                       data-read-only="performSubjectCopyController.pilotageReadOnly">
+        </subject-perform-copy-pilotage>
+
         <!-- PREVIEW HEADER -->
         <div data-ng-if="performSubjectCopyController.previewing">
             <subject-perform-copy-preview-header data-subject-scheduled="performSubjectCopyController.subjectScheduled"
@@ -41,12 +48,18 @@
 
             <section>
                 <!-- CURRENT GRAIN COPY DISPLAYED -->
-                <subject-perform-copy-display-current-grain-copy data-subject-scheduled="performSubjectCopyController.subjectScheduled"
+                <!-- D3 pilotage : la vraie inhibition d'écriture se fait dans PerformSubjectCopyController
+                     (E_UPDATE_GRAIN_COPY / E_SUBJECT_COPY_SUBMITTED), ce style n'est qu'un renfort visuel
+                     évitant de propager pilotageReadOnly dans chacune des ~10 directives perform-* par
+                     type de grain. -->
+                <div data-ng-style="performSubjectCopyController.pilotageReadOnly && {'pointer-events': 'none', 'opacity': '0.6'}">
+                    <subject-perform-copy-display-current-grain-copy data-subject-scheduled="performSubjectCopyController.subjectScheduled"
                                                                  data-subject-copy="performSubjectCopyController.subjectCopy"
                                                                  data-previewing="performSubjectCopyController.previewing"
                                                                  data-grain-copy-list="performSubjectCopyController.grainCopyList"
                                                                  data-current-grain-copy="performSubjectCopyController.currentGrainCopy">
-                </subject-perform-copy-display-current-grain-copy>
+                    </subject-perform-copy-display-current-grain-copy>
+                </div>
 
                 <!-- BOTTOM NAV -->
                 <subject-perform-copy-bottom-nav data-grain-copy-list="performSubjectCopyController.grainCopyList"

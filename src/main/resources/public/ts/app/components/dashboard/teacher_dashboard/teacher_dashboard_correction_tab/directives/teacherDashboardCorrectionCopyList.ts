@@ -167,6 +167,20 @@ export const teacherDashboardCorrectionCopyList = ng.directive('teacherDashboard
                     );
                 };
 
+                // D3 - pilotage actif en direct : point d'entrée visible uniquement pendant la fenêtre
+                // horaire de la séance (avant/après, l'écran de pilotage n'a pas de sens : rien à mettre
+                // en pause, rien à prolonger).
+                scope.isPilotageAvailable = function() {
+                    if (!scope.selectedSubjectScheduled) return false;
+                    var now = new Date();
+                    return now >= new Date(scope.selectedSubjectScheduled.begin_date) &&
+                        now <= new Date(scope.selectedSubjectScheduled.due_date);
+                };
+
+                scope.goToPilotage = function() {
+                    $location.path('/dashboard/teacher/pilotage/' + scope.selectedSubjectScheduled.id);
+                };
+
                 scope.unScheduled = function() {
                     scope.option.unScheduledDisabled = true
                     SubjectScheduledService.unScheduled(scope.selectedSubjectScheduled).then(function () {

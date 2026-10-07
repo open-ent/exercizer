@@ -78,6 +78,17 @@ export const exercizerController = ng.controller('ExercizerController', ['$scope
                 template.open('main', '400-date-exercizer');
             }
         },
+        dashboardTeacherPilotage: async function () {
+            if (await checkSystemDate()) {
+                if (_userProfile === teacherProfile) {
+                    template.open('main', 'teacher-dashboard-pilotage');
+                } else {
+                    template.open('main', '401-exercizer');
+                }
+            } else {
+                template.open('main', '400-date-exercizer');
+            }
+        },
         dashboardTeacherLibrary: async function () {
             if (await checkSystemDate()) {
                 if (_userProfile === teacherProfile) {
@@ -99,6 +110,35 @@ export const exercizerController = ng.controller('ExercizerController', ['$scope
                 } else {
                     template.open('main', '401-exercizer');
                 }
+            } else {
+                template.open('main', '400-date-exercizer');
+            }
+        },
+        subjectSequenceList: async function () {
+            if (await checkSystemDate()) {
+                if (_userProfile === teacherProfile) {
+                    template.open('main', 'subject-sequence-list');
+                } else {
+                    template.open('main', '401-exercizer');
+                }
+            } else {
+                template.open('main', '400-date-exercizer');
+            }
+        },
+        editSubjectSequence: async function () {
+            if (await checkSystemDate()) {
+                if (_userProfile === teacherProfile) {
+                    template.open('main', 'edit-subject-sequence');
+                } else {
+                    template.open('main', '401-exercizer');
+                }
+            } else {
+                template.open('main', '400-date-exercizer');
+            }
+        },
+        subjectSequenceScheduled: async function () {
+            if (await checkSystemDate()) {
+                template.open('main', 'subject-sequence-scheduled');
             } else {
                 template.open('main', '400-date-exercizer');
             }

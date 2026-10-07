@@ -346,6 +346,18 @@ public class SubjectCopyServiceSqlImpl extends AbstractExercizerServiceSqlImpl i
         }));
     }
 
+    /**
+     * @see fr.openent.exercizer.services.ISubjectCopyService
+     */
+    @Override
+    public void checkCopyWritable(final String subjectCopyId, final Handler<Either<String, JsonObject>> handler) {
+        final String query = "SELECT ss.session_state, (sc.submitted_date IS NOT NULL) AS \"isSubmitted\" " +
+                "FROM " + resourceTable + " AS sc " +
+                "INNER JOIN " + schema + "subject_scheduled AS ss ON ss.id = sc.subject_scheduled_id " +
+                "WHERE sc.id = ?";
+        sql.prepared(query, new JsonArray().add(Sql.parseId(subjectCopyId)), SqlResult.validUniqueResultHandler(handler));
+    }
+
     private void updateCurrentGrainId(final String subjectCopyId, final String grainCopyId, Handler<Either<String, JsonObject>> handler) {
         final String updateQuery = "UPDATE " + resourceTable + " SET current_grain_id = ? WHERE id = ?";
         JsonArray params = new JsonArray();

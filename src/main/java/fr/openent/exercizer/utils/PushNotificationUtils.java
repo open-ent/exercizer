@@ -41,7 +41,7 @@ public class PushNotificationUtils {
                         acceptLanguage,
                         notification.getString("username"),
                         notification.getString("subjectName"),
-                        notification.getString("dueDate")
+                        notification.getString("dueDate", "")
                 );
                 break;
             }
@@ -82,7 +82,7 @@ public class PushNotificationUtils {
                         acceptLanguage,
                         notification.getString("username"),
                         notification.getString("subjectName"),
-                        notification.getString("dueDate")
+                        notification.getString("dueDate", "")
                 );
                 break;
             }
