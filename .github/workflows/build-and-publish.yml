@@ -39,6 +39,35 @@ jobs:
             opendigitaleducation/node:10-alpine \
             sh -c "npm install --legacy-peer-deps && node_modules/gulp/bin/gulp.js build"
 
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 20
+
+      - uses: pnpm/action-setup@v6
+
+      # IHM React de la vue exercizer-react.html : sous-projet Vite frontend/, distinct du bundle
+      # webpack racine (application.js) construit ci-dessus par gulp sous Node 10. Il utilise des
+      # paquets privés @open-ent -> auth via OPENENT_PACKAGES_TOKEN (frontend/.npmrc :
+      # //npm.pkg.github.com/:_authToken). Sans cette étape, le fat-mod ne contient pas l'entrée
+      # React et ?ui=react est cassé (bundle 404).
+      - name: Build frontend React (sous-projet Vite frontend/)
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.OPENENT_PACKAGES_TOKEN }}
+        run: |
+          cd frontend
+          # Les @open-ent/* sont publiés sur un tag MOBILE (2.5.30-patched) : le lock fige une URL
+          # de tarball contenant le SHA du blob d'alors, que GitHub Packages rejette en 409 après
+          # republication. On re-résout ces paquets.
+          node scripts/refresh-open-ent-lock.mjs
+          pnpm install --no-frozen-lockfile
+          pnpm build
+          mkdir -p ../src/main/resources/public ../src/main/resources/view
+          cp -r dist/public/. ../src/main/resources/public/
+          # La vue React est GÉNÉRÉE par Vite : ses fichiers portent une empreinte de contenu, dont
+          # seul le build connaît les noms. Elle ne vient donc pas de view-src/, et doit être
+          # copiée APRÈS l'étape gulp qui produit view/ depuis view-src/.
+          cp dist/index.html ../src/main/resources/view/exercizer-react.html
+
       - name: Upload frontend assets
         uses: actions/upload-artifact@v7
         with:

@@ -1,0 +1,12 @@
+/* Mise en page d'Exercizer — uniquement ce que les utilitaires du socle n'expriment pas.
+   Toute couleur vient des jetons `--openent-*` du bootstrap chargé au runtime : le module suit
+   ainsi le thème de l'établissement sans feuille de styles parallèle. */
+
+/* Bandeau de bascule d'interface, posé en bas de l'écran sans recouvrir le contenu utile. */
+.exercizer-ui-switch {
+  position: sticky;
+  bottom: var(--openent-spacing-16, 1rem);
+  z-index: 10;
+  margin-top: var(--openent-spacing-24, 1.5rem);
+  background: var(--openent-white);
+}

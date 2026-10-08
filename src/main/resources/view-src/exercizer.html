@@ -33,6 +33,53 @@
 	.alertchange .close-lightbox{
 		display: none;
 	}
+
+	/*
+	  Bandeau d'invitation à la nouvelle IHM React. Styles posés ici, dans la vue de l'ancienne
+	  IHM, pour n'avoir rien à retirer d'ailleurs le jour où elle disparaît.
+	  Teintes neutres assumées : la feuille de cette IHM n'expose pas les jetons `--openent-*`
+	  du socle, et deviner les siens donnerait un rendu faux sur certains thèmes.
+	*/
+	.exercizer-ui-switch {
+		position: fixed;
+		left: 50%;
+		bottom: 16px;
+		transform: translateX(-50%);
+		z-index: 9000;
+		max-width: calc(100vw - 32px);
+		display: flex;
+		align-items: center;
+		gap: 24px;
+		padding: 12px 16px;
+		border-radius: 8px;
+		background: #243242;
+		color: #fff;
+		box-shadow: 0 4px 16px rgba(0, 0, 0, .25);
+		font-size: 14px;
+	}
+	.exercizer-ui-switch[hidden] { display: none; }
+	.exercizer-ui-switch-text { display: flex; flex-direction: column; gap: 2px; }
+	.exercizer-ui-switch-text span { opacity: .8; }
+	.exercizer-ui-switch-actions { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
+	.exercizer-ui-switch-actions button {
+		border: 0;
+		border-radius: 6px;
+		padding: 8px 14px;
+		font-size: 14px;
+		cursor: pointer;
+		background: transparent;
+		color: #fff;
+		text-decoration: underline;
+	}
+	.exercizer-ui-switch-actions button.primary {
+		background: #fff;
+		color: #243242;
+		font-weight: 600;
+		text-decoration: none;
+	}
+	@media (max-width: 600px) {
+		.exercizer-ui-switch { flex-direction: column; align-items: stretch; gap: 12px; }
+	}
 	</style>
 </head>
 
@@ -61,6 +108,26 @@
 		</div>
 	</div>
 	<library-publish></library-publish>
+
+	<!--
+	  Invitation à essayer la nouvelle IHM React. Rendue ici en HTML plutôt que construite en
+	  JavaScript : les libellés passent par la balise i18n du gabarit, dans un contexte HTML — le
+	  seul que le moteur de gabarit échappe correctement (les textes français portent des
+	  apostrophes). Hors du <portal> et en position fixe : aucune interaction avec la mise en page
+	  AngularJS. Masquée par défaut ; c'est ui-switch.js qui décide de l'afficher, d'après la
+	  préférence usager.
+	-->
+	<div id="exercizer-ui-switch" class="exercizer-ui-switch" hidden>
+		<div class="exercizer-ui-switch-text">
+			<strong>{{#i18n}}exercizer.switch.invitation.title{{/i18n}}</strong>
+			<span>{{#i18n}}exercizer.switch.invitation.body{{/i18n}}</span>
+		</div>
+		<div class="exercizer-ui-switch-actions">
+			<button type="button" data-action="later">{{#i18n}}exercizer.switch.invitation.later{{/i18n}}</button>
+			<button type="button" data-action="try" class="primary">{{#i18n}}exercizer.switch.invitation.try{{/i18n}}</button>
+		</div>
+	</div>
+	<script type="text/javascript" src="/exercizer/public/ui-switch.js?v=@@VERSION"></script>
 </body>
 
 </html>
