@@ -727,5 +727,10 @@
   "exercizer.switch.notmigrated.action": "Continue in the previous version",
   "exercizer.display.cards": "Cards",
   "exercizer.display.list": "List",
-  "exercizer.folder.remove.permanent": "Deleting a folder is permanent: its contents do not go to the trash."
+  "exercizer.folder.remove.permanent": "Deleting a folder is permanent: its contents do not go to the trash.",
+  "exercizer.grain.score.zero": "Without points, this question does not count towards the mark.",
+  "exercizer.grain.zone.notmigrated": "This question type cannot be edited in the new version yet. Its content is left untouched: it is never saved from here.",
+  "exercizer.grain.zone.notmigrated.count": "[[count]] area(s) to fill in.",
+  "exercizer.subject.saved": "Changes saved",
+  "exercizer.file.choose": "Browse"
 }

@@ -11,6 +11,9 @@
 
 import {
   Folder,
+  Grain,
+  GrainData,
+  GrainType,
   ScheduledAt,
   Subject,
   SubjectCopy,
@@ -218,6 +221,106 @@ export const remindCopiesAutomatically = (copyIds: number[], subjectScheduledId:
 /** Retire des élèves de la distribution (leur copie n'est plus attendue). */
 export const excludeCopies = (copyIds: number[]) =>
   sendVoid('POST', '/exercizer/subject-copy/action/exclude', { ids: copyIds });
+
+// ── Grains ────────────────────────────────────────────────────────────────────
+
+export const getGrainTypes = () => get<GrainType[]>('/exercizer/grain-types');
+
+/**
+ * Les grains d'un sujet.
+ *
+ * C'est un POST, et le corps est le SUJET ENTIER : le serveur s'en sert pour vérifier les droits
+ * (un sujet de la bibliothèque passe par une autre route). Forme reprise de
+ * `GrainService#getListBySubject`.
+ */
+export const getGrains = async (subject: Subject): Promise<Grain[]> => {
+  const url = subject.is_library_subject
+    ? '/exercizer/subject-library-grains'
+    : `/exercizer/grains/${subject.id}`;
+  const grains = await send<Grain[]>('POST', url, cleanSubjectForSend(subject));
+  return parseGrains(grains);
+};
+
+/**
+ * `grain_data` arrive en **chaîne JSON** (colonne texte) : on la désérialise ici, au seul endroit
+ * qui parle au serveur, pour que les écrans n'aient affaire qu'à des objets.
+ *
+ * Une donnée illisible ne doit pas faire perdre le sujet entier : le grain est rendu avec un
+ * contenu vide plutôt qu'écarté — il garde ainsi son rang et son identifiant, et reste
+ * supprimable.
+ */
+function parseGrains(grains: Grain[]): Grain[] {
+  return (grains ?? []).map((grain) => {
+    const raw = grain.grain_data as unknown;
+    if (typeof raw !== 'string') return grain;
+    try {
+      return { ...grain, grain_data: JSON.parse(raw) as GrainData };
+    } catch {
+      return { ...grain, grain_data: {} };
+    }
+  });
+}
+
+/**
+ * Le sujet tel qu'on l'envoie : sans le `tracker` ni les `files` d'AngularJS, et avec un `owner`
+ * à plat. `cleanBeforeSave` faisait cela dans tous les services.
+ */
+function cleanSubjectForSend(subject: Subject): Record<string, unknown> {
+  const copy: Record<string, unknown> = { ...subject };
+  const owner = copy.owner as { userId?: string } | string | undefined;
+  if (owner && typeof owner === 'object' && owner.userId) copy.owner = owner.userId;
+  delete copy.files;
+  return copy;
+}
+
+/** Corps attendu par le serveur pour créer ou modifier un grain. */
+interface GrainPayload {
+  grainTypeId: number;
+  orderBy: number;
+  grainData: GrainData;
+}
+
+const grainPayload = (grain: Grain): GrainPayload => ({
+  grainTypeId: grain.grain_type_id,
+  orderBy: grain.order_by,
+  grainData: grain.grain_data,
+});
+
+/** Crée un grain. Le serveur ne renvoie que son identifiant. */
+export const createGrain = (grain: Omit<Grain, 'id'>) =>
+  send<{ id: number }>('POST', `/exercizer/subject/${grain.subject_id}/grain`, {
+    grainTypeId: grain.grain_type_id,
+    orderBy: grain.order_by,
+    grainData: grain.grain_data,
+  });
+
+export const updateGrain = (grain: Grain) =>
+  sendVoid('PUT', `/exercizer/subject/${grain.subject_id}/grain/${grain.id}`, grainPayload(grain));
+
+/**
+ * Supprime des grains. L'identifiant de chacun passe en paramètre de requête RÉPÉTÉ
+ * (`?idGrain=1&idGrain=2`) — c'est ce que le serveur attend.
+ */
+export const removeGrains = (subjectId: number, grainIds: number[]) => {
+  const query = grainIds.map((id) => `idGrain=${encodeURIComponent(id)}`).join('&');
+  return sendVoid('DELETE', `/exercizer/subject/${subjectId}/grains?${query}`);
+};
+
+/** Duplique des grains DANS le même sujet (le serveur suffixe les titres). */
+export const duplicateGrains = (subjectId: number, grainIds: number[]) =>
+  sendVoid('POST', `/exercizer/subject/${subjectId}/duplicate/grains`, { grainIds });
+
+// ── Pièces jointes d'un sujet (corrigé d'un sujet « simple ») ─────────────────
+
+/** Rattache un document du workspace au sujet. */
+export const addSubjectDoc = (subjectId: number, doc: { _id: string; metadata?: unknown }) =>
+  send<SubjectDocument>('PUT', `/exercizer/subject/${subjectId}/doc`, {
+    doc_id: doc._id,
+    metadata: doc.metadata,
+  });
+
+export const removeSubjectFile = (subjectId: number, docId: string) =>
+  sendVoid('DELETE', `/exercizer/subject/${subjectId}/file/${docId}`);
 
 // ── Référentiels (filtres de la bibliothèque) ─────────────────────────────────
 

@@ -1,3 +1,5 @@
+import { LoadingScreen } from '@open-ent/react';
+import { Suspense, lazy } from 'react';
 import { Navigate, RouteObject, createHashRouter } from 'react-router-dom';
 
 import { DashboardRedirect } from './screens/DashboardRedirect';
@@ -6,6 +8,22 @@ import { Root } from './screens/Root';
 import { StudentDashboard } from './screens/StudentDashboard';
 import { TeacherCorrections } from './screens/TeacherCorrections';
 import { TeacherSubjects } from './screens/TeacherSubjects';
+
+/**
+ * Les éditeurs embarquent l'éditeur riche du socle (tiptap, ~800 ko) : on diffère leur
+ * chargement pour garder l'ouverture des tableaux de bord légère — ce sont eux que tout le monde
+ * voit, l'édition d'un sujet ne concernant que les enseignants, et seulement par moments.
+ *
+ * ⚠ La frontière `Suspense` est posée ICI, au niveau de la route, hors de toute fenêtre modale :
+ * suspendre à l'intérieur d'une modale du socle, animée par react-spring, lève une erreur
+ * React #321 et la fenêtre n'est jamais rendue.
+ */
+const SubjectEditor = lazy(() => import('./screens/SubjectEditor'));
+const SimpleSubjectEditor = lazy(() => import('./screens/SimpleSubjectEditor'));
+
+const deferred = (element: JSX.Element) => (
+  <Suspense fallback={<LoadingScreen position={false} />}>{element}</Suspense>
+);
 
 /**
  * Les chemins sont ceux de l'IHM AngularJS, à l'identique (cf. `public/ts/app.ts`) : un lien
@@ -27,6 +45,22 @@ export const routes: RouteObject[] = [
       { path: 'dashboard/teacher', element: <TeacherSubjects /> },
       { path: 'dashboard/teacher/correction', element: <TeacherCorrections /> },
       { path: 'dashboard/teacher/correction/:subjectScheduledId', element: <TeacherCorrections /> },
+
+      // ── Édition d'un sujet ────────────────────────────────────────────────
+      { path: 'subject/edit/:subjectId/', element: deferred(<SubjectEditor />) },
+      {
+        path: 'subject/edit/simple/:subjectId/',
+        element: deferred(<SimpleSubjectEditor mode="edit" />),
+      },
+      // `create/simple` existe avec et sans dossier de destination.
+      {
+        path: 'subject/create/simple/',
+        element: deferred(<SimpleSubjectEditor mode="create" />),
+      },
+      {
+        path: 'subject/create/simple/:folderId',
+        element: deferred(<SimpleSubjectEditor mode="create" />),
+      },
 
       // ── Écrans restant à porter ───────────────────────────────────────────
       { path: 'dashboard/teacher/pilotage/:subjectScheduledId', element: <NotMigrated /> },

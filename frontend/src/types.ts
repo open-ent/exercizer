@@ -17,12 +17,22 @@ export interface Folder {
   label: string;
 }
 
-/** Document du workspace attaché à un sujet ou à une copie. */
+/**
+ * Document attaché à un sujet (corrigé d'un sujet « simple »).
+ *
+ * ⚠ La clé est `doc_id`, pas `id` : c'est l'identifiant du document dans le workspace, et c'est
+ * lui que la suppression attend. `metadata` recopie quelques informations du fichier pour éviter
+ * d'interroger le workspace à chaque affichage.
+ */
 export interface SubjectDocument {
-  id: string;
-  name?: string;
-  title?: string;
-  created?: string;
+  doc_id: string;
+  doc_type?: 'workspace' | 'storage';
+  metadata?: {
+    name?: string;
+    filename?: string;
+    size?: number;
+    'content-type'?: string;
+  };
 }
 
 /** Le type d'un sujet : `simple` (énoncé + fichier rendu) ou vide/`null` (sujet à grains). */
@@ -196,3 +206,109 @@ export type CopyState =
   | 'is_on_going'
   | 'is_sided'
   | null;
+
+// ── Grains (les « briques » d'un sujet interactif) ────────────────────────────
+
+/**
+ * Un type de grain, tel que la table `exercizer.grain_type` le décrit.
+ *
+ * `name` sert aussi d'identifiant d'illustration : le module sert
+ * `/exercizer/public/assets/icons/illustrations.svg#<name>`.
+ * `is_in_list` distingue les types PROPOSÉS à l'enseignant (les questions) des trois types
+ * techniques : 1 « choose », 2 « chooseAnswer » (deux étapes d'un grain pas encore décidé) et
+ * 3 « statement » (l'énoncé, ajouté par son propre bouton).
+ */
+export interface GrainType {
+  id: number;
+  name: string;
+  public_name: string;
+  illustration?: string | null;
+  is_in_list: boolean;
+}
+
+/** Document du workspace attaché à un grain (historique : plus proposé à l'ajout). */
+export interface GrainDocument {
+  id: string;
+  name?: string;
+  title?: string;
+  path?: string;
+  owner?: string;
+  ownerName?: string;
+  created?: string;
+}
+
+/**
+ * Le contenu d'un grain.
+ *
+ * ⚠ Le serveur range cet objet dans une colonne TEXTE : il arrive donc en **chaîne JSON** et doit
+ * être désérialisé par le client (`api.ts#parseGrains`), comme le faisait
+ * `GrainService#instantiateGrain`. `custom_data`, lui, est un objet imbriqué, propre au type.
+ */
+export interface GrainData {
+  title?: string;
+  max_score?: number | string;
+  /** Énoncé de la question, en HTML. L'énoncé d'un grain de type 3 vit dans `custom_data`. */
+  statement?: string;
+  document_list?: GrainDocument[];
+  /** Indice, montré à l'élève pendant la passation. */
+  answer_hint?: string;
+  /** Explication, montrée à la correction. */
+  answer_explanation?: string;
+  custom_data?: GrainCustomData;
+}
+
+export interface Grain {
+  id: number;
+  subject_id: number;
+  grain_type_id: number;
+  order_by: number;
+  created?: string;
+  modified?: string;
+  grain_data: GrainData;
+}
+
+/** Une réponse d'un grain à liste (réponses multiples, mise en ordre). */
+export interface GrainAnswer {
+  text?: string;
+  /** QCM : réponse attendue. */
+  isChecked?: boolean;
+  /** Association : les deux colonnes. */
+  text_left?: string;
+  text_right?: string;
+  /** Mise en ordre : rang attendu (1-n) de la réponse. */
+  order_by?: number;
+}
+
+/** Une zone d'un grain « à trous » ou « à remplir » (types 10, 11, 12). */
+export interface GrainZone {
+  answer: string;
+  options?: string[];
+  id?: number;
+  position?: { x: number; y: number; z: number };
+}
+
+/**
+ * `custom_data` réunit les champs propres à chaque type. On les décrit dans un seul objet, tous
+ * facultatifs : le serveur ne valide rien, et un sujet ancien peut porter n'importe quel
+ * sous-ensemble.
+ */
+export interface GrainCustomData {
+  /** Type 3 (énoncé) : le texte, en HTML. */
+  statement?: string;
+  /** Type 4 (réponse simple). */
+  correct_answer?: string;
+  /** Types 6, 7, 8, 9 : les réponses, dans une forme propre au type (cf. GrainAnswer). */
+  correct_answer_list?: GrainAnswer[];
+  /** Types 6 à 9 : « aucune erreur admise » — tout ou rien plutôt qu'un score partiel. */
+  no_error_allowed?: boolean;
+  /** Type 7 (QCM) : plusieurs bonnes réponses possibles. */
+  multipleAnswers?: boolean;
+  /** Type 8 (association) : montrer la colonne de gauche à l'élève. */
+  show_left_column?: boolean;
+  /** Types 10, 11, 12 : zones à remplir. */
+  zones?: GrainZone[];
+  options?: string[];
+  answersType?: string;
+  htmlContent?: string;
+  _guideImage?: string;
+}

@@ -728,5 +728,10 @@
   "exercizer.switch.notmigrated.action": "Continuer dans la version précédente",
   "exercizer.display.cards": "Vignettes",
   "exercizer.display.list": "Liste",
-  "exercizer.folder.remove.permanent": "La suppression d'un dossier est définitive : son contenu ne part pas à la corbeille."
+  "exercizer.folder.remove.permanent": "La suppression d'un dossier est définitive : son contenu ne part pas à la corbeille.",
+  "exercizer.grain.score.zero": "Sans point, cette question ne compte pas dans la note.",
+  "exercizer.grain.zone.notmigrated": "Ce type de question ne se modifie pas encore dans la nouvelle version. Son contenu est conservé intact : il n'est pas réenregistré ici.",
+  "exercizer.grain.zone.notmigrated.count": "[[count]] zone(s) à remplir.",
+  "exercizer.subject.saved": "Modifications enregistrées",
+  "exercizer.file.choose": "Parcourir"
 }
