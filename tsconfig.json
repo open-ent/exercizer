@@ -8,7 +8,12 @@
       "noImplicitAny": false,
       "lib": ["es2015", "dom"]
     },
+    // ⚠ Sans "frontend", l'ancien ts-loader (pas d'`include`/`files` ici) prend TOUS les .ts sous
+    // la racine, donc ceux de l'IHM React — que TypeScript 2.x ne sait pas rétro-transpiler en
+    // ES5 (`} catch {` sans liaison) : la construction de l'IHM AngularJS plante alors, et c'est
+    // elle qui est servie par défaut. Le sous-projet React a son propre frontend/tsconfig.json.
     "exclude": [
-      "build", "node_modules"
+      "build", "node_modules",
+      "frontend"
     ]
   }
