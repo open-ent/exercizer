@@ -161,40 +161,39 @@ export const unscheduleSubject = (id: number) =>
   sendVoid('DELETE', `/exercizer/unschedule-subject/${id}`);
 
 /**
- * Données de distribution, telles que `SubjectScheduledService#persist` les envoie.
- *
- * ⚠ Le serveur valide ce corps contre `jsonschema/subjectScheduled.json`, en
- * `additionalProperties: false` : un champ de plus fait échouer la requête en 400. En
- * particulier, `hasAutomaticDisplay` n'y a PAS sa place (il se règle ailleurs).
- *
- * ⚠ `grainsCustomCopyData` est OBLIGATOIRE : c'est le client qui prépare la copie initiale de
- * chaque question — y compris le mélange des étiquettes d'une association et l'ordre brouillé
- * d'une mise en ordre (`GrainCopyService#createGrainCopyCustomList`). Tant que la distribution
- * n'est pas portée, ce type sert de mémo à qui s'y attellera.
+ * Distribue un sujet. Le corps est construit par `schedule.ts#buildScheduleBody` — il doit
+ * correspondre au schéma JSON du serveur au champ près.
  */
-export interface ScheduleInput {
-  subjectTitle: string;
-  beginDate: string;
-  dueDate: string;
-  estimatedDuration?: string;
-  isOneShotSubmit: boolean;
-  isTrainingMode?: boolean;
-  isTrainingPermitted?: boolean;
-  randomDisplay?: boolean;
-  /** Destinataires de la distribution (élèves et groupes). */
-  scheduledAt: ScheduledAt;
-  /** Une entrée par QUESTION : `{ grain_id, grain_copy_data }`. */
-  grainsCustomCopyData: Array<{ grain_id: number; grain_copy_data: unknown }>;
+export const scheduleSubject = (subjectId: number, body: unknown) =>
+  send<{ id: number }>('POST', `/exercizer/schedule-subject/${subjectId}`, body);
+
+/** Distribue un sujet « simple » : trois dates et des destinataires, pas de grains. */
+export const scheduleSimpleSubject = (subjectId: number, body: unknown) =>
+  send<{ id: number }>('POST', `/exercizer/schedule-simple-subject/${subjectId}`, body);
+
+/**
+ * Les destinataires possibles d'un sujet : le partage entcore en donne la liste visible.
+ * `search` restreint la recherche côté serveur — obligatoire pour un administrateur local, dont
+ * l'annuaire visible est trop grand pour être chargé d'un coup.
+ */
+export interface ShareTargets {
+  groups: { visibles: Array<{ id: string; name: string; groupDisplayName?: string | null; structureName?: string | null }> };
+  users: { visibles: Array<{ id: string; username?: string; lastName?: string; firstName?: string; profile?: string }> };
 }
 
-export const scheduleSubject = (subjectId: number, input: ScheduleInput) =>
-  send<SubjectScheduled>('POST', `/exercizer/schedule-subject/${subjectId}`, input);
+export const getShareTargets = (subjectId: number, search?: string) =>
+  get<ShareTargets>(
+    `/exercizer/subject/share/json/${subjectId}${search ? `?search=${encodeURIComponent(search)}` : ''}`,
+  );
 
-export const scheduleSimpleSubject = (subjectId: number, input: ScheduleInput) =>
-  send<SubjectScheduled>('POST', `/exercizer/schedule-simple-subject/${subjectId}`, input);
-
-export const modifySchedule = (scheduledId: number, input: ScheduleInput) =>
-  send<SubjectScheduled>('POST', `/exercizer/schedule-subject/modify/${scheduledId}`, input);
+/**
+ * Les membres d'un groupe. Sert à montrer qui recevra le sujet, et à en retirer quelqu'un.
+ * ⚠ L'identifiant passe en paramètre de requête : `?id=…`.
+ */
+export const getGroupMembers = (groupId: string) =>
+  get<Array<{ _id: string; name: string; profiles?: string[] }>>(
+    `/exercizer/members?id=${encodeURIComponent(groupId)}`,
+  );
 
 /** Crée une copie d'entraînement pour l'élève courant, sur un sujet qui l'autorise. */
 export const createTrainingCopy = (subjectScheduledId: number) =>

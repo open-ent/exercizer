@@ -18,6 +18,7 @@ cohabitent, et c'est l'usager (ou la plateforme) qui décide laquelle est servie
 | Consultation d'une copie corrigée | `#/subject/copy/view/:id/` | porté |
 | Score d'une copie d'entraînement | `#/subject/copy/view/final-score/:id/` | porté |
 | Correction d'une copie par l'enseignant | `#/subject/copy/view/:subjectId/:copyId/` | porté |
+| Distribution d'un sujet (type, destinataires, options) | fenêtre de `#/subject/edit/:id/` | porté |
 
 ### Types de grains
 
@@ -50,12 +51,9 @@ Dans l'ordre où cela bloque le plus :
    d'AngularJS, dans lequel l'enseignant insérait des balises `<fill-zone>` via une option de
    barre d'outils, et sur un placement libre de zones au-dessus d'une image de fond. Les porter
    demande une extension tiptap dédiée et un composant de placement : c'est un chantier à part.
-2. **Distribution d'un sujet** et **partage**. Deux morceaux : le sélecteur de destinataires
-   (élèves + groupes) qui alimente `scheduled_at`, et surtout `grainsCustomCopyData` — le CLIENT
-   prépare la copie initiale de chaque question, mélange des étiquettes d'une association et
-   ordre brouillé d'une mise en ordre compris (`GrainCopyService#createGrainCopyCustomList`).
-3. **Passation d'un sujet « simple »** (dépôt d'un fichier par l'élève) et **pilotage en direct**
+2. **Passation d'un sujet « simple »** (dépôt d'un fichier par l'élève) et **pilotage en direct**
    (WebSocket `real-time`, port 8106).
+3. **Partage** d'un sujet entre enseignants (le panneau de partage du socle).
 4. Archives, parcours (`subject-sequence`), impression, import, publication en bibliothèque,
    génération automatique d'un sujet, statistiques de correction, image de couverture d'un sujet.
 
@@ -109,9 +107,10 @@ copient après l'étape qui produit `view/` depuis `view-src/`.
 
 - `api.ts` — client REST, un appel par endpoint, nommé comme le service AngularJS d'origine ;
 - `types.ts` — le modèle tel que le serveur le renvoie (noms de colonnes conservés) ;
-- `copies.ts`, `corrections.ts`, `grains.ts`, `correction.ts` — les **règles** (état d'une copie,
-  ce que l'élève peut ouvrir, avancement d'une distribution, barème et numérotation d'un sujet,
-  correction automatique), sans réseau ni composant, et couvertes par des tests ;
+- `copies.ts`, `corrections.ts`, `grains.ts`, `correction.ts`, `schedule.ts` — les **règles**
+  (état d'une copie, ce que l'élève peut ouvrir, avancement d'une distribution, barème et
+  numérotation d'un sujet, correction automatique, distribution), sans réseau ni composant, et
+  couvertes par des tests ;
 - `latinise.ts` — table de translittération **recopiée telle quelle** depuis l'IHM AngularJS :
   elle sert à comparer les réponses, donc à calculer des notes, et ne doit pas diverger ;
 - `screens/` — un écran par route ; `features/` — morceaux réutilisés (`features/grains/` : un
@@ -138,6 +137,28 @@ correction continuerait d'afficher l'ancien total.
 ⚠ `GET /grains-scheduled/:id` porte les RÉPONSES ATTENDUES. Seule la consultation d'une copie
 rendue le demande — jamais la passation, où elles se retrouveraient dans le navigateur de l'élève.
 
+### La copie initiale est préparée par le CLIENT
+
+Distribuer un sujet n'est pas qu'un formulaire. `POST /schedule-subject/:id` attend, à côté des
+dates et des destinataires, un `grainsCustomCopyData` : **la copie vierge de chaque question**,
+déjà fabriquée par le navigateur (`GrainCopyService#createGrainCopyCustomList`, porté dans
+`schedule.ts`). C'est là que se joue l'essentiel :
+
+- un QCM et des réponses multiples partent avec leurs seuls **textes** — pas de `isChecked`,
+  sinon le corrigé voyagerait jusque dans la copie de l'élève ;
+- une **mise en ordre** part brouillée, et une **association** part avec ses étiquettes de droite
+  mélangées : sans cela, l'exercice serait déjà résolu à l'ouverture ;
+- le tirage est fait **une seule fois**, pour toute la distribution : tous les destinataires
+  reçoivent donc le même ordre. C'est le comportement de l'ancienne IHM, à la lettre.
+
+La règle des **destinataires** n'est pas celle qu'on croit (`schedule.ts#buildScheduledAt`) : le
+serveur résout lui-même les groupes, aussi `userList` ne contient que les personnes choisies
+nominativement. Les membres d'un groupe choisi n'y figurent jamais — ils ne servent qu'à remplir
+`exclude`, qui est le seul moyen de distribuer à une classe « sauf untel ».
+
+Une distribution d'**entraînement** n'a pas d'échéance : ses bornes partent aux extrêmes de
+l'epoch, et c'est ce qui la distingue en base.
+
 ### Enregistrement
 
 L'éditeur de sujet **n'a pas de bouton « Enregistrer »** : chaque grain part de lui-même peu
@@ -150,11 +171,12 @@ grains à chaque enregistrement de grain. Le total affiché dans le résumé n'e
 
 ## Tests
 
-- unitaires : `pnpm test` (`copies.test.ts`, `corrections.test.ts`) ;
+- unitaires : `pnpm test` — `copies`, `corrections`, `grains`, `correction`, `schedule` ;
 - de bout en bout, depuis la racine du dépôt :
   ```bash
   npx playwright test tests/exercizer-react.spec.ts tests/exercizer-ui-switch.spec.ts \
-    tests/exercizer-subject-editor.spec.ts tests/exercizer-copy.spec.ts --project=chromium
+    tests/exercizer-subject-editor.spec.ts tests/exercizer-copy.spec.ts \
+    tests/exercizer-schedule.spec.ts --project=chromium
   ```
   Comptes locaux : `amelie.martin` / `amelie.martin` (enseignante) et `lea.bernard` /
   `lea.bernard` (élève de sa classe). Les specs de bascule tournent **en série** : elles écrivent
@@ -198,5 +220,9 @@ grains à chaque enregistrement de grain. Le total affiché dans le résumé n'e
 - `POST /schedule-subject/:id` est validé contre un schéma JSON en `additionalProperties: false` :
   un champ de plus fait échouer la requête en 400, les destinataires prennent `_id` (pas `id`),
   et `grainsCustomCopyData` est obligatoire.
+- Dans un sujet, la solution d'une **mise en ordre** est rangée dans `correct_answer_list` comme
+  celle des autres types — c'est `order_by` qui y porte le rang attendu. Un jeu d'essai qui
+  inventerait `ordered_answer_list` passerait l'enregistrement mais rendrait le sujet
+  indistribuable, avec pour seul indice « des questions sans réponses renseignées subsistent ».
 - Le bootstrap `@open-ent` n'est **pas** bundlé : il est chargé au runtime par `index.html`, pour
   que le module suive le thème de l'établissement sans recompilation.

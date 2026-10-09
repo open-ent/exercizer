@@ -29,6 +29,7 @@ import { ConfirmModal } from '../components/ConfirmModal';
 import { FolderDialog } from '../components/FolderDialog';
 import { MoveDialog } from '../components/MoveDialog';
 import { FolderTree } from '../features/FolderTree';
+import { ScheduleDialog } from './ScheduleDialog';
 import { Folder, Subject } from '../types';
 import { formatDate } from '../utils';
 
@@ -42,6 +43,7 @@ type DialogState =
   | { kind: 'folder'; folder?: Folder }
   | { kind: 'move' }
   | { kind: 'remove' }
+  | { kind: 'schedule'; subject: Subject }
   | null;
 
 /**
@@ -383,6 +385,18 @@ export function TeacherSubjects() {
               {t('exercizer.instructer.toaster.property')}
             </Button>
           )}
+          {onlyOneSubject && (
+            <Button
+              color="primary"
+              variant="filled"
+              onClick={() => {
+                const subject = subjects.find((s) => s.id === selectedSubjects[0]);
+                if (subject) setDialog({ kind: 'schedule', subject });
+              }}
+            >
+              {t('exercizer.instructer.toaster.schedule')}
+            </Button>
+          )}
           {selectedSubjects.length > 0 && selectedFolders.length === 0 && (
             <>
               <Button color="primary" variant="outline" onClick={() => duplicate.mutate()}>
@@ -404,6 +418,20 @@ export function TeacherSubjects() {
           folder={dialog.folder}
           onClose={() => setDialog(null)}
           onSave={(label) => saveFolder.mutate({ id: dialog.folder?.id, label })}
+        />
+      )}
+
+      {dialog?.kind === 'schedule' && (
+        <ScheduleDialog
+          subject={dialog.subject}
+          onClose={() => setDialog(null)}
+          onScheduled={(scheduledId) => {
+            setDialog(null);
+            setSelectedSubjects([]);
+            // On mène à la correction de la distribution créée : c'est là que l'enseignant
+            // suivra les copies, et c'est où l'ancienne IHM l'emmenait aussi.
+            navigate(`/dashboard/teacher/correction/${scheduledId}`);
+          }}
         />
       )}
 

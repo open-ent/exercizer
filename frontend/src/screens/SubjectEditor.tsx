@@ -27,6 +27,7 @@ import {
   sanitizeScore,
 } from '../grains';
 import { useDebouncedSave } from '../hooks/useDebouncedSave';
+import { ScheduleDialog } from './ScheduleDialog';
 import { Grain } from '../types';
 
 /**
@@ -47,6 +48,7 @@ export function SubjectEditor() {
   const queryClient = useQueryClient();
 
   const [toRemove, setToRemove] = useState<Grain | null>(null);
+  const [scheduling, setScheduling] = useState(false);
 
   const subjectsQuery = useQuery({ queryKey: ['exercizer', 'subjects'], queryFn: getSubjects });
   const subject = (subjectsQuery.data ?? []).find((item) => item.id === subjectId);
@@ -189,6 +191,18 @@ export function SubjectEditor() {
           <Button color="primary" variant="outline" onClick={leave}>
             {t('exercizer.back.subject')}
           </Button>
+          <Button
+            color="primary"
+            variant="filled"
+            onClick={async () => {
+              // Ce qui est en attente part d'abord : on ne distribue pas une version du sujet
+              // qui n'est pas encore enregistrée.
+              await flush();
+              setScheduling(true);
+            }}
+          >
+            {t('exercizer.schedule')}
+          </Button>
         </div>
       </div>
 
@@ -248,6 +262,17 @@ export function SubjectEditor() {
           </div>
         </section>
       </div>
+
+      {scheduling && (
+        <ScheduleDialog
+          subject={subject}
+          onClose={() => setScheduling(false)}
+          onScheduled={(scheduledId) => {
+            setScheduling(false);
+            navigate(`/dashboard/teacher/correction/${scheduledId}`);
+          }}
+        />
+      )}
 
       {toRemove && (
         <ConfirmModal
