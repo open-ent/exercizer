@@ -14,6 +14,9 @@ cohabitent, et c'est l'usager (ou la plateforme) qui décide laquelle est servie
 | Mes corrections — copies d'une distribution | `#/dashboard/teacher/correction/:id` | porté |
 | Édition d'un sujet interactif et de ses grains | `#/subject/edit/:id/` | porté, sauf les 3 types « à zones » |
 | Sujet « simple » : création, titre, description, corrigés | `#/subject/create/simple/`, `#/subject/edit/simple/:id/` | porté |
+| Passation d'une copie par l'élève | `#/subject/copy/perform/:id/` | porté, sauf les 3 types « à zones » |
+| Consultation d'une copie corrigée | `#/subject/copy/view/:id/` | porté |
+| Score d'une copie d'entraînement | `#/subject/copy/view/final-score/:id/` | porté |
 
 ### Types de grains
 
@@ -30,6 +33,10 @@ cohabitent, et c'est l'usager (ou la plateforme) qui décide laquelle est servie
 | Zone à remplir (texte) | 11 | **non portée** |
 | Zone à remplir (images) | 12 | **non portée** |
 
+Les mêmes sept types se répondent et se relisent côté élève. La **correction automatique** est
+portée pour tous, y compris les trois types « à zones » : une copie faite dans l'ancienne
+interface se relit donc entièrement ici, même si elle ne s'y répond pas.
+
 Un grain d'un type non porté reste À SA PLACE, garde son titre, son barème et son énoncé, et
 n'est **jamais réenregistré** depuis la nouvelle IHM : aucune donnée ne peut être abîmée par un
 passage ici. L'écran le dit et propose d'ouvrir le sujet dans la version précédente.
@@ -42,11 +49,16 @@ Dans l'ordre où cela bloque le plus :
    d'AngularJS, dans lequel l'enseignant insérait des balises `<fill-zone>` via une option de
    barre d'outils, et sur un placement libre de zones au-dessus d'une image de fond. Les porter
    demande une extension tiptap dédiée et un composant de placement : c'est un chantier à part.
-2. **Passation d'une copie** (`#/subject/copy/perform/…`) et **consultation** (`…/view/…`),
-   y compris le score final et le pilotage en direct (WebSocket `real-time`).
-3. **Distribution d'un sujet** et **partage** : il manque le sélecteur de destinataires
-   (élèves + groupes) qui alimente `scheduled_at`.
-4. Archives, parcours (`subject-sequence`), impression, import, publication en bibliothèque,
+2. **Correction d'une copie par l'enseignant** (`#/subject/copy/view/:subjectId/:copyId/`) :
+   note et commentaire par question, note finale, commentaire général. Les routes serveur sont
+   `PUT /grain-copy/correct` et `PUT /subject-copy/correct`.
+3. **Distribution d'un sujet** et **partage**. Deux morceaux : le sélecteur de destinataires
+   (élèves + groupes) qui alimente `scheduled_at`, et surtout `grainsCustomCopyData` — le CLIENT
+   prépare la copie initiale de chaque question, mélange des étiquettes d'une association et
+   ordre brouillé d'une mise en ordre compris (`GrainCopyService#createGrainCopyCustomList`).
+4. **Passation d'un sujet « simple »** (dépôt d'un fichier par l'élève) et **pilotage en direct**
+   (WebSocket `real-time`, port 8106).
+5. Archives, parcours (`subject-sequence`), impression, import, publication en bibliothèque,
    génération automatique d'un sujet, statistiques de correction, image de couverture d'un sujet.
 
 Toute route non portée tombe sur `screens/NotMigrated.tsx`, qui renvoie vers l'ancienne IHM **en
@@ -99,11 +111,26 @@ copient après l'étape qui produit `view/` depuis `view-src/`.
 
 - `api.ts` — client REST, un appel par endpoint, nommé comme le service AngularJS d'origine ;
 - `types.ts` — le modèle tel que le serveur le renvoie (noms de colonnes conservés) ;
-- `copies.ts`, `corrections.ts`, `grains.ts` — les **règles** (état d'une copie, ce que l'élève
-  peut ouvrir, avancement d'une distribution, barème et numérotation d'un sujet), sans réseau ni
-  composant, et couvertes par des tests ;
+- `copies.ts`, `corrections.ts`, `grains.ts`, `correction.ts` — les **règles** (état d'une copie,
+  ce que l'élève peut ouvrir, avancement d'une distribution, barème et numérotation d'un sujet,
+  correction automatique), sans réseau ni composant, et couvertes par des tests ;
+- `latinise.ts` — table de translittération **recopiée telle quelle** depuis l'IHM AngularJS :
+  elle sert à comparer les réponses, donc à calculer des notes, et ne doit pas diverger ;
 - `screens/` — un écran par route ; `features/` — morceaux réutilisés (`features/grains/` : un
   éditeur par type de grain) ; `components/` — fenêtres ; `hooks/` — l'enregistrement différé.
+
+### La correction automatique est calculée par le CLIENT
+
+Ce n'est pas un choix de ce portage : le module fonctionne ainsi. L'écran de consultation compare
+la copie au grain DISTRIBUÉ et en déduit le score (`correction.ts`, porté fonction par fonction
+depuis `QcmService`, `SimpleAnswerService`, etc.).
+
+Mais **rien n'est enregistré depuis l'écran de l'élève** : l'IHM AngularJS ne persiste depuis la
+consultation que lorsque c'est l'ENSEIGNANT qui regarde, et le serveur refuse de toute façon
+toute écriture sur une copie rendue (`exercizer.pilotage.copy.submitted`, 400).
+
+⚠ `GET /grains-scheduled/:id` porte les RÉPONSES ATTENDUES. Seule la consultation d'une copie
+rendue le demande — jamais la passation, où elles se retrouveraient dans le navigateur de l'élève.
 
 ### Enregistrement
 
@@ -121,10 +148,13 @@ grains à chaque enregistrement de grain. Le total affiché dans le résumé n'e
 - de bout en bout, depuis la racine du dépôt :
   ```bash
   npx playwright test tests/exercizer-react.spec.ts tests/exercizer-ui-switch.spec.ts \
-    tests/exercizer-subject-editor.spec.ts --project=chromium
+    tests/exercizer-subject-editor.spec.ts tests/exercizer-copy.spec.ts --project=chromium
   ```
-  Compte local : `amelie.martin` / `amelie.martin`. Les specs de bascule tournent **en série** :
-  elles écrivent toutes la même préférence usager.
+  Comptes locaux : `amelie.martin` / `amelie.martin` (enseignante) et `lea.bernard` /
+  `lea.bernard` (élève de sa classe). Les specs de bascule tournent **en série** : elles écrivent
+  toutes la même préférence usager. Et plusieurs specs distribuent des sujets pour le même
+  enseignant : aucune ne doit cliquer une vignette qu'une autre peut faire disparaître entre
+  l'appel d'API et le clic.
 
 ## Pièges rencontrés
 
@@ -148,6 +178,16 @@ grains à chaque enregistrement de grain. Le total affiché dans le résumé n'e
   l'ancienne IHM. L'éditeur complète donc la liste à l'affichage (`withEditableAnswers`) : sans
   cela, rouvrir un QCM à peine commencé n'afficherait plus aucune ligne.
 - L'énoncé d'un grain de type 3 vit dans `custom_data.statement`. On en trouve en base posés à
-  plat sur `grain_data` (imports, jeux d'essai) : la lecture est tolérante, l'écriture non.
+  plat sur `grain_data` (imports, jeux d'essai) : la lecture est tolérante, l'écriture non. Dans
+  une COPIE, le serveur le range encore ailleurs — `grain_copy_data.custom_data` — et le titre
+  peut n'être que là ; `api.ts#parseGrainCopies` remet les deux en place à la lecture.
+- `grain_copy_data` doit partir **sérialisé en chaîne** sur `PUT /grain-copy` : envoyé en objet,
+  le serveur ne le range pas.
+- `GET /subject-copy/check/no-corrected/:id` répond `{"result": true}`, et non un booléen nu.
+  Comparée telle quelle, la réponse vaut toujours « non » : l'élève lisait « votre copie est en
+  cours de correction » sur une copie parfaitement ouverte, et ne pouvait plus la rendre.
+- `POST /schedule-subject/:id` est validé contre un schéma JSON en `additionalProperties: false` :
+  un champ de plus fait échouer la requête en 400, les destinataires prennent `_id` (pas `id`),
+  et `grainsCustomCopyData` est obligatoire.
 - Le bootstrap `@open-ent` n'est **pas** bundlé : il est chargé au runtime par `index.html`, pour
   que le module suive le thème de l'établissement sans recompilation.

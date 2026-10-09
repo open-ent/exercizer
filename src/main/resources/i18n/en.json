@@ -732,5 +732,13 @@
   "exercizer.grain.zone.notmigrated": "This question type cannot be edited in the new version yet. Its content is left untouched: it is never saved from here.",
   "exercizer.grain.zone.notmigrated.count": "[[count]] area(s) to fill in.",
   "exercizer.subject.saved": "Changes saved",
-  "exercizer.file.choose": "Browse"
+  "exercizer.file.choose": "Browse",
+  "exercizer.grain.answer.correct": "Correct",
+  "exercizer.grain.answer.incorrect": "Wrong",
+  "exercizer.grain.asso.choose": "Pick an answer",
+  "exercizer.copy.answered": "answered",
+  "exercizer.copy.to": "to",
+  "exercizer.grain.zone.notmigrated.perform": "This question type cannot be answered in the new version yet. Continue in the previous version so your answer is not lost.",
+  "exercizer.copy.corrected.on": "Marked on",
+  "exercizer.copy.not.corrected.yet": "This copy has not been marked yet."
 }

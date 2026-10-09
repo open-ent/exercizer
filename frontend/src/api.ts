@@ -12,7 +12,10 @@
 import {
   Folder,
   Grain,
+  GrainCopy,
+  GrainCopyData,
   GrainData,
+  GrainScheduled,
   GrainType,
   ScheduledAt,
   Subject,
@@ -157,19 +160,31 @@ export const getArchivedSubjectsScheduled = () =>
 export const unscheduleSubject = (id: number) =>
   sendVoid('DELETE', `/exercizer/unschedule-subject/${id}`);
 
-/** Données de distribution, telles que `SubjectScheduledService#persist` les envoie. */
+/**
+ * Données de distribution, telles que `SubjectScheduledService#persist` les envoie.
+ *
+ * ⚠ Le serveur valide ce corps contre `jsonschema/subjectScheduled.json`, en
+ * `additionalProperties: false` : un champ de plus fait échouer la requête en 400. En
+ * particulier, `hasAutomaticDisplay` n'y a PAS sa place (il se règle ailleurs).
+ *
+ * ⚠ `grainsCustomCopyData` est OBLIGATOIRE : c'est le client qui prépare la copie initiale de
+ * chaque question — y compris le mélange des étiquettes d'une association et l'ordre brouillé
+ * d'une mise en ordre (`GrainCopyService#createGrainCopyCustomList`). Tant que la distribution
+ * n'est pas portée, ce type sert de mémo à qui s'y attellera.
+ */
 export interface ScheduleInput {
   subjectTitle: string;
-  beginDate?: string;
-  dueDate?: string;
+  beginDate: string;
+  dueDate: string;
   estimatedDuration?: string;
-  isOneShotSubmit?: boolean;
+  isOneShotSubmit: boolean;
   isTrainingMode?: boolean;
   isTrainingPermitted?: boolean;
   randomDisplay?: boolean;
-  hasAutomaticDisplay?: boolean;
   /** Destinataires de la distribution (élèves et groupes). */
-  scheduledAt?: ScheduledAt;
+  scheduledAt: ScheduledAt;
+  /** Une entrée par QUESTION : `{ grain_id, grain_copy_data }`. */
+  grainsCustomCopyData: Array<{ grain_id: number; grain_copy_data: unknown }>;
 }
 
 export const scheduleSubject = (subjectId: number, input: ScheduleInput) =>
@@ -309,6 +324,128 @@ export const removeGrains = (subjectId: number, grainIds: number[]) => {
 /** Duplique des grains DANS le même sujet (le serveur suffixe les titres). */
 export const duplicateGrains = (subjectId: number, grainIds: number[]) =>
   sendVoid('POST', `/exercizer/subject/${subjectId}/duplicate/grains`, { grainIds });
+
+// ── Copies de grains (la passation, puis la consultation) ────────────────────
+
+/**
+ * Les copies de grains d'une copie de sujet — ce que l'élève doit voir et remplir.
+ *
+ * C'est un POST, et le corps est la COPIE ENTIÈRE, avec son décalage horaire : le serveur s'en
+ * sert pour vérifier les bornes de temps. Forme reprise de `GrainCopyService#getListBySubjectCopy`.
+ *
+ * Le tri suit `display_order` quand le sujet mélange ses questions (`random_display`), et
+ * `order_by` sinon.
+ */
+export const getGrainCopies = async (copy: SubjectCopy): Promise<GrainCopy[]> => {
+  const body = { ...copy, offset: new Date().getTimezoneOffset() };
+  const grainCopies = await send<GrainCopy[]>('POST', '/exercizer/grains-copy', body);
+  return parseGrainCopies(grainCopies).sort((a, b) =>
+    a.display_order && b.display_order
+      ? a.display_order - b.display_order
+      : a.order_by - b.order_by,
+  );
+};
+
+/**
+ * `grain_copy_data` arrive en **chaîne JSON**, comme `grain_data`.
+ *
+ * ⚠ Pour un grain de type 3 (énoncé), le serveur range le texte dans `custom_data` et non dans
+ * `custom_copy_data`, et le TITRE peut n'être que là : `GrainCopyService#instantiateGrainCopy`
+ * recopiait les deux à la lecture. On fait de même, pour que les écrans n'aient qu'un endroit à
+ * regarder.
+ */
+function parseGrainCopies(grainCopies: GrainCopy[]): GrainCopy[] {
+  return (grainCopies ?? []).map((grainCopy) => {
+    const raw = grainCopy.grain_copy_data as unknown;
+    let data: GrainCopyData;
+    if (typeof raw !== 'string') {
+      data = (raw as GrainCopyData) ?? {};
+    } else {
+      try {
+        data = JSON.parse(raw) as GrainCopyData;
+      } catch {
+        data = {};
+      }
+    }
+    if (data.custom_data) {
+      data = {
+        ...data,
+        title: data.custom_data.title ?? data.title,
+        custom_copy_data: {
+          ...data.custom_copy_data,
+          statement: data.custom_data.statement,
+        },
+      };
+    }
+    return { ...grainCopy, grain_copy_data: data };
+  });
+}
+
+/**
+ * Le corps attendu par les deux routes d'écriture d'une copie de grain.
+ *
+ * ⚠ `grain_copy_data` doit partir **sérialisé en chaîne** (c'est ce que faisait
+ * `GrainCopyService#write`) : envoyé en objet, le serveur ne le range pas.
+ */
+const grainCopyBody = (grainCopy: GrainCopy) => ({
+  ...grainCopy,
+  grain_copy_data: JSON.stringify(grainCopy.grain_copy_data),
+});
+
+/** Enregistre la réponse de l'élève. */
+export const updateGrainCopy = (grainCopy: GrainCopy) =>
+  send<GrainCopy>('PUT', '/exercizer/grain-copy', grainCopyBody(grainCopy));
+
+/**
+ * Les grains DISTRIBUÉS d'un sujet, avec les réponses attendues.
+ *
+ * ⚠ À ne demander qu'à la CONSULTATION d'une copie corrigée. Pendant la passation, ces données
+ * donneraient les réponses à l'élève — l'ancienne IHM ne les charge pas non plus à ce moment.
+ */
+export const getGrainsScheduled = (subjectScheduledId: number) =>
+  get<GrainScheduled[]>(`/exercizer/grains-scheduled/${subjectScheduledId}`).then(parseScheduled);
+
+function parseScheduled(list: GrainScheduled[]): GrainScheduled[] {
+  return (list ?? []).map((grain) => {
+    const raw = grain.grain_data as unknown;
+    if (typeof raw !== 'string') return grain;
+    try {
+      return { ...grain, grain_data: JSON.parse(raw) as GrainData };
+    } catch {
+      return { ...grain, grain_data: {} };
+    }
+  });
+}
+
+/** Mémorise le grain où l'élève s'est arrêté, pour le retrouver à sa prochaine visite. */
+export const setCurrentGrain = (subjectCopyId: number, grainCopyId: number) =>
+  sendVoid('POST', `/exercizer/subject-copy/${subjectCopyId}/last-grain/${grainCopyId}`);
+
+/**
+ * La copie est-elle encore modifiable ? Le serveur répond non dès que l'enseignant a commencé à
+ * la corriger — un élève ne doit pas pouvoir rendre par-dessus une correction en cours.
+ *
+ * ⚠ La réponse est **enveloppée** : `{"result": true}`, et non un booléen nu. Comparée telle
+ * quelle, elle vaut toujours « non » — l'élève voyait alors « votre copie est en cours de
+ * correction » sur une copie parfaitement ouverte, et le bouton « Rendre la copie » restait
+ * inerte.
+ */
+export const canStillSubmit = async (subjectCopyId: number): Promise<boolean> => {
+  const body = await get<{ result?: boolean } | boolean>(
+    `/exercizer/subject-copy/check/no-corrected/${subjectCopyId}`,
+  );
+  return typeof body === 'boolean' ? body : body?.result === true;
+};
+
+/**
+ * Rend la copie. Le décalage horaire part avec elle : c'est le serveur qui horodate le rendu, et
+ * il a besoin de savoir d'où vient l'élève.
+ */
+export const submitCopy = (copy: SubjectCopy) =>
+  send<SubjectCopy>('PUT', '/exercizer/subject-copy/submit', {
+    ...copy,
+    offset: new Date().getTimezoneOffset(),
+  });
 
 // ── Pièces jointes d'un sujet (corrigé d'un sujet « simple ») ─────────────────
 

@@ -66,10 +66,17 @@ export interface Subject {
  * `SubjectScheduledService#resolve`. `exclude` porte les élèves retirés de la distribution après
  * coup — leur copie n'est plus attendue.
  */
+export interface Recipient {
+  /** ⚠ La clé est `_id`, et non `id` : c'est ce qu'impose le schéma JSON du serveur
+   *  (`jsonschema/subjectScheduled.json`, `additionalProperties: false`). */
+  _id?: string;
+  name: string;
+}
+
 export interface ScheduledAt {
-  groupList: Array<{ id?: string; name: string }>;
-  userList: Array<{ id?: string; name: string }>;
-  exclude?: Array<{ id?: string; name: string }>;
+  groupList: Recipient[];
+  userList: Recipient[];
+  exclude?: Recipient[];
 }
 
 /**
@@ -295,6 +302,12 @@ export interface GrainZone {
 export interface GrainCustomData {
   /** Type 3 (énoncé) : le texte, en HTML. */
   statement?: string;
+  /**
+   * Type 3 : le titre de l'énoncé y est RECOPIÉ (`StatementCustomData` porte `{statement, title}`).
+   * Le serveur ne remonte parfois que celui-là dans une copie de grain — d'où la reprise faite à
+   * la lecture (`api.ts#parseGrainCopies`).
+   */
+  title?: string;
   /** Type 4 (réponse simple). */
   correct_answer?: string;
   /** Types 6, 7, 8, 9 : les réponses, dans une forme propre au type (cf. GrainAnswer). */
@@ -311,4 +324,83 @@ export interface GrainCustomData {
   answersType?: string;
   htmlContent?: string;
   _guideImage?: string;
+}
+
+// ── Copies de grains (ce que l'élève remplit) ─────────────────────────────────
+
+/**
+ * Un grain DISTRIBUÉ : la photographie du grain au moment de l'attribution, avec les bonnes
+ * réponses. `grain_data` arrive en chaîne JSON, comme pour un grain.
+ *
+ * ⚠ Ces données portent les RÉPONSES ATTENDUES. On ne les demande qu'à la consultation d'une
+ * copie corrigée — jamais pendant la passation, où elles se retrouveraient dans le navigateur de
+ * l'élève. L'ancienne IHM observe la même règle.
+ */
+export interface GrainScheduled {
+  id: number;
+  subject_scheduled_id: number;
+  grain_type_id: number;
+  order_by: number;
+  created?: string;
+  grain_data: GrainData;
+}
+
+/**
+ * Ce que l'élève a rempli, par type. Les champs `filled_*` sont le pendant des
+ * `correct_*` du grain distribué.
+ */
+export interface GrainCustomCopyData {
+  /** Types 4 (réponse simple) et 5 (réponse ouverte, en HTML). */
+  filled_answer?: string;
+  /** Types 6, 7, 8, 9 : les réponses de l'élève, dans la forme propre au type. */
+  filled_answer_list?: GrainAnswer[];
+  /** Type 8 : les étiquettes encore disponibles (colonne de droite, mélangée). */
+  possible_answer_list?: GrainAnswer[];
+  /** Type 8 sans colonne de gauche : toutes les étiquettes, des deux côtés. */
+  all_possible_answer?: Array<{ item: string; rank?: number }>;
+  /** Recopiés du grain distribué pour que la passation sache quoi afficher. */
+  no_error_allowed?: boolean;
+  multipleAnswers?: boolean;
+  show_left_column?: boolean;
+  /** Types 10, 11, 12. */
+  zones?: GrainZone[];
+  /** Type 3 (énoncé) : le serveur le range ici. */
+  statement?: string;
+}
+
+/**
+ * Le contenu d'une copie de grain. Recopie du grain distribué ce que l'élève doit VOIR (titre,
+ * barème, énoncé, indice) — mais jamais les bonnes réponses.
+ *
+ * ⚠ `grain_copy_data` arrive en chaîne JSON et doit être désérialisé.
+ * ⚠ Pour un grain de type 3, le serveur pose l'énoncé dans `custom_data` et non dans
+ *   `custom_copy_data` : `GrainCopyService#instantiateGrainCopy` le recopiait à la lecture.
+ */
+export interface GrainCopyData {
+  title?: string;
+  max_score?: number;
+  statement?: string;
+  document_list?: GrainDocument[];
+  answer_hint?: string;
+  custom_copy_data?: GrainCustomCopyData;
+  /** Énoncé d'un grain de type 3 (et son titre). */
+  custom_data?: GrainCustomData;
+}
+
+export interface GrainCopy {
+  id: number;
+  subject_copy_id: number;
+  grain_type_id: number;
+  grain_scheduled_id: number;
+  order_by: number;
+  /** Rang d'affichage quand le sujet mélange ses questions (`random_display`). */
+  display_order?: number | null;
+  created?: string;
+  modified?: string;
+  /** Note attribuée par l'enseignant. */
+  final_score?: number | null;
+  /** Note calculée automatiquement — par le CLIENT, à la consultation. */
+  calculated_score?: number | null;
+  comment?: string;
+  grain_copy_data: GrainCopyData;
 }

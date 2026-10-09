@@ -119,6 +119,24 @@ export function questionNumber(grain: Grain, grains: Grain[]): number {
   );
 }
 
+/**
+ * Le numéro d'une question dans une COPIE. Même règle que {@link questionNumber}, mais le rang
+ * suit `display_order` quand il existe — un sujet peut mélanger ses questions (`random_display`),
+ * et l'élève doit voir « 3) » pour la troisième question telle qu'elle lui est présentée.
+ */
+export function copyQuestionNumber(
+  grainCopy: { grain_type_id: number; order_by: number; display_order?: number | null },
+  grainCopies: Array<{ grain_type_id: number; order_by: number; display_order?: number | null }>,
+): number {
+  const rank = (item: { order_by: number; display_order?: number | null }) =>
+    item.display_order ?? item.order_by;
+  const mine = rank(grainCopy);
+  return (
+    1 +
+    grainCopies.filter((other) => isQuestion(other.grain_type_id) && rank(other) < mine).length
+  );
+}
+
 /** Le rang du prochain grain ajouté : après le dernier, et 1 sur un sujet vide. */
 export function nextOrder(grains: Grain[]): number {
   if (grains.length === 0) return 1;
