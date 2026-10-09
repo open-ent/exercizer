@@ -38,6 +38,11 @@ jobs:
             --user root \
             opendigitaleducation/node:10-alpine \
             sh -c "npm install --legacy-peer-deps && node_modules/gulp/bin/gulp.js build"
+          # Ce conteneur tourne en root (l'image Node 10 en a besoin pour son install) et laisse
+          # donc `src/main/resources/view/` lui appartenant. L'étape React qui suit y dépose
+          # `exercizer-react.html` : sans cette reprise de propriété, elle échoue sur
+          # « Permission denied » APRÈS une construction Vite réussie.
+          sudo chown -R "$(id -u):$(id -g)" "${{ github.workspace }}"
 
       - uses: actions/setup-node@v7
         with:
