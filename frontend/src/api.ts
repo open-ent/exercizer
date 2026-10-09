@@ -397,6 +397,23 @@ export const updateGrainCopy = (grainCopy: GrainCopy) =>
   send<GrainCopy>('PUT', '/exercizer/grain-copy', grainCopyBody(grainCopy));
 
 /**
+ * Enregistre la correction d'une question par l'enseignant : note finale, commentaire, et le
+ * score automatique que le client vient de calculer.
+ *
+ * ⚠ C'est la SEULE route d'écriture acceptée sur une copie rendue — `PUT /grain-copy`, celle de
+ * l'élève, est refusée dès le rendu (`exercizer.pilotage.copy.submitted`, 400).
+ */
+export const correctGrainCopy = (grainCopy: GrainCopy) =>
+  send<GrainCopy>('PUT', '/exercizer/grain-copy/correct', grainCopyBody(grainCopy));
+
+/**
+ * Enregistre la correction de la copie entière : scores, commentaire général, et l'état de la
+ * correction (`is_correction_on_going`, `is_corrected`).
+ */
+export const correctCopy = (copy: SubjectCopy) =>
+  send<SubjectCopy>('PUT', '/exercizer/subject-copy/correct', copy);
+
+/**
  * Les grains DISTRIBUÉS d'un sujet, avec les réponses attendues.
  *
  * ⚠ À ne demander qu'à la CONSULTATION d'une copie corrigée. Pendant la passation, ces données

@@ -12,7 +12,7 @@
  * fonctionne le module.
  */
 
-import { GRAIN } from './grains';
+import { GRAIN, sanitizeScore } from './grains';
 import { latinise } from './latinise';
 import { GrainAnswer, GrainCustomCopyData, GrainCustomData, GrainZone } from './types';
 
@@ -307,6 +307,48 @@ function ratio(good: number, total: number, maxScore: number): number {
  */
 export function totalCalculatedScore(scores: Array<number | null | undefined>): number {
   return formatScore(scores.reduce<number>((sum, score) => sum + (score ?? 0), 0));
+}
+
+/**
+ * Les deux scores d'une copie entière, d'après ses grains — portage de
+ * `ViewSubjectCopyController#_calculateScores`.
+ *
+ * Deux règles, reprises telles quelles :
+ *  - seuls les grains AYANT un score automatique entrent dans le total (un grain jamais corrigé
+ *    automatiquement, comme une réponse ouverte, n'y compte pas tant qu'il n'a pas de note) ;
+ *  - la note finale d'un grain, quand l'enseignant ne l'a pas saisie, VAUT son score automatique.
+ *    C'est ce qui fait qu'une copie s'ouvre déjà notée, et que corriger consiste à amender.
+ *
+ * Renvoie aussi les grains dont la note finale a été ainsi déduite : eux seuls ont besoin d'être
+ * enregistrés, là où l'ancienne IHM réécrivait la valeur directement dans l'objet affiché.
+ */
+export function copyScores(
+  grainCopies: Array<{
+    id: number;
+    calculated_score?: number | string | null;
+    final_score?: number | string | null;
+  }>,
+): { calculated: number; final: number; defaulted: number[] } {
+  let calculated = 0;
+  let final = 0;
+  const defaulted: number[] = [];
+
+  for (const grainCopy of grainCopies) {
+    const automatic = grainCopy.calculated_score;
+    if (automatic === null || automatic === undefined) continue;
+    // ⚠ `sanitizeScore`, et non `Number` : une note en cours de frappe est encore une CHAÎNE, et
+    // « 1,5 » donnerait `NaN` — donc un total de copie à 0, en silence. Le défaut s'était glissé
+    // jusqu'à l'élève, qui lisait « Score final : 0 » sur une copie notée 3,5.
+    calculated += sanitizeScore(automatic);
+    if (grainCopy.final_score === null || grainCopy.final_score === undefined) {
+      final += sanitizeScore(automatic);
+      defaulted.push(grainCopy.id);
+    } else {
+      final += sanitizeScore(grainCopy.final_score);
+    }
+  }
+
+  return { calculated: formatScore(calculated), final: formatScore(final), defaulted };
 }
 
 /** Une réponse d'élève est-elle vide ? Sert à distinguer « faux » de « pas répondu ». */

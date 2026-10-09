@@ -23,6 +23,7 @@ const SimpleSubjectEditor = lazy(() => import('./screens/SimpleSubjectEditor'));
 const PerformCopy = lazy(() => import('./screens/PerformCopy'));
 const ViewCopy = lazy(() => import('./screens/ViewCopy'));
 const CopyFinalScore = lazy(() => import('./screens/CopyFinalScore'));
+const CorrectCopy = lazy(() => import('./screens/CorrectCopy'));
 
 const deferred = (element: JSX.Element) => (
   <Suspense fallback={<LoadingScreen position={false} />}>{element}</Suspense>
@@ -73,12 +74,13 @@ export const routes: RouteObject[] = [
       { path: 'subject/copy/perform/:subjectCopyId/', element: deferred(<PerformCopy />) },
       { path: 'subject/copy/view/final-score/:subjectCopyId/', element: deferred(<CopyFinalScore />) },
       { path: 'subject/copy/view/:subjectCopyId/', element: deferred(<ViewCopy />) },
+      // La correction par l'enseignant : DEUX segments, donc distincte de la relecture de
+      // l'élève. C'est le sujet qui précède la copie, comme dans l'ancienne IHM.
+      { path: 'subject/copy/view/:subjectId/:subjectCopyId/', element: deferred(<CorrectCopy />) },
 
       // ── Écrans restant à porter ───────────────────────────────────────────
-      // La correction d'une copie par l'enseignant, la passation d'un sujet « simple » (dépôt
-      // d'un fichier) et l'aperçu d'un sujet gardent deux segments ou un préfixe propre : ils
-      // sont donc bien distingués des routes ci-dessus.
-      { path: 'subject/copy/view/:subjectId/:subjectCopyId/', element: <NotMigrated /> },
+      // La passation d'un sujet « simple » (dépôt d'un fichier) et l'aperçu d'un sujet gardent
+      // un préfixe propre : ils sont donc bien distingués des routes ci-dessus.
       { path: 'subject/copy/perform/simple/:subjectCopyId/', element: <NotMigrated /> },
       { path: 'subject/copy/preview/*', element: <NotMigrated /> },
       { path: 'dashboard/teacher/pilotage/:subjectScheduledId', element: <NotMigrated /> },

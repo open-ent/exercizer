@@ -740,5 +740,8 @@
   "exercizer.copy.to": "to",
   "exercizer.grain.zone.notmigrated.perform": "This question type cannot be answered in the new version yet. Continue in the previous version so your answer is not lost.",
   "exercizer.copy.corrected.on": "Marked on",
-  "exercizer.copy.not.corrected.yet": "This copy has not been marked yet."
+  "exercizer.copy.not.corrected.yet": "This copy has not been marked yet.",
+  "exercizer.grain.score.above.max": "This mark exceeds the question's maximum.",
+  "exercizer.copies.yet.to.correct.plain": "[[count]] copy/copies left to mark",
+  "exercizer.copy.corrected.done": "Copy marked"
 }

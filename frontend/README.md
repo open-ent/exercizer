@@ -17,6 +17,7 @@ cohabitent, et c'est l'usager (ou la plateforme) qui décide laquelle est servie
 | Passation d'une copie par l'élève | `#/subject/copy/perform/:id/` | porté, sauf les 3 types « à zones » |
 | Consultation d'une copie corrigée | `#/subject/copy/view/:id/` | porté |
 | Score d'une copie d'entraînement | `#/subject/copy/view/final-score/:id/` | porté |
+| Correction d'une copie par l'enseignant | `#/subject/copy/view/:subjectId/:copyId/` | porté |
 
 ### Types de grains
 
@@ -49,16 +50,13 @@ Dans l'ordre où cela bloque le plus :
    d'AngularJS, dans lequel l'enseignant insérait des balises `<fill-zone>` via une option de
    barre d'outils, et sur un placement libre de zones au-dessus d'une image de fond. Les porter
    demande une extension tiptap dédiée et un composant de placement : c'est un chantier à part.
-2. **Correction d'une copie par l'enseignant** (`#/subject/copy/view/:subjectId/:copyId/`) :
-   note et commentaire par question, note finale, commentaire général. Les routes serveur sont
-   `PUT /grain-copy/correct` et `PUT /subject-copy/correct`.
-3. **Distribution d'un sujet** et **partage**. Deux morceaux : le sélecteur de destinataires
+2. **Distribution d'un sujet** et **partage**. Deux morceaux : le sélecteur de destinataires
    (élèves + groupes) qui alimente `scheduled_at`, et surtout `grainsCustomCopyData` — le CLIENT
    prépare la copie initiale de chaque question, mélange des étiquettes d'une association et
    ordre brouillé d'une mise en ordre compris (`GrainCopyService#createGrainCopyCustomList`).
-4. **Passation d'un sujet « simple »** (dépôt d'un fichier par l'élève) et **pilotage en direct**
+3. **Passation d'un sujet « simple »** (dépôt d'un fichier par l'élève) et **pilotage en direct**
    (WebSocket `real-time`, port 8106).
-5. Archives, parcours (`subject-sequence`), impression, import, publication en bibliothèque,
+4. Archives, parcours (`subject-sequence`), impression, import, publication en bibliothèque,
    génération automatique d'un sujet, statistiques de correction, image de couverture d'un sujet.
 
 Toute route non portée tombe sur `screens/NotMigrated.tsx`, qui renvoie vers l'ancienne IHM **en
@@ -127,7 +125,15 @@ depuis `QcmService`, `SimpleAnswerService`, etc.).
 
 Mais **rien n'est enregistré depuis l'écran de l'élève** : l'IHM AngularJS ne persiste depuis la
 consultation que lorsque c'est l'ENSEIGNANT qui regarde, et le serveur refuse de toute façon
-toute écriture sur une copie rendue (`exercizer.pilotage.copy.submitted`, 400).
+toute écriture sur une copie rendue par la route de l'élève (`PUT /grain-copy` →
+`exercizer.pilotage.copy.submitted`, 400).
+
+L'écran de **correction**, lui, écrit — par `PUT /grain-copy/correct`, la seule route acceptée sur
+une copie rendue. Il y enregistre le score automatique qu'il vient de calculer, puis la note et le
+commentaire de l'enseignant. La note finale d'une question non saisie **vaut son score
+automatique** (`correction.ts#copyScores`) : une copie s'ouvre déjà notée, et corriger consiste à
+amender. Et la COPIE est réenregistrée après chaque note de question, sans quoi la liste de
+correction continuerait d'afficher l'ancien total.
 
 ⚠ `GET /grains-scheduled/:id` porte les RÉPONSES ATTENDUES. Seule la consultation d'une copie
 rendue le demande — jamais la passation, où elles se retrouveraient dans le navigateur de l'élève.
@@ -186,6 +192,9 @@ grains à chaque enregistrement de grain. Le total affiché dans le résumé n'e
 - `GET /subject-copy/check/no-corrected/:id` répond `{"result": true}`, et non un booléen nu.
   Comparée telle quelle, la réponse vaut toujours « non » : l'élève lisait « votre copie est en
   cours de correction » sur une copie parfaitement ouverte, et ne pouvait plus la rendre.
+- Une note en cours de frappe est encore une **chaîne** : tout calcul qui la touche doit passer
+  par `sanitizeScore`, jamais par `Number` — « 1,5 » donnerait `NaN`, donc un total de copie à 0,
+  en silence, jusque sous les yeux de l'élève.
 - `POST /schedule-subject/:id` est validé contre un schéma JSON en `additionalProperties: false` :
   un champ de plus fait échouer la requête en 400, les destinataires prennent `_id` (pas `id`),
   et `grainsCustomCopyData` est obligatoire.

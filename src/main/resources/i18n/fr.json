@@ -741,5 +741,8 @@
   "exercizer.copy.to": "à",
   "exercizer.grain.zone.notmigrated.perform": "Ce type de question ne se répond pas encore dans la nouvelle version. Continuez dans la version précédente pour ne pas perdre votre réponse.",
   "exercizer.copy.corrected.on": "Corrigée le",
-  "exercizer.copy.not.corrected.yet": "Cette copie n'est pas encore corrigée."
+  "exercizer.copy.not.corrected.yet": "Cette copie n'est pas encore corrigée.",
+  "exercizer.grain.score.above.max": "Cette note dépasse le barème de la question.",
+  "exercizer.copies.yet.to.correct.plain": "Il reste [[count]] copie(s) à corriger",
+  "exercizer.copy.corrected.done": "Copie corrigée"
 }

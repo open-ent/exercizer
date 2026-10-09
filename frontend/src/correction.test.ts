@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import {
   automaticCorrection,
   compareAnswers,
+  copyScores,
   formatScore,
   isBlank,
   totalCalculatedScore,
@@ -263,6 +264,47 @@ describe('totalCalculatedScore', () => {
   it('somme les scores en ignorant les grains non notés', () => {
     expect(totalCalculatedScore([2, null, 1.5, undefined])).toBe(3.5);
     expect(totalCalculatedScore([])).toBe(0);
+  });
+});
+
+describe('copyScores', () => {
+  it('somme les scores automatiques et déduit la note finale manquante', () => {
+    const result = copyScores([
+      { id: 1, calculated_score: 2, final_score: null },
+      { id: 2, calculated_score: 1, final_score: 3 },
+    ]);
+    expect(result.calculated).toBe(3);
+    // 2 (déduit du score automatique) + 3 (saisi par l'enseignant).
+    expect(result.final).toBe(5);
+    expect(result.defaulted).toEqual([1]);
+  });
+
+  it('ignore les grains sans score automatique', () => {
+    // Une réponse ouverte non corrigée n'entre dans aucun des deux totaux.
+    const result = copyScores([
+      { id: 1, calculated_score: null, final_score: null },
+      { id: 2, calculated_score: 4, final_score: null },
+    ]);
+    expect(result).toEqual({ calculated: 4, final: 4, defaulted: [2] });
+  });
+
+  it('respecte une note finale à zéro, qui n’est pas une absence de note', () => {
+    const result = copyScores([{ id: 1, calculated_score: 3, final_score: 0 }]);
+    expect(result.final).toBe(0);
+    expect(result.defaulted).toEqual([]);
+  });
+
+  it('accepte une note encore saisie, virgule décimale comprise', () => {
+    // Le champ de note garde ce que l'enseignant tape : « 1,5 » arrive ici en CHAÎNE.
+    const result = copyScores([
+      { id: 1, calculated_score: 2, final_score: 2 },
+      { id: 2, calculated_score: 0, final_score: '1,5' },
+    ]);
+    expect(result.final).toBe(3.5);
+  });
+
+  it('vaut zéro sur une copie vide', () => {
+    expect(copyScores([])).toEqual({ calculated: 0, final: 0, defaulted: [] });
   });
 });
 
