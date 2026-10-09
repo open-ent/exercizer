@@ -43,7 +43,12 @@ jobs:
         with:
           node-version: 20
 
+      # La version de pnpm est lue dans frontend/package.json (`packageManager`), et non à la
+      # racine : celle-ci appartient à la chaîne legacy Node 10 et n'a pas ce champ. Sans ce
+      # pointeur, l'action s'arrête sur « No pnpm version is specified ».
       - uses: pnpm/action-setup@v6
+        with:
+          package_json_file: frontend/package.json
 
       # IHM React de la vue exercizer-react.html : sous-projet Vite frontend/, distinct du bundle
       # webpack racine (application.js) construit ci-dessus par gulp sous Node 10. Il utilise des
