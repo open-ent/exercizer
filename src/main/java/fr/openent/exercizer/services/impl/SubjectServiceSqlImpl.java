@@ -508,7 +508,7 @@ public class SubjectServiceSqlImpl extends AbstractExercizerServiceSqlImpl imple
 			final SqlStatementsBuilder s, final Long newSubjectId, final Long fromSubjectId, final Boolean isLibrary 
 			) {
 		final String subjectDocumentCopy = "INSERT INTO exercizer.subject_document (subject_id, doc_id, doc_type, metadata) " +
-				"SELECT ?, s.doc_id, s.doc_type, s.metadata::jsonb FROM exercizer.subject as s WHERE s.subject_id = ?";
+				"SELECT ?, s.doc_id, s.doc_type, s.metadata::jsonb FROM exercizer.subject_document as s WHERE s.subject_id = ?";
 
 		final JsonArray values = new JsonArray().add(newSubjectId).add(fromSubjectId);
 
