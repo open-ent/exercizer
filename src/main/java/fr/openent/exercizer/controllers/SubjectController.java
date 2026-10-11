@@ -43,6 +43,8 @@ import fr.openent.exercizer.Exercizer;
 import fr.openent.exercizer.explorer.ExercizerExplorerPlugin;
 import fr.openent.exercizer.exporter.ImagesToBase64;
 import fr.openent.exercizer.exporter.SubjectExporter;
+import fr.openent.exercizer.interoperability.PackageExportService;
+import fr.openent.exercizer.interoperability.PackageImportService;
 import fr.openent.exercizer.filters.MassOwnerOnly;
 import fr.openent.exercizer.filters.MassShareAndOwner;
 import fr.openent.exercizer.filters.SubjectDocumentOwner;
@@ -87,6 +89,9 @@ public class SubjectController extends ControllerHelper {
 	private final HttpClient httpClient;
 	private final DocToExercizer docToExercizer;
 	private final ISubjectExternalResourceService subjectExternalResourceService;
+	private final PackageImportService packageImportService;
+	private final PackageExportService packageExportService;
+	private final Vertx vertx;
 
 	public SubjectController(final Storage storage, final ExercizerExplorerPlugin plugin, Vertx vertx, JsonObject configuration) {
 		this.subjectService = new SubjectServiceSqlImpl(plugin);
@@ -97,6 +102,11 @@ public class SubjectController extends ControllerHelper {
 		this.httpClient = vertx.createHttpClient();
 		this.docToExercizer = new DocToExercizer(vertx, plugin, configuration);
 		this.subjectExternalResourceService = new SubjectExternalResourceServiceSqlImpl();
+		this.vertx = vertx;
+		this.packageImportService = new PackageImportService(vertx,
+				configuration == null ? 0L : configuration.getLong("import-max-package-size", 0L));
+		this.packageExportService = new PackageExportService(vertx, "Open ENT",
+				configuration == null ? null : configuration.getString("host"));
 	}
 
     @Post("/canSchedule")
@@ -178,6 +188,117 @@ public class SubjectController extends ControllerHelper {
 					unauthorized(request);
 				}
 			}
+		});
+	}
+
+	/**
+	 * Dépôt d'un cours produit par une autre plateforme : SCORM, Moodle, LearnHouse.
+	 *
+	 * Le format est reconnu au CONTENU du fichier, jamais à son extension.
+	 *
+	 * Par défaut la requête est un ESSAI À BLANC : elle rend l'analyse et le rapport de fidélité
+	 * sans rien créer. C'est la doctrine déjà retenue pour l'import OEIP — l'enseignant voit ce
+	 * qui serait perdu avant de décider. Passer `apply=true` crée réellement le sujet.
+	 *
+	 * Le droit réutilisé est celui de l'import de sujet : cette route est une autre porte vers la
+	 * même action, elle n'a pas à en exiger un nouveau.
+	 */
+	@Post("/subject/import-package")
+	@ApiDoc("Imports a course from a SCORM, Moodle or LearnHouse package.")
+	@SecuredAction("exercizer.subject.import")
+	public void importPackage(final HttpServerRequest request) {
+		UserUtils.getUserInfos(eb, request, new Handler<UserInfos>() {
+			@Override
+			public void handle(final UserInfos user) {
+				if (user == null) {
+					log.debug("User not found in session.");
+					unauthorized(request);
+					return;
+				}
+				final boolean apply = "true".equals(request.params().get("apply"));
+				receiveUpload(request, new Handler<String>() {
+					@Override
+					public void handle(final String path) {
+						convertAndMaybeApply(request, user, path, apply);
+					}
+				});
+			}
+		});
+	}
+
+	/**
+	 * Écrit le fichier téléversé dans un fichier temporaire local.
+	 *
+	 * Le Storage de l'ENT n'est pas employé ici : le paquet est transitoire, il n'a pas à devenir
+	 * un document, et la bibliothèque a besoin d'un chemin sur disque pour dépaqueter.
+	 */
+	private void receiveUpload(final HttpServerRequest request, final Handler<String> handler) {
+		request.pause();
+		final String path = System.getProperty("java.io.tmpdir") + java.io.File.separator
+				+ "exercizer-import-" + java.util.UUID.randomUUID().toString();
+		request.setExpectMultipart(true);
+		final java.util.concurrent.atomic.AtomicBoolean received =
+				new java.util.concurrent.atomic.AtomicBoolean(false);
+		request.uploadHandler(new Handler<io.vertx.core.http.HttpServerFileUpload>() {
+			@Override
+			public void handle(io.vertx.core.http.HttpServerFileUpload upload) {
+				received.set(true);
+				upload.streamToFileSystem(path);
+			}
+		});
+		request.endHandler(new Handler<Void>() {
+			@Override
+			public void handle(Void event) {
+				if (!received.get()) {
+					badRequest(request, "exercizer.import.file.missing");
+					return;
+				}
+				handler.handle(path);
+			}
+		});
+		request.resume();
+	}
+
+	private void convertAndMaybeApply(final HttpServerRequest request, final UserInfos user,
+			final String path, final boolean apply) {
+		packageImportService.convert(path).onComplete(result -> {
+			// Le fichier temporaire est effacé quoi qu'il arrive : un paquet refusé ne doit pas
+			// rester sur le disque du serveur.
+			vertx.fileSystem().delete(path, deleted -> {
+				if (deleted.failed()) {
+					log.warn("Impossible d'effacer le paquet temporaire " + path, deleted.cause());
+				}
+			});
+
+			if (result.failed()) {
+				log.error("Import de paquet impossible", result.cause());
+				badRequest(request, result.cause().getMessage());
+				return;
+			}
+
+			final PackageImportService.Converted converted = result.result();
+			if (!apply || converted.payload() == null) {
+				renderJson(request, new JsonObject()
+						.put("applied", false)
+						.put("analysis", converted.analysis()));
+				return;
+			}
+
+			subjectService.persistSubjectGrains(converted.payload(), user,
+					new Handler<Either<String, JsonObject>>() {
+						@Override
+						public void handle(Either<String, JsonObject> event) {
+							if (event.isRight()) {
+								renderJson(request, new JsonObject()
+										.put("applied", true)
+										.put("subject", event.right().getValue())
+										.put("analysis", converted.analysis()), 201);
+							} else {
+								renderError(request, new JsonObject()
+										.put("error", event.left().getValue()));
+							}
+						}
+					});
 		});
 	}
 
@@ -999,6 +1120,94 @@ public class SubjectController extends ControllerHelper {
 					unauthorized(request);
 				}
 			}
+		});
+	}
+
+	/**
+	 * Export d'un sujet vers un format d'échange : SCORM 1.2 ou 2004, Moodle, LearnHouse.
+	 *
+	 * Complète {@code /subject/export-moodle/:id/:filename}, qui ne produit qu'une banque de
+	 * questions Moodle XML et reste en place.
+	 *
+	 * Le rapport de fidélité est renvoyé dans un en-tête plutôt que dans le corps : celui-ci est
+	 * le fichier lui-même. Un client qui veut le détail le lit avant de proposer le
+	 * téléchargement.
+	 */
+	@Get("/subject/:id/export/:format")
+	@ApiDoc("Exports a subject as a SCORM, Moodle or LearnHouse package.")
+	@ResourceFilter(ShareAndOwner.class)
+	@SecuredAction(value = "exercizer.read", type = ActionType.RESOURCE)
+	public void exportPackage(final HttpServerRequest request) {
+		final String id = request.params().get("id");
+		final String format = request.params().get("format");
+		if (StringUtils.isEmpty(id) || StringUtils.isEmpty(format)) {
+			badRequest(request);
+			return;
+		}
+		UserUtils.getUserInfos(eb, request, new Handler<UserInfos>() {
+			@Override
+			public void handle(UserInfos user) {
+				if (user == null) {
+					unauthorized(request);
+					return;
+				}
+				subjectService.getById(id, user, new Handler<Either<String, JsonObject>>() {
+					@Override
+					public void handle(Either<String, JsonObject> subjectEvent) {
+						if (subjectEvent.isLeft()) {
+							renderError(request, new JsonObject()
+									.put("error", subjectEvent.left().getValue()));
+							return;
+						}
+						final JsonObject subject = subjectEvent.right().getValue();
+						grainService.getGrainsForExport(id, new Handler<Either<String, JsonArray>>() {
+							@Override
+							public void handle(Either<String, JsonArray> grainsEvent) {
+								if (grainsEvent.isLeft()) {
+									renderError(request, new JsonObject()
+											.put("error", grainsEvent.left().getValue()));
+									return;
+								}
+								sendExport(request, subject, grainsEvent.right().getValue(), format);
+							}
+						});
+					}
+				});
+			}
+		});
+	}
+
+	private void sendExport(final HttpServerRequest request, final JsonObject subject,
+			final JsonArray grains, final String format) {
+		packageExportService.export(subject, grains, format).onComplete(result -> {
+			if (result.failed()) {
+				log.error("Export de sujet impossible", result.cause());
+				badRequest(request, result.cause().getMessage());
+				return;
+			}
+			final PackageExportService.Exported exported = result.result();
+			final String path = exported.file().toAbsolutePath().toString();
+			request.response()
+					.putHeader("content-type", exported.mediaType())
+					.putHeader("Content-Disposition",
+							"attachment; filename=\"" + exported.fileName() + "\"")
+					// Le corps est le fichier : la fidélité de la conversion voyage à part.
+					.putHeader("X-Conversion-Fidelity", exported.report().fidelity())
+					.putHeader("X-Conversion-Notices",
+							String.valueOf(exported.report().notices().size()))
+					.sendFile(path, sent -> {
+						// Le fichier temporaire est effacé dans tous les cas, y compris si le
+						// client a coupé la connexion en cours de téléchargement.
+						vertx.fileSystem().delete(path, deleted -> {
+							if (deleted.failed()) {
+								log.warn("Impossible d'effacer l'export temporaire " + path,
+										deleted.cause());
+							}
+						});
+						if (sent.failed()) {
+							log.error("Envoi de l'export interrompu", sent.cause());
+						}
+					});
 		});
 	}
 
