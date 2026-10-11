@@ -8,6 +8,7 @@ import illuExercizer from '@images/emptyscreen/illu-exercizer.svg';
 import {
   canStillSubmit,
   getCopiesAsStudent,
+  getCopySections,
   getGrainCopies,
   getSubjectsScheduledAsStudent,
   setCurrentGrain,
@@ -24,7 +25,8 @@ import {
 } from '../features/copies/GrainCopyHeader';
 import { copyQuestionNumber, GRAIN, isEditableHere, isQuestion } from '../grains';
 import { useDebouncedSave } from '../hooks/useDebouncedSave';
-import { GrainCopy, GrainCustomCopyData, SubjectCopy } from '../types';
+import { groupCopiesBySection, sectionProgress } from '../sections';
+import { GrainCopy, GrainCustomCopyData, ScheduledSection, SubjectCopy } from '../types';
 import { formatDateTime } from '../utils';
 
 /**
@@ -34,6 +36,11 @@ import { formatDateTime } from '../utils';
  * Un grain à la fois, avec la liste des grains à gauche pour s'y repérer. Chaque réponse part
  * d'elle-même peu après la saisie : il n'y a pas d'enregistrement à demander, seulement un
  * rendu — qui, lui, est définitif ou non selon le sujet.
+ *
+ * Sujet à sections (sql/039) : la liste de gauche est groupée par section, avec l'avancement de
+ * chacune, et la distribution peut demander « une section par page » (`display_mode`) — la page
+ * montre alors la consigne de la section et toutes ses questions. Une PAGE est donc une liste de
+ * grains : un seul en mode question, toute la section en mode section.
  *
  * ⚠ Cet écran ne charge **jamais** les grains distribués (`/grains-scheduled`) : ils portent les
  * réponses attendues, et les demander ici les mettrait dans le navigateur de l'élève. Seule la
@@ -46,6 +53,7 @@ export function PerformCopy() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
 
+  /** Rang de la page affichée (cf. `pages`). */
   const [index, setIndex] = useState(0);
   const [confirming, setConfirming] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -77,7 +85,27 @@ export function PerformCopy() {
     enabled: !!copy,
   });
 
+  const sectionsQuery = useQuery({
+    queryKey: ['exercizer', 'copy-sections', subjectCopyId],
+    queryFn: () => getCopySections(copy!),
+    enabled: !!copy,
+  });
+
   const grainCopies = useMemo(() => grainsQuery.data ?? [], [grainsQuery.data]);
+  const sections = useMemo(() => sectionsQuery.data ?? [], [sectionsQuery.data]);
+  const groups = useMemo(() => groupCopiesBySection(grainCopies, sections), [grainCopies, sections]);
+  const bySection = scheduled?.display_mode === 'section' && sections.length > 0;
+  const pages = useMemo(
+    () =>
+      bySection
+        ? groups.map((group) => group.grains)
+        : groups.flatMap((group) => group.grains.map((grainCopy) => [grainCopy])),
+    [bySection, groups],
+  );
+  const sectionOf = (grainCopy: GrainCopy): ScheduledSection | null =>
+    groups.find((group) => group.grains.some((item) => item.id === grainCopy.id))?.section ?? null;
+  const pageOf = (grainCopy: GrainCopy) =>
+    pages.findIndex((page) => page.some((item) => item.id === grainCopy.id));
 
   const setGrainCopies = useCallback(
     (next: GrainCopy[]) =>
@@ -95,25 +123,27 @@ export function PerformCopy() {
   /** Reprend là où l'élève s'était arrêté, une seule fois, quand la liste est connue. */
   const [restored, setRestored] = useState(false);
   useEffect(() => {
-    if (restored || grainCopies.length === 0 || !copy?.current_grain_id) return;
-    const position = grainCopies.findIndex((item) => item.id === copy.current_grain_id);
+    // Les sections font partie du découpage en pages : on attend de les connaître.
+    if (restored || pages.length === 0 || sectionsQuery.isLoading || !copy?.current_grain_id) return;
+    const position = pages.findIndex((page) => page.some((item) => item.id === copy.current_grain_id));
     if (position >= 0) setIndex(position);
     setRestored(true);
-  }, [restored, grainCopies, copy?.current_grain_id]);
+  }, [restored, pages, sectionsQuery.isLoading, copy?.current_grain_id]);
 
-  const current = grainCopies[index];
+  const page = pages[index] ?? [];
 
-  /** Mémorise la position courante côté serveur, sans bloquer la navigation. */
-  const rememberPosition = (grainCopy: GrainCopy | undefined) => {
-    if (!grainCopy) return;
-    void setCurrentGrain(subjectCopyId, grainCopy.id).catch(() => undefined);
+  /** Mémorise la position courante côté serveur (le 1er grain de la page), sans bloquer. */
+  const goTo = (position: number) => {
+    setIndex(position);
+    const first = pages[position]?.[0];
+    if (!first) return;
+    void setCurrentGrain(subjectCopyId, first.id).catch(() => undefined);
   };
 
-  const onAnswerChange = (next: GrainCustomCopyData) => {
-    if (!current) return;
+  const onAnswerChange = (grainCopy: GrainCopy, next: GrainCustomCopyData) => {
     const updated: GrainCopy = {
-      ...current,
-      grain_copy_data: { ...current.grain_copy_data, custom_copy_data: next },
+      ...grainCopy,
+      grain_copy_data: { ...grainCopy.grain_copy_data, custom_copy_data: next },
     };
     setGrainCopies(grainCopies.map((item) => (item.id === updated.id ? updated : item)));
     schedule(updated.id, updated);
@@ -162,7 +192,7 @@ export function PerformCopy() {
     );
   }
 
-  if (grainsQuery.isLoading) return <LoadingScreen position={false} />;
+  if (grainsQuery.isLoading || sectionsQuery.isLoading) return <LoadingScreen position={false} />;
 
   if (grainCopies.length === 0) {
     return <Alert type="warning">{t('exercizer.subject.empty')}</Alert>;
@@ -173,6 +203,13 @@ export function PerformCopy() {
     (grainCopy) => isQuestion(grainCopy.grain_type_id) && hasAnswer(grainCopy),
   ).length;
   const questions = grainCopies.filter((grainCopy) => isQuestion(grainCopy.grain_type_id)).length;
+
+  // En mode question, l'intertitre rappelle la section ; sa consigne n'accompagne que la première
+  // question de la section. En mode section, elle ouvre toujours la page.
+  const pageSection = page[0] ? sectionOf(page[0]) : null;
+  const firstOfSection = groups.find((group) => group.section === pageSection)?.grains[0];
+  const showSectionDescription =
+    !!pageSection?.description && (bySection || firstOfSection?.id === page[0]?.id);
 
   return (
     <div className="mt-16">
@@ -209,48 +246,87 @@ export function PerformCopy() {
 
       <div className="grid gap-24">
         <aside className="g-col-12 g-col-lg-3">
-          <nav aria-label={t('exercizer.rank')}>
-            <ol className="list-unstyled d-flex flex-column gap-4">
-              {grainCopies.map((grainCopy, position) => (
-                <li key={grainCopy.id}>
-                  <button
-                    type="button"
-                    className={`btn btn-sm w-100 text-start ${
-                      position === index ? 'btn-filled btn-secondary' : 'btn-ghost btn-tertiary'
-                    }`}
-                    aria-current={position === index ? 'step' : undefined}
-                    onClick={() => {
-                      setIndex(position);
-                      rememberPosition(grainCopy);
-                    }}
-                  >
-                    {isQuestion(grainCopy.grain_type_id)
-                      ? `${copyQuestionNumber(grainCopy, grainCopies)}) ${grainCopy.grain_copy_data.title ?? ''}`
-                      : (grainCopy.grain_copy_data.title ?? '')}
-                    {isQuestion(grainCopy.grain_type_id) && hasAnswer(grainCopy) && (
-                      <span className="text-success ms-4" aria-hidden="true">
-                        ✓
-                      </span>
-                    )}
-                  </button>
-                </li>
-              ))}
-            </ol>
+          <nav aria-label={t('exercizer.rank')} className="d-flex flex-column gap-16">
+            {groups.map((group) => {
+              const progress = sectionProgress(group.grains, hasAnswer);
+              return (
+                <div key={group.section?.id ?? 'ungrouped'}>
+                  {group.section && (
+                    <button
+                      type="button"
+                      className="btn btn-ghost btn-tertiary btn-sm w-100 text-start fw-bold d-flex justify-content-between gap-8"
+                      onClick={() => goTo(pageOf(group.grains[0]))}
+                    >
+                      <span className="text-truncate">{group.section.title}</span>
+                      {progress.total > 0 && (
+                        <small
+                          className={progress.answered === progress.total ? 'text-success' : 'text-muted'}
+                          aria-label={`${progress.answered}/${progress.total} ${t('exercizer.copy.answered')}`}
+                        >
+                          {progress.answered}/{progress.total}
+                        </small>
+                      )}
+                    </button>
+                  )}
+                  <ol className={`list-unstyled d-flex flex-column gap-4 ${group.section ? 'ps-16' : ''}`}>
+                    {group.grains.map((grainCopy) => {
+                      const position = pageOf(grainCopy);
+                      const isCurrent = page.some((item) => item.id === grainCopy.id);
+                      return (
+                        <li key={grainCopy.id}>
+                          <button
+                            type="button"
+                            className={`btn btn-sm w-100 text-start ${
+                              isCurrent && !bySection ? 'btn-filled btn-secondary' : 'btn-ghost btn-tertiary'
+                            }`}
+                            aria-current={isCurrent ? 'step' : undefined}
+                            onClick={() => {
+                              goTo(position);
+                              if (bySection) scrollToGrainCopy(grainCopy);
+                            }}
+                          >
+                            {isQuestion(grainCopy.grain_type_id)
+                              ? `${copyQuestionNumber(grainCopy, grainCopies)}) ${grainCopy.grain_copy_data.title ?? ''}`
+                              : (grainCopy.grain_copy_data.title ?? '')}
+                            {isQuestion(grainCopy.grain_type_id) && hasAnswer(grainCopy) && (
+                              <span className="text-success ms-4" aria-hidden="true">
+                                ✓
+                              </span>
+                            )}
+                          </button>
+                        </li>
+                      );
+                    })}
+                  </ol>
+                </div>
+              );
+            })}
           </nav>
         </aside>
 
         <section className="g-col-12 g-col-lg-9">
-          {current && (
-            <article className="card p-16">
-              <GrainCopyHeader grainCopy={current} grainCopies={grainCopies} showHint />
-              <GrainCopyStatement grainCopy={current} />
-              <GrainCopyDocuments grainCopy={current} />
+          {pageSection && (
+            <header className="mb-16">
+              <Heading level="h3" headingStyle="h5" className="mb-8">
+                {pageSection.title}
+              </Heading>
+              {showSectionDescription && (
+                <div dangerouslySetInnerHTML={{ __html: pageSection.description ?? '' }} />
+              )}
+            </header>
+          )}
 
-              {isEditableHere(current.grain_type_id) ? (
+          {page.map((grainCopy) => (
+            <article key={grainCopy.id} id={`grain-copy-${grainCopy.id}`} className="card p-16 mb-16">
+              <GrainCopyHeader grainCopy={grainCopy} grainCopies={grainCopies} showHint />
+              <GrainCopyStatement grainCopy={grainCopy} />
+              <GrainCopyDocuments grainCopy={grainCopy} />
+
+              {isEditableHere(grainCopy.grain_type_id) ? (
                 <AnswerFields
-                  grainTypeId={current.grain_type_id}
-                  data={current.grain_copy_data.custom_copy_data ?? {}}
-                  onChange={onAnswerChange}
+                  grainTypeId={grainCopy.grain_type_id}
+                  data={grainCopy.grain_copy_data.custom_copy_data ?? {}}
+                  onChange={(next) => onAnswerChange(grainCopy, next)}
                   readOnly={!canSubmit && !copy.is_training_copy}
                 />
               ) : (
@@ -274,33 +350,17 @@ export function PerformCopy() {
                 </Alert>
               )}
             </article>
-          )}
+          ))}
 
           <div className="d-flex justify-content-end gap-16 mt-16 flex-wrap">
             {index > 0 && (
-              <Button
-                color="tertiary"
-                variant="ghost"
-                onClick={() => {
-                  const position = index - 1;
-                  setIndex(position);
-                  rememberPosition(grainCopies[position]);
-                }}
-              >
-                {t('exercizer.previous')}
+              <Button color="tertiary" variant="ghost" onClick={() => goTo(index - 1)}>
+                {t(bySection ? 'exercizer.section.previous' : 'exercizer.previous')}
               </Button>
             )}
-            {index < grainCopies.length - 1 ? (
-              <Button
-                color="primary"
-                variant="filled"
-                onClick={() => {
-                  const position = index + 1;
-                  setIndex(position);
-                  rememberPosition(grainCopies[position]);
-                }}
-              >
-                {t('exercizer.next')}
+            {index < pages.length - 1 ? (
+              <Button color="primary" variant="filled" onClick={() => goTo(index + 1)}>
+                {t(bySection ? 'exercizer.section.next' : 'exercizer.next')}
               </Button>
             ) : copy.is_training_copy ? (
               <Button
@@ -351,6 +411,17 @@ export function PerformCopy() {
         </ConfirmModal>
       )}
     </div>
+  );
+}
+
+/** En mode section, mène à une question de la page affichée. */
+function scrollToGrainCopy(grainCopy: GrainCopy) {
+  window.setTimeout(
+    () =>
+      document
+        .getElementById(`grain-copy-${grainCopy.id}`)
+        ?.scrollIntoView({ behavior: 'smooth', block: 'start' }),
+    50,
   );
 }
 

@@ -347,6 +347,26 @@ describe('buildScheduleBody', () => {
     expect(body.isTrainingMode).toBe(false);
     expect(body.randomDisplay).toBe(true);
     expect(body.grainsCustomCopyData).toHaveLength(1);
+    // Sans réglage, une question par page : le comportement d'avant les sections.
+    expect(body.displayMode).toBe('grain');
+  });
+
+  it('transmet « une section par page »', () => {
+    const body = buildScheduleBody(
+      subject,
+      {
+        mode: 'classic',
+        beginDate: new Date(2026, 2, 18),
+        beginTime: '08:00',
+        dueDate: new Date(2026, 2, 20),
+        dueTime: '23:59',
+        displayMode: 'section',
+      },
+      recipients,
+      grains,
+      noShuffle,
+    );
+    expect(body.displayMode).toBe('section');
   });
 
   it('place les bornes à l’époque en mode entraînement', () => {

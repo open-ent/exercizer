@@ -10,6 +10,7 @@
 
 import { GRAIN, isQuestion } from './grains';
 import {
+  DisplayMode,
   Grain,
   GrainAnswer,
   GrainCopyData,
@@ -334,6 +335,11 @@ export interface ScheduleOptions {
   /** L'élève ne pourra pas se refaire le sujet pour s'entraîner. */
   forbidTraining?: boolean;
   randomDisplay?: boolean;
+  /**
+   * Affichage pour l'élève (sql/039) : une question par page, ou une section par page. N'a de sens
+   * que si le sujet a des sections ; sinon on envoie toujours « une question par page ».
+   */
+  displayMode?: DisplayMode;
   /** Durée estimée, en minutes. */
   estimatedDuration?: string;
 }
@@ -367,6 +373,7 @@ export function buildScheduleBody(
     isTrainingMode: training,
     isTrainingPermitted: training ? false : !options.forbidTraining,
     randomDisplay: options.randomDisplay === true,
+    displayMode: options.displayMode === 'section' ? 'section' : 'grain',
     scheduledAt,
     grainsCustomCopyData: buildGrainsCustomCopyData(grains, random),
   };

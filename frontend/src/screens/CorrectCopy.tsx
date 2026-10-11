@@ -18,6 +18,7 @@ import {
   correctCopy,
   correctGrainCopy,
   getCopiesAsTeacher,
+  getCopySections,
   getGrainCopies,
   getGrainsScheduled,
   getSubjectsScheduledAsTeacher,
@@ -30,6 +31,7 @@ import {
   formatScore,
 } from '../correction';
 import { GrainCopyReview } from '../features/copies/GrainCopyReview';
+import { SectionedReview } from '../features/copies/SectionedReview';
 import { isQuestion, sanitizeScore } from '../grains';
 import { useDebouncedSave } from '../hooks/useDebouncedSave';
 import { GrainCopy, SubjectCopy } from '../types';
@@ -80,6 +82,11 @@ export function CorrectCopy() {
   const grainsQuery = useQuery({
     queryKey: ['exercizer', 'grain-copies', subjectCopyId],
     queryFn: () => getGrainCopies(copy!),
+    enabled: !!copy,
+  });
+  const sectionsQuery = useQuery({
+    queryKey: ['exercizer', 'copy-sections', subjectCopyId],
+    queryFn: () => getCopySections(copy!),
     enabled: !!copy,
   });
   const referenceQuery = useQuery({
@@ -372,8 +379,10 @@ export function CorrectCopy() {
         </FormControl>
       </section>
 
-      <div className="d-flex flex-column gap-24 mt-24">
-        {grainCopies.map((grainCopy) => (
+      <SectionedReview
+        grainCopies={grainCopies}
+        sections={sectionsQuery.data ?? []}
+        renderGrain={(grainCopy) => (
           <GrainCopyReview
             key={grainCopy.id}
             grainCopy={grainCopy}
@@ -383,8 +392,8 @@ export function CorrectCopy() {
             mode="teacher"
             onChange={onGrainChange}
           />
-        ))}
-      </div>
+        )}
+      />
     </div>
   );
 }

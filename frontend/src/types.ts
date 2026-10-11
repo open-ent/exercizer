@@ -119,7 +119,12 @@ export interface SubjectScheduled {
   /** Parcours (sql/037) — nul = hors parcours. */
   subject_sequence_scheduled_id?: number | null;
   sequence_order_by?: number;
+  /** Sections (sql/039) : une question par page (défaut) ou une section par page. */
+  display_mode?: DisplayMode;
 }
+
+/** Affichage pour l'élève pendant la passation. */
+export type DisplayMode = 'grain' | 'section';
 
 /** Fichier joint à une copie (rendu de l'élève, ou corrigé déposé par l'enseignant). */
 export interface SubjectCopyFile {
@@ -268,10 +273,40 @@ export interface Grain {
   id: number;
   subject_id: number;
   grain_type_id: number;
+  /** Rang GLOBAL dans le sujet (continu, section par section) — cf. sql/039. */
   order_by: number;
+  /** Section du grain (sql/039) ; nul = hors section, affiché en tête du sujet. */
+  section_id?: number | null;
   created?: string;
   modified?: string;
   grain_data: GrainData;
+}
+
+/**
+ * Une section d'un sujet (« Partie 1 – Calcul ») : un regroupement de grains, sur le modèle
+ * Chapitre → Activités de LearnHouse. Les grains d'une section se suivent dans l'ordre global.
+ */
+export interface Section {
+  id: number;
+  subject_id: number;
+  title: string;
+  /** Consigne de la section, en HTML. */
+  description?: string | null;
+  order_by: number;
+  created?: string;
+  modified?: string;
+}
+
+/**
+ * Une section DISTRIBUÉE, telle que la passation et la correction la reçoivent : avec les grains
+ * distribués qui la composent, pour regrouper les copies de grains (`grain_scheduled_id`).
+ */
+export interface ScheduledSection {
+  id: number;
+  title: string;
+  description?: string | null;
+  order_by: number;
+  grain_scheduled_ids: number[];
 }
 
 /** Une réponse d'un grain à liste (réponses multiples, mise en ordre). */

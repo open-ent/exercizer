@@ -18,6 +18,8 @@ import {
   GrainScheduled,
   GrainType,
   ScheduledAt,
+  ScheduledSection,
+  Section,
   Subject,
   SubjectCopy,
   SubjectDocument,
@@ -300,12 +302,18 @@ const grainPayload = (grain: Grain): GrainPayload => ({
   grainData: grain.grain_data,
 });
 
-/** Crée un grain. Le serveur ne renvoie que son identifiant. */
+/**
+ * Crée un grain. Le serveur ne renvoie que son identifiant.
+ *
+ * Dans un sujet à sections, `section_id` range le grain dans sa section, et le serveur renumérote
+ * ensuite tout le sujet : le rang envoyé ne sert qu'à le placer EN FIN de sa section.
+ */
 export const createGrain = (grain: Omit<Grain, 'id'>) =>
   send<{ id: number }>('POST', `/exercizer/subject/${grain.subject_id}/grain`, {
     grainTypeId: grain.grain_type_id,
     orderBy: grain.order_by,
     grainData: grain.grain_data,
+    ...(grain.section_id ? { sectionId: grain.section_id } : {}),
   });
 
 export const updateGrain = (grain: Grain) =>
@@ -323,6 +331,61 @@ export const removeGrains = (subjectId: number, grainIds: number[]) => {
 /** Duplique des grains DANS le même sujet (le serveur suffixe les titres). */
 export const duplicateGrains = (subjectId: number, grainIds: number[]) =>
   sendVoid('POST', `/exercizer/subject/${subjectId}/duplicate/grains`, { grainIds });
+
+// ── Sections (sql/039) ───────────────────────────────────────────────────────
+
+export const getSections = (subjectId: number) =>
+  get<Section[]>(`/exercizer/subject/${subjectId}/sections`);
+
+/** Crée une section, toujours en fin de sujet. */
+export const createSection = (subjectId: number, section: Pick<Section, 'title' | 'description'>) =>
+  send<Section>('POST', `/exercizer/subject/${subjectId}/section`, {
+    title: section.title,
+    description: section.description ?? null,
+  });
+
+export const updateSection = (section: Section) =>
+  send<Section>('PUT', `/exercizer/subject/${section.subject_id}/section/${section.id}`, {
+    title: section.title,
+    description: section.description ?? null,
+  });
+
+/**
+ * Supprime une section. `withGrains` : ses questions partent avec elle ; sinon elles rejoignent la
+ * section précédente (ou la tête du sujet s'il n'y en a pas).
+ */
+export const removeSection = (subjectId: number, sectionId: number, withGrains: boolean) =>
+  sendVoid('DELETE', `/exercizer/subject/${subjectId}/section/${sectionId}?withGrains=${withGrains}`);
+
+/** Copie une section et ses questions juste après elle (le serveur suffixe le titre). */
+export const duplicateSection = (subjectId: number, sectionId: number) =>
+  send<Section>('POST', `/exercizer/subject/${subjectId}/section/${sectionId}/duplicate`);
+
+/** L'arbre d'un sujet, tel que `PUT /structure` l'enregistre d'un bloc (cf. `sections.ts`). */
+export interface SubjectStructure {
+  ungrouped: number[];
+  sections: Array<{ id: number; grainIds: number[] }>;
+}
+
+/**
+ * Enregistre l'arbre entier — ordre des sections, section et rang de chaque grain — en une seule
+ * transaction côté serveur, plutôt qu'un enregistrement par grain déplacé.
+ */
+export const saveStructure = (subjectId: number, structure: SubjectStructure) =>
+  sendVoid('PUT', `/exercizer/subject/${subjectId}/structure`, structure);
+
+/**
+ * Les sections distribuées d'une copie, avec les grains distribués de chacune. Même corps et même
+ * contrôle d'accès que {@link getGrainCopies} : l'élève peut les lire pendant la passation.
+ */
+export const getCopySections = async (copy: SubjectCopy): Promise<ScheduledSection[]> => {
+  const body = { ...copy, offset: new Date().getTimezoneOffset() };
+  const sections = await send<ScheduledSection[]>('POST', '/exercizer/grains-copy/sections', body);
+  return (sections ?? []).map((section) => ({
+    ...section,
+    grain_scheduled_ids: section.grain_scheduled_ids ?? [],
+  }));
+};
 
 // ── Copies de grains (la passation, puis la consultation) ────────────────────
 

@@ -16,6 +16,7 @@ import { useNavigate, useParams } from 'react-router-dom';
 import illuExercizer from '@images/emptyscreen/illu-exercizer.svg';
 import {
   getCopiesAsStudent,
+  getCopySections,
   getGrainCopies,
   getGrainsScheduled,
   getSubjectsScheduledAsStudent,
@@ -28,6 +29,7 @@ import {
   totalCalculatedScore,
 } from '../correction';
 import { GrainCopyReview } from '../features/copies/GrainCopyReview';
+import { SectionedReview } from '../features/copies/SectionedReview';
 import { GrainCopy, SubjectCopy, SubjectScheduled } from '../types';
 import { formatDateTime } from '../utils';
 
@@ -72,6 +74,11 @@ export function ViewCopy() {
   const grainsQuery = useQuery({
     queryKey: ['exercizer', 'grain-copies', subjectCopyId],
     queryFn: () => getGrainCopies(copy!),
+    enabled: !!copy,
+  });
+  const sectionsQuery = useQuery({
+    queryKey: ['exercizer', 'copy-sections', subjectCopyId],
+    queryFn: () => getCopySections(copy!),
     enabled: !!copy,
   });
 
@@ -133,8 +140,10 @@ export function ViewCopy() {
     <div className="mt-16">
       <CopySummary copy={copy} scheduled={scheduled} corrections={corrections} grainCopies={grainCopies} />
 
-      <div className="d-flex flex-column gap-24 mt-24">
-        {grainCopies.map((grainCopy) => (
+      <SectionedReview
+        grainCopies={grainCopies}
+        sections={sectionsQuery.data ?? []}
+        renderGrain={(grainCopy) => (
           <GrainCopyReview
             key={grainCopy.id}
             grainCopy={grainCopy}
@@ -143,8 +152,8 @@ export function ViewCopy() {
             correction={corrections.get(grainCopy.id)}
             mode="student"
           />
-        ))}
-      </div>
+        )}
+      />
 
       <div className="d-flex justify-content-end mt-24">
         <Button color="primary" variant="outline" onClick={() => navigate('/dashboard/student')}>

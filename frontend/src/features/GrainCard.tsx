@@ -29,6 +29,12 @@ export interface GrainCardProps {
   onPickType: (grain: Grain, grainTypeId: number) => void;
   onDuplicate: (grain: Grain) => void;
   onRemove: (grain: Grain) => void;
+  /**
+   * Sujet à sections : les sections où l'on peut ranger le grain (`id` nul = hors section), et le
+   * rangement demandé. Absent sur un sujet sans section — l'action n'est alors pas proposée.
+   */
+  sectionTargets?: Array<{ id: number | null; label: string }>;
+  onMoveToSection?: (grain: Grain, sectionId: number | null) => void;
 }
 
 /**
@@ -49,6 +55,8 @@ export function GrainCard({
   onPickType,
   onDuplicate,
   onRemove,
+  sectionTargets,
+  onMoveToSection,
 }: GrainCardProps) {
   const { t } = useTranslation(['exercizer', 'common']);
   const type = grainTypes.find((item) => item.id === grain.grain_type_id);
@@ -241,7 +249,25 @@ export function GrainCard({
       )}
 
       {/* ── Actions du grain ── */}
-      <footer className="d-flex justify-content-end gap-8 mt-16">
+      <footer className="d-flex flex-wrap justify-content-end align-items-center gap-8 mt-16">
+        {sectionTargets && onMoveToSection && sectionTargets.length > 1 && (
+          <label className="d-flex align-items-center gap-8 me-auto">
+            <small className="text-muted">{t('exercizer.section.move.to')}</small>
+            <select
+              className="form-select form-select-sm w-auto"
+              value={grain.section_id ?? ''}
+              onChange={(event) =>
+                onMoveToSection(grain, event.target.value === '' ? null : Number(event.target.value))
+              }
+            >
+              {sectionTargets.map((target) => (
+                <option key={target.id ?? 'none'} value={target.id ?? ''}>
+                  {target.label}
+                </option>
+              ))}
+            </select>
+          </label>
+        )}
         {!isUndecided(grain.grain_type_id) && (
           <Button color="tertiary" variant="ghost" onClick={() => onDuplicate(grain)}>
             {t('exercizer.duplicate')}

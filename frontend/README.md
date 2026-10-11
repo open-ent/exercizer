@@ -169,14 +169,29 @@ si quelque chose n'est pas encore parti, et ce qui est en vol au démontage est 
 Le barème du SUJET n'est jamais envoyé : le serveur le recalcule comme la somme des barèmes des
 grains à chaque enregistrement de grain. Le total affiché dans le résumé n'est qu'un aperçu.
 
+## Parties d'un sujet
+
+Un sujet interactif peut se découper en **parties** (`subject_section`, sql/039 — sur le modèle
+Chapitre → Activités de LearnHouse). Règles pures dans `sections.ts` :
+
+- l'éditeur lit le sujet comme des groupes (hors partie en tête, puis chaque partie) et n'ouvre
+  qu'une partie à la fois (`?section=` dans l'URL) ; toute modification de STRUCTURE part d'un bloc
+  par `PUT /subject/:id/structure`, le contenu reste enregistré au fil de la frappe ;
+- `grain.order_by` reste un rang global et continu : l'IHM AngularJS, qui ignore les parties, lit une
+  séquence cohérente. Le rang d'un grain en attente d'enregistrement est relu dans le cache au moment
+  de l'envoi, pour ne pas défaire un déplacement ;
+- la passation regroupe les copies de grains par partie (`POST /grains-copy/sections`) et pagine par
+  question ou par partie selon `display_mode` ; consultation et correction affichent un sous-total
+  par partie (`features/copies/SectionedReview.tsx`).
+
 ## Tests
 
-- unitaires : `pnpm test` — `copies`, `corrections`, `grains`, `correction`, `schedule` ;
+- unitaires : `pnpm test` — `copies`, `corrections`, `grains`, `correction`, `schedule`, `sections` ;
 - de bout en bout, depuis la racine du dépôt :
   ```bash
   npx playwright test tests/exercizer-react.spec.ts tests/exercizer-ui-switch.spec.ts \
     tests/exercizer-subject-editor.spec.ts tests/exercizer-copy.spec.ts \
-    tests/exercizer-schedule.spec.ts --project=chromium
+    tests/exercizer-schedule.spec.ts tests/exercizer-sections.spec.ts --project=chromium
   ```
   Comptes locaux : `amelie.martin` / `amelie.martin` (enseignante) et `lea.bernard` /
   `lea.bernard` (élève de sa classe). Les specs de bascule tournent **en série** : elles écrivent

@@ -12,7 +12,7 @@ import { useMutation, useQuery } from '@tanstack/react-query';
 import { useId, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
-import { getGrains, scheduleSimpleSubject, scheduleSubject } from '../api';
+import { getGrains, getSections, scheduleSimpleSubject, scheduleSubject } from '../api';
 import { RecipientPicker } from '../features/RecipientPicker';
 import {
   areDatesValid,
@@ -79,6 +79,7 @@ export function ScheduleDialog({
     allowStudentsToUpdateCopy: false,
     forbidTraining: false,
     randomDisplay: false,
+    displayMode: 'grain',
     estimatedDuration: '',
   });
 
@@ -90,6 +91,14 @@ export function ScheduleDialog({
     enabled: !isSimple,
   });
   const grains = grainsQuery.data ?? [];
+
+  // « Une section par page » ne se propose que si le sujet a des sections.
+  const sectionsQuery = useQuery({
+    queryKey: ['exercizer', 'sections', subject.id],
+    queryFn: () => getSections(subject.id),
+    enabled: !isSimple,
+  });
+  const withSections = (sectionsQuery.data ?? []).length > 0;
 
   const blocker = useMemo(
     () => (isSimple || grainsQuery.isLoading ? null : scheduleBlocker(grains)),
@@ -116,7 +125,12 @@ export function ScheduleDialog({
       }
       return scheduleSubject(
         subject.id,
-        buildScheduleBody(subject, options, scheduledAt, grains),
+        buildScheduleBody(
+          subject,
+          { ...options, displayMode: withSections ? options.displayMode : 'grain' },
+          scheduledAt,
+          grains,
+        ),
       );
     },
     onSuccess: (created) => onScheduled(created?.id ?? 0),
@@ -236,8 +250,27 @@ export function ScheduleDialog({
                     }
                   />
                 )}
+                {withSections && (
+                  <fieldset className="d-flex flex-column gap-8">
+                    <legend className="form-label">{t('exercizer.section.display.title')}</legend>
+                    {(['grain', 'section'] as const).map((mode) => (
+                      <RadioCard
+                        key={mode}
+                        groupName={`${id}-display`}
+                        value={mode}
+                        selectedValue={options.displayMode ?? 'grain'}
+                        label={t(`exercizer.section.display.${mode}`)}
+                        onChange={() => patch({ displayMode: mode })}
+                      />
+                    ))}
+                  </fieldset>
+                )}
                 <Checkbox
-                  label={t('exercizer.scheduled.subject.random.display')}
+                  label={t(
+                    withSections
+                      ? 'exercizer.section.random.display'
+                      : 'exercizer.scheduled.subject.random.display',
+                  )}
                   checked={options.randomDisplay === true}
                   onChange={(event) => patch({ randomDisplay: event.target.checked })}
                 />
