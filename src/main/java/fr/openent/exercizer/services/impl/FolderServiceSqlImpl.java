@@ -332,11 +332,8 @@ public class FolderServiceSqlImpl extends AbstractExercizerServiceSqlImpl implem
     }
 
     private void duplicationGrain(final SqlStatementsBuilder s, final Number newSubjectId, final Number fromSubjectId) {
-        final String grainsCopy = "INSERT INTO " + schema + "grain (subject_id, grain_type_id, order_by, grain_data) " +
-                "SELECT ?, g.grain_type_id, g.order_by, g.grain_data FROM " + schema + "subject as s INNER JOIN " + schema + "grain as g on (s.id = g.subject_id) " +
-                "WHERE s.id=?";
-
-        s.prepared(grainsCopy, new JsonArray().add(newSubjectId).add(fromSubjectId));
+        // Les sections partent avec les grains (cf. SectionSql).
+        SectionSql.copySectionsAndGrains(s, newSubjectId, fromSubjectId);
     }
 
 }

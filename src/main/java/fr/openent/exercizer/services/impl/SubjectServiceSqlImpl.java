@@ -516,11 +516,8 @@ public class SubjectServiceSqlImpl extends AbstractExercizerServiceSqlImpl imple
 	}
 
 	private void duplicationGrain(final SqlStatementsBuilder s, final Long newSubjectId, final Long fromSubjectId) {
-		final String grainsCopy = "INSERT INTO exercizer.grain (subject_id, grain_type_id, order_by, grain_data) " +
-				"SELECT ?, g.grain_type_id, g.order_by, g.grain_data FROM exercizer.subject as s INNER JOIN exercizer.grain as g on (s.id = g.subject_id) " +
-				"WHERE s.id=?";
-
-		s.prepared(grainsCopy, new JsonArray().add(newSubjectId).add(fromSubjectId));
+		// Les sections partent avec les grains (cf. SectionSql).
+		SectionSql.copySectionsAndGrains(s, newSubjectId, fromSubjectId);
 	}
 
 	public void unpublishLibrary(final Long subjectId, final Handler<Either<String, JsonObject>> handler) {

@@ -11,6 +11,12 @@
     },
     "grainData": {
       "type": "object"
+    },
+    "sectionId": {
+      "type": [
+        "number",
+        "null"
+      ]
     }
   },
   "required": [

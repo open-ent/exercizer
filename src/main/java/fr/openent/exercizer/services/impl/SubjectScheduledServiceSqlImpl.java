@@ -141,7 +141,7 @@ public class SubjectScheduledServiceSqlImpl extends AbstractExercizerServiceSqlI
 
 		//to prevent modification of the model and data migration, temporarily, we recovered grains of subject to associate custom data copies.
 		// in the next refactor step, grain entry can directly contain custom_data for copies of grain
-		final String queryGain = "SELECT g.id, g.grain_type_id, g.order_by, g.grain_data FROM " + schema + "grain as g " +
+		final String queryGain = "SELECT g.id, g.grain_type_id, g.order_by, g.grain_data, g.section_id FROM " + schema + "grain as g " +
 				" WHERE g.subject_id = ? and g.grain_type_id > 2";
 		final JsonArray values = new JsonArray().add(fromSubjectId);
 		sql.prepared(queryGain,values, SqlResult.validResultHandler(new Handler<Either<String, JsonArray>>() {
@@ -281,8 +281,8 @@ public class SubjectScheduledServiceSqlImpl extends AbstractExercizerServiceSqlI
 	private void createScheduledSubject(final SqlStatementsBuilder s, final Long subjectId, final Long scheduledSubjectId, final JsonObject scheduledSubject, UserInfos user) {
 
 		final String query = "INSERT INTO " + schema + "subject_scheduled (id, subject_id, title, description, picture, max_score, " +
-				"owner, owner_username, begin_date, due_date, estimated_duration, is_one_shot_submit, random_display, is_training_mode, is_training_permitted, scheduled_at, type, is_notify, use_time, locale) " +
-				"SELECT ?, s.id, s.title, s.description, s.picture, s.max_score, ?, ?, ?::timestamp , ?::timestamp, ?, ?, ?, ?, ?, ?::json, s.type, ?, ?, ? FROM " + schema + "subject as s " +
+				"owner, owner_username, begin_date, due_date, estimated_duration, is_one_shot_submit, random_display, is_training_mode, is_training_permitted, scheduled_at, type, is_notify, use_time, locale, display_mode) " +
+				"SELECT ?, s.id, s.title, s.description, s.picture, s.max_score, ?, ?, ?::timestamp , ?::timestamp, ?, ?, ?, ?, ?, ?::json, s.type, ?, ?, ?, ? FROM " + schema + "subject as s " +
 				"WHERE s.id=? RETURNING id";
 
 		final JsonArray values = new JsonArray();
@@ -300,6 +300,8 @@ public class SubjectScheduledServiceSqlImpl extends AbstractExercizerServiceSqlI
 				.add(scheduledSubject.getBoolean("isNotify"))
 				.add(scheduledSubject.getBoolean("useTime", true))
 				.add(scheduledSubject.getString("locale"))
+				// « Une section par page » n'a de sens que si le sujet a des sections ; sinon, une question par page.
+				.add("section".equals(scheduledSubject.getString("displayMode")) ? "section" : "grain")
 				.add(subjectId);
 
 		s.prepared(query, values);
@@ -333,16 +335,21 @@ public class SubjectScheduledServiceSqlImpl extends AbstractExercizerServiceSqlI
 			return;
 		}
 
-		final StringBuilder bulkInsertScheduledGrain = new StringBuilder("INSERT INTO " + schema + "grain_scheduled (subject_scheduled_id, grain_type_id, order_by, grain_data, grain_custom_data) VALUES ");
+		// Les sections d'abord : chaque grain distribué retrouve la sienne par son rang (cf. SectionSql).
+		SectionSql.scheduleSections(s, subjectScheduledId, fromSubjectId);
+
+		final StringBuilder bulkInsertScheduledGrain = new StringBuilder("INSERT INTO " + schema + "grain_scheduled (subject_scheduled_id, grain_type_id, order_by, grain_data, grain_custom_data, section_scheduled_id) VALUES ");
 		final JsonArray values = new JsonArray();
+		final String scheduledSection = SectionSql.scheduledSectionOf();
 
 		for (int i=0;i<grainJa.size();i++) {
 			final JsonObject grainJo = grainJa.getJsonObject(i);
 
 			values.add(subjectScheduledId).add(grainJo.getLong("grain_type_id")).add(grainJo.getInteger("order_by"))
-					.add(grainJo.getString("grain_data")).add(mapIdGrainCustomCopyData.get(grainJo.getLong("id")));
+					.add(grainJo.getString("grain_data")).add(mapIdGrainCustomCopyData.get(grainJo.getLong("id")))
+					.add(subjectScheduledId).add(grainJo.getLong("section_id"));
 
-			bulkInsertScheduledGrain.append("(?,?,?,?,?),");
+			bulkInsertScheduledGrain.append("(?,?,?,?,?,").append(scheduledSection).append("),");
 
 		}
 
@@ -417,6 +424,28 @@ public class SubjectScheduledServiceSqlImpl extends AbstractExercizerServiceSqlI
 		s.prepared(query, params);
 	}
 
+	/**
+	 * Mélange une liste de lignes {id, section_rank} triée par section, SANS faire passer une ligne
+	 * d'une section à l'autre : chaque tranche contiguë de même section_rank est mélangée sur place.
+	 */
+	@SuppressWarnings("unchecked")
+	private static void shuffleWithinSections(final List rows) {
+		int start = 0;
+		while (start < rows.size()) {
+			final Object rank = sectionRankOf(rows.get(start));
+			int end = start + 1;
+			while (end < rows.size() && java.util.Objects.equals(rank, sectionRankOf(rows.get(end)))) end++;
+			Collections.shuffle(rows.subList(start, end));
+			start = end;
+		}
+	}
+
+	private static Object sectionRankOf(final Object row) {
+		if (row instanceof JsonObject) return ((JsonObject) row).getValue("section_rank");
+		if (row instanceof Map) return ((Map) row).get("section_rank");
+		return null;
+	}
+
 	private Future<Void> assignGrainCopiesRandomOrder(final Long subjectScheduledId) {
 		Promise<Void> result = Promise.promise();
 		final String query = "SELECT id FROM " + schema + "subject_copy WHERE subject_scheduled_id = ?";
@@ -427,7 +456,12 @@ public class SubjectScheduledServiceSqlImpl extends AbstractExercizerServiceSqlI
 				subjectCopiesIds.forEach(subjectCopyId -> {
 					Promise<Void> promise = Promise.promise();
 					subjectList.add(promise.future());
-					final String query2 = "SELECT id FROM " + schema + "grain_copy WHERE subject_copy_id = ? order by order_by, id";
+					// Rang de la section de chaque copie de grain (0 = hors section) : le mélange reste interne
+					// à chaque section, l'ordre des sections est conservé. Sans section, un seul groupe : inchangé.
+					final String query2 = "SELECT gc.id, COALESCE(sss.order_by, 0) AS section_rank FROM " + schema + "grain_copy AS gc " +
+							"INNER JOIN " + schema + "grain_scheduled AS gs ON gs.id = gc.grain_scheduled_id " +
+							"LEFT JOIN " + schema + "subject_section_scheduled AS sss ON sss.id = gs.section_scheduled_id " +
+							"WHERE gc.subject_copy_id = ? ORDER BY section_rank, gc.order_by, gc.id";
 					sql.prepared(query2, new JsonArray().add(((JsonObject)subjectCopyId).getLong("id")), SqlResult.validResultHandler(event2 -> {
 						if (event2.isRight()) {
 							final JsonArray grainCopiesIds = event2.right().getValue();
@@ -437,7 +471,7 @@ public class SubjectScheduledServiceSqlImpl extends AbstractExercizerServiceSqlI
 							int countCheck = 10;
 
 							while(notShuffle) {
-								Collections.shuffle(grainCopiesIds.getList());
+								shuffleWithinSections(grainCopiesIds.getList());
 								//test shuffle no same origin
 								int matches = 0;
 								for (int i = 0; i < listSize; i++) {

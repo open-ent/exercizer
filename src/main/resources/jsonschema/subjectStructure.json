@@ -1,0 +1,27 @@
+{
+  "$schema": "http://json-schema.org/draft-04/schema#",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "ungrouped": {
+      "type": "array",
+      "items": { "type": "number" }
+    },
+    "sections": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "id": { "type": "number" },
+          "grainIds": {
+            "type": "array",
+            "items": { "type": "number" }
+          }
+        },
+        "required": ["id", "grainIds"]
+      }
+    }
+  },
+  "required": ["ungrouped", "sections"]
+}

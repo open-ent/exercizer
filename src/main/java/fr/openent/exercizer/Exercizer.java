@@ -97,6 +97,12 @@ public class Exercizer extends BaseServer {
             subjectController.setShareService(plugin.createShareService(eb));
             subjectController.setCrudService(new SqlCrudService("exercizer", "subject"));
 
+            // Sections d'un sujet : le :id des routes est celui du SUJET, droits de partage du sujet.
+            SqlConf sectionConf = SqlConfs.createConf(SectionController.class.getName());
+            sectionConf.setSchema("exercizer");
+            sectionConf.setTable("subject");
+            sectionConf.setShareTable("subject_shares");
+
             SqlConf subjectScheduledConf = SqlConfs.createConf(SubjectScheduledController.class.getName());
             subjectScheduledConf.setSchema("exercizer");
             subjectScheduledConf.setTable("subject");
@@ -136,6 +142,7 @@ public class Exercizer extends BaseServer {
             addController(new FolderController(plugin));
             addController(subjectController);
             addController(new GrainTypeController());
+            addController(new SectionController());
             final SubjectScheduledController subjectScheduledController = new SubjectScheduledController(storage);
             addController(subjectScheduledController);
             addController(new GrainScheduledController());

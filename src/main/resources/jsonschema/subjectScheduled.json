@@ -80,6 +80,13 @@
     },
     "grainsCustomCopyData": {
       "type": "array"
+    },
+    "displayMode": {
+      "type": "string",
+      "enum": [
+        "grain",
+        "section"
+      ]
     }
   },
   "required": [
@@ -91,5 +98,3 @@
     "grainsCustomCopyData"
   ]
 }
-
-

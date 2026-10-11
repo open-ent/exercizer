@@ -44,10 +44,15 @@ public class GrainServiceSqlImpl extends AbstractExercizerServiceSqlImpl impleme
      */
     @Override
     public void persist(final JsonObject resource, final Long subjectId, final Handler<Either<String, JsonObject>> handler) {
-        final String query = "INSERT INTO " + resourceTable + "(subject_id, grain_type_id, order_by, grain_data) VALUES (?,?,?,?) returning id";
+        // sectionId (facultatif, IHM React) : une section d'un autre sujet donne NULL, jamais un rattachement étranger.
+        final String query = "INSERT INTO " + resourceTable + "(subject_id, grain_type_id, order_by, grain_data, section_id) VALUES (?,?,?,?," +
+                "(SELECT id FROM " + schema + "subject_section WHERE id = ? AND subject_id = ?)) returning id";
 
         final SqlStatementsBuilder s = new SqlStatementsBuilder();
-        s.prepared(query, new JsonArray().add(subjectId).add(resource.getLong("grainTypeId")).add(resource.getInteger("orderBy")).add(resource.getValue("grainData")));
+        s.prepared(query, new JsonArray().add(subjectId).add(resource.getLong("grainTypeId")).add(resource.getInteger("orderBy")).add(resource.getValue("grainData"))
+                .add(resource.getLong("sectionId")).add(subjectId));
+        // Le rang envoyé place le grain en fin de sa section ; la renumérotation rétablit la continuité.
+        SectionSql.normalizeGrainOrder(s, subjectId);
 
         //required for replicate grain directly from the subject
         updateMaxScoreAndDate(s, subjectId);
@@ -121,7 +126,8 @@ public class GrainServiceSqlImpl extends AbstractExercizerServiceSqlImpl impleme
         //TODO normalize the data model to create a title relational field (grain_data must be opaque),
         //Not needed anymore to look for grains, use of insert / select query with case when for title
         final List grainIds = grainIdJa.getList();
-        final String query = "SELECT g.grain_type_id as grain_type_id, g.grain_data as grain_data, gt.public_name as default_title FROM " + resourceTable +
+        final String query = "SELECT g.grain_type_id as grain_type_id, g.grain_data as grain_data, g.order_by as order_by, " +
+                "g.subject_id as from_subject_id, g.section_id as section_id, gt.public_name as default_title FROM " + resourceTable +
                 " AS g INNER JOIN " + schema + "grain_type AS gt ON (g.grain_type_id=gt.id) WHERE g.id IN " +
                 Sql.listPrepared(grainIds);
         sql.prepared(query, new JsonArray(grainIds), SqlResult.validResultHandler(new Handler<Either<String, JsonArray>>() {
@@ -145,6 +151,11 @@ public class GrainServiceSqlImpl extends AbstractExercizerServiceSqlImpl impleme
         final String queryNewOrderBy = "(SELECT max(gr.order_by) + 1 FROM "+ resourceTable + " as gr WHERE gr.subject_id=?)";
         final String queryinsertGrain = "INSERT INTO " + resourceTable +"(subject_id, grain_type_id, order_by, grain_data) VALUES " +
                 "(?,?," + queryNewOrderBy + ",?)";
+        // Grain rangé dans une section : sa copie reste dans la section, juste après lui (même rang,
+        // id plus grand, cf. SectionSql.normalizeGrainOrder). Hors section, rien ne change : en fin de sujet.
+        final String queryinsertGrainInSection = "INSERT INTO " + resourceTable +"(subject_id, grain_type_id, order_by, grain_data, section_id) VALUES " +
+                "(?,?,?,?,?)";
+        boolean inSection = false;
 
         for (int i=0;i<grainJa.size();i++) {
             final JsonObject grainJo = grainJa.getJsonObject(i);
@@ -153,12 +164,23 @@ public class GrainServiceSqlImpl extends AbstractExercizerServiceSqlImpl impleme
             if (grainJo.getLong("grain_type_id") > 3) {
                 grainData.put("title", grainData.getString("title", i18n.translate(grainJo.getString("default_title"), host, acceptLanguage)) + titleSuffix);
             }
+            // Un grain venu d'un AUTRE sujet n'emporte pas sa section : elle n'existe pas ici.
+            final Long sectionId = subjectId.equals(grainJo.getLong("from_subject_id")) ? grainJo.getLong("section_id") : null;
+            if (sectionId != null) {
+                inSection = true;
+                s.prepared(queryinsertGrainInSection, new JsonArray().add(subjectId).add(grainJo.getLong("grain_type_id"))
+                        .add(grainJo.getInteger("order_by")).add(grainData).add(sectionId));
+                continue;
+            }
             final JsonArray values = new JsonArray();
             values.add(subjectId).add(grainJo.getLong("grain_type_id")).add(subjectId).add(grainData);
 
             s.prepared(queryinsertGrain, values);
         }
 
+        if (inSection) {
+            SectionSql.normalizeGrainOrder(s, subjectId);
+        }
         updateMaxScoreAndDate(s, subjectId);
 
         sql.transaction(s.build(), SqlResult.validUniqueResultHandler(0, handler));
