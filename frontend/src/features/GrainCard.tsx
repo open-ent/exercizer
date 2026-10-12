@@ -16,6 +16,7 @@ import { GrainTypeIcon } from './GrainTypeIcon';
 import { GrainTypePicker } from './GrainTypePicker';
 import { AssociationEditor, MultipleAnswerEditor, OrderEditor, QcmEditor } from './grains/ListTypes';
 import { OpenAnswerEditor, SimpleAnswerEditor } from './grains/SimpleTypes';
+import { ScormGrainNotice } from './grains/ScormGrainNotice';
 import { ZoneGrainNotice } from './grains/ZoneGrainNotice';
 import { RichTextEditor } from './RichTextEditor';
 
@@ -202,7 +203,12 @@ export function GrainCard({
           )}
 
           {/* ── Contenu propre au type ── */}
-          {!isEditableHere(grain.grain_type_id) ? (
+          {grain.grain_type_id === GRAIN.SCORM ? (
+            // Avant le cas général des types non éditables : un module SCORM n'est pas un grain
+            // « à zones », et renvoyer l'enseignant vers l'ancienne IHM n'aurait aucun sens —
+            // elle ne connaît pas ce type.
+            <ScormGrainNotice grain={grain} />
+          ) : !isEditableHere(grain.grain_type_id) ? (
             <ZoneGrainNotice grain={grain} />
           ) : grain.grain_type_id === GRAIN.SIMPLE_ANSWER ? (
             <SimpleAnswerEditor customData={customData} onChange={patchCustom} />

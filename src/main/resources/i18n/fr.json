@@ -767,5 +767,10 @@
   "exercizer.section.random.display": "Mélanger les questions à l'intérieur de chaque partie",
   "exercizer.section.previous": "Partie précédente",
   "exercizer.section.next": "Partie suivante",
-  "exercizer.section.subtotal": "Sous-total :"
+  "exercizer.section.subtotal": "Sous-total :",
+  "exercizer.grain.type.scorm": "Module SCORM",
+  "exercizer.grain.scorm.deposited": "Ce grain porte un module SCORM déposé. Son contenu a été fabriqué par un outil auteur : il se remplace, il ne se modifie pas ici. La note de l'élève est celle que le module remonte.",
+  "exercizer.grain.scorm.version": "Version déclarée : SCORM {{version}}",
+  "exercizer.scorm.package.missing": "Aucun module SCORM n'est rattaché à cette question.",
+  "exercizer.scorm.session.error": "Le module n'a pas pu être ouvert. Prévenez votre enseignant."
 }

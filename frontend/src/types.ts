@@ -355,6 +355,9 @@ export interface GrainCustomData {
   show_left_column?: boolean;
   /** Types 10, 11, 12 : zones à remplir. */
   zones?: GrainZone[];
+  /** Type 13 (SCORM) : le paquet déposé et la version qu'il déclare. */
+  packageId?: number;
+  scormVersion?: string;
   options?: string[];
   answersType?: string;
   htmlContent?: string;
@@ -399,6 +402,9 @@ export interface GrainCustomCopyData {
   show_left_column?: boolean;
   /** Types 10, 11, 12. */
   zones?: GrainZone[];
+  /** Type 13 (SCORM) : le paquet déposé, recopié du grain distribué pour que l'élève le joue. */
+  packageId?: number;
+  scormVersion?: string;
   /** Type 3 (énoncé) : le serveur le range ici. */
   statement?: string;
 }

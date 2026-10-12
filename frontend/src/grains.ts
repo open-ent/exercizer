@@ -29,6 +29,8 @@ export const GRAIN = {
   TEXT_TO_FILL: 10,
   AREA_SELECT: 11,
   AREA_SELECT_IMAGE: 12,
+  /** Module SCORM déposé : du contenu exécutable, pas un formulaire. */
+  SCORM: 13,
 } as const;
 
 /**
@@ -55,8 +57,16 @@ export const ZONE_TYPES: readonly number[] = [
   GRAIN.AREA_SELECT_IMAGE,
 ];
 
+/** Un module SCORM : un paquet déposé, joué dans un cadre cloisonné. */
+export const isScorm = (grainTypeId: number): boolean => grainTypeId === GRAIN.SCORM;
+
+/**
+ * Un module SCORM n'a pas davantage de champs à éditer ici : on remplace le paquet, on ne
+ * retouche pas son contenu. Il reste en revanche JOUABLE en passation, contrairement aux types
+ * à zones.
+ */
 export const isEditableHere = (grainTypeId: number): boolean =>
-  !ZONE_TYPES.includes(grainTypeId);
+  !ZONE_TYPES.includes(grainTypeId) && !isScorm(grainTypeId);
 
 /**
  * Ordre d'affichage des types dans le choix d'une question — celui de l'ancienne IHM

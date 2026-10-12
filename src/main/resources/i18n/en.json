@@ -766,5 +766,10 @@
   "exercizer.section.random.display": "Shuffle questions within each part",
   "exercizer.section.previous": "Previous part",
   "exercizer.section.next": "Next part",
-  "exercizer.section.subtotal": "Subtotal:"
+  "exercizer.section.subtotal": "Subtotal:",
+  "exercizer.grain.type.scorm": "SCORM module",
+  "exercizer.grain.scorm.deposited": "This item holds an uploaded SCORM module. Its content was built by an authoring tool: it can be replaced, not edited here. The learner's mark is the one the module reports.",
+  "exercizer.grain.scorm.version": "Declared version: SCORM {{version}}",
+  "exercizer.scorm.package.missing": "No SCORM module is attached to this question.",
+  "exercizer.scorm.session.error": "The module could not be opened. Please tell your teacher."
 }

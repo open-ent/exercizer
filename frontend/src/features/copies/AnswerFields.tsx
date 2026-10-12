@@ -5,6 +5,7 @@ import { useTranslation } from 'react-i18next';
 import { GRAIN } from '../../grains';
 import { GrainAnswer, GrainCustomCopyData } from '../../types';
 import { RichTextEditor } from '../RichTextEditor';
+import { ScormPlayer } from './ScormPlayer';
 
 /**
  * La saisie des réponses de l'élève, par type de grain — portage des directives `perform*`.
@@ -38,6 +39,14 @@ export function AnswerFields({ grainTypeId, data, onChange, readOnly }: AnswerFi
       return <AssociationFields data={data} onChange={onChange} readOnly={readOnly} />;
     case GRAIN.ORDER_BY:
       return <OrderFields data={data} onChange={onChange} readOnly={readOnly} />;
+    case GRAIN.SCORM:
+      // Le module tient son propre état : rien ne remonte par `onChange`, la progression est
+      // enregistrée par le lecteur lui-même au fil des commits du module.
+      return (
+        // La version de SCORM n'est pas passée ici : elle est rendue par la route de session,
+        // avec l'URL du contenu, et c'est elle qui fait foi — pas ce qu'a recopié la copie.
+        <ScormPlayer packageId={data.packageId} readOnly={readOnly} />
+      );
     default:
       // Énoncé : rien à remplir. Grains « à zones » : pas encore saisissables ici.
       return null;

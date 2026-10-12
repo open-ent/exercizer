@@ -138,6 +138,7 @@ public class Exercizer extends BaseServer {
             subjectSequenceController.setShareService(new SqlShareService("exercizer", "subject_sequence_shares", eb, securedActions, null));
             subjectSequenceController.setCrudService(new SqlCrudService("exercizer", "subject_sequence"));
 
+            addController(new ScormController(vertx, storage, config));
             addController(new ExercizerController());
             addController(new FolderController(plugin));
             addController(subjectController);
