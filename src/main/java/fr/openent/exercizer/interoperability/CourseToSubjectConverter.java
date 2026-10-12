@@ -116,6 +116,16 @@ public class CourseToSubjectConverter {
             return;
         }
 
+        if (activity.type() == ActivityType.XAPI) {
+            // Une AU cmi5 ou un contenu Tin Can rapporte à un LRS, que l'ENT ne fournit pas :
+            // un grain n'en montrerait que le titre. Ses questions déclarées, elles, arrivent
+            // dans une activité à part et sont bien converties.
+            report.dropped("exercizer.xapi.not.supported",
+                    "L'activité " + location + " est un contenu xAPI/cmi5 exécutable : elle exige "
+                            + "un LRS et n'est pas convertible en questions.", activity.id());
+            return;
+        }
+
         if (activity.type() == ActivityType.UNSUPPORTED) {
             report.dropped("exercizer.activity.unsupported",
                     "L'activité " + location + " (type « " + activity.sourceType() + " ») n'a pas "

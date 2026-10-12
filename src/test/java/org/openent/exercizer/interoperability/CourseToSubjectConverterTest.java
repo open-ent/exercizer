@@ -4,9 +4,15 @@ import fr.openent.exercizer.interoperability.CourseToSubjectConverter;
 import fr.openent.exercizer.interoperability.GrainType;
 import fr.tech.openent.interoperability.ReadOptions;
 import fr.tech.openent.interoperability.formats.moodle.MoodleXmlQuestionReader;
+import fr.tech.openent.interoperability.model.Activity;
+import fr.tech.openent.interoperability.model.ActivityType;
+import fr.tech.openent.interoperability.model.Answer;
 import fr.tech.openent.interoperability.model.ConversionReport;
 import fr.tech.openent.interoperability.model.Course;
 import fr.tech.openent.interoperability.model.Notice;
+import fr.tech.openent.interoperability.model.Question;
+import fr.tech.openent.interoperability.model.QuestionType;
+import fr.tech.openent.interoperability.model.Section;
 import io.vertx.core.json.JsonArray;
 import io.vertx.core.json.JsonObject;
 import org.junit.Test;
@@ -237,6 +243,33 @@ public class CourseToSubjectConverterTest {
         // vide que l'enseignant devra supprimer.
         assertNull(payload);
         assertEquals(1, report.count(Notice.Level.ERROR));
+        course.close();
+    }
+
+    @Test
+    public void une_unite_xapi_est_ecartee_mais_ses_questions_declarees_sont_reprises()
+            throws Exception {
+        // Ce que rend la lecture d'un paquet Tin Can : le contenu exécutable, et les questions
+        // que tincan.xml déclare, dans une activité à part.
+        Question declared = new Question().id("q").type(QuestionType.SINGLE_CHOICE)
+                .title("Gant").promptHtml("<p>Quel gant ?</p>")
+                .addAnswer(new Answer().textHtml("Nitrile").fraction(1d))
+                .addAnswer(new Answer().textHtml("Laine").fraction(0d));
+        Course course = new Course().title("Labo").addSection(new Section().id("s").title("Labo")
+                .addActivity(new Activity().id("u").type(ActivityType.XAPI).title("Story")
+                        .launchUrl("story.html"))
+                .addActivity(new Activity().id("i").type(ActivityType.QUIZ)
+                        .title("Questions déclarées par le paquet").addQuestion(declared)));
+        ConversionReport report = new ConversionReport();
+        JsonObject payload = new CourseToSubjectConverter(report).toImportPayload(course);
+        assertNotNull(payload);
+        boolean dropped = false;
+        for (Notice notice : report.notices()) {
+            dropped |= "exercizer.xapi.not.supported".equals(notice.code());
+        }
+        assertTrue("l'unité xAPI doit être signalée, pas changée en énoncé vide", dropped);
+        assertTrue(!payload.getJsonArray("grains").encode().contains("Story"));
+        assertTrue(payload.getJsonArray("grains").encode().contains("Nitrile"));
         course.close();
     }
 }
