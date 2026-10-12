@@ -24,6 +24,7 @@ import { ConfirmModal } from '../components/ConfirmModal';
 import { GrainCard } from '../features/GrainCard';
 import { GrainOrganizer } from '../features/GrainOrganizer';
 import { SectionHeader } from '../features/SectionHeader';
+import { ExternalResources, ReuseGrains } from '../features/SubjectEditorPanels';
 import {
   EditorFocus,
   focusOf,
@@ -429,6 +430,8 @@ export function SubjectEditor() {
         </div>
       </div>
 
+      <ExternalResources subjectId={subject.id} />
+
       <div className="grid gap-24">
         <aside className="g-col-12 g-col-lg-3">
           {withSections ? (
@@ -474,6 +477,15 @@ export function SubjectEditor() {
               )}
             </>
           )}
+          {/* Une question reprise d'un autre sujet arrive en fin de sujet — donc dans la dernière
+              partie quand il y en a : c'est le serveur qui tient les rangs. */}
+          <ReuseGrains
+            subject={subject}
+            grainTypes={grainTypes}
+            nextOrder={() => nextOrder(grains)}
+            // On relit la liste : deux ajouts rapprochés ne doivent pas se marcher dessus.
+            onAdded={() => void refresh()}
+          />
         </aside>
 
         <section className="g-col-12 g-col-lg-9">

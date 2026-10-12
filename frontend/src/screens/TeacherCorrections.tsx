@@ -1,5 +1,4 @@
 import {
-  ActionBar,
   Badge,
   Button,
   Checkbox,
@@ -7,35 +6,42 @@ import {
   EmptyScreen,
   Heading,
   SearchBar,
+  SegmentedControl,
   Table,
 } from '@open-ent/react';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQuery } from '@tanstack/react-query';
 import { useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate, useParams } from 'react-router-dom';
 
 import illuExercizer from '@images/emptyscreen/illu-exercizer.svg';
-import {
-  excludeCopies,
-  getCopiesAsTeacher,
-  getSubjectsScheduledAsTeacher,
-  remindCopiesAutomatically,
-  unscheduleSubject,
-} from '../api';
-import { ConfirmModal } from '../components/ConfirmModal';
-import { copyStateColorClass, copyStateKey, matchesDueDateRange, matchesTitle } from '../copies';
+import { getCopiesAsTeacher, getSubjectsScheduledAsTeacher } from '../api';
+import { RecipientsDialog } from '../components/RecipientsDialog';
+import { matchesDueDateRange, matchesTitle } from '../copies';
 import { DateRange, DateRangeFilter } from '../features/DateRangeFilter';
 import {
   groupCopiesByScheduled,
   isFullyCorrected,
   lastCopyActivity,
-  notCorrectedCount,
   recipientsLabel,
   scheduledStateKey,
   submissionCount,
 } from '../corrections';
-import { SubjectCopy, SubjectScheduled } from '../types';
+import { SubjectScheduled } from '../types';
 import { formatDate, formatDateTime } from '../utils';
+import { CorrectionCopies } from './CorrectionCopies';
+
+/** Vignettes ou tableau — la préférence est mémorisée d'une visite à l'autre. */
+type DisplayMode = 'domino' | 'array';
+const DISPLAY_KEY = 'exercizer.teacher.correction.displayList';
+
+function storedDisplay(): DisplayMode {
+  try {
+    return window.localStorage.getItem(DISPLAY_KEY) === 'domino' ? 'domino' : 'array';
+  } catch {
+    return 'array';
+  }
+}
 
 /** Filtre d'état des distributions : corrigées, non corrigées, ou les deux. */
 type StateFilter = 'corrected' | 'notCorrected';
@@ -51,7 +57,9 @@ type StateFilter = 'corrected' | 'notCorrected';
 export function TeacherCorrections() {
   const { subjectScheduledId } = useParams();
   return subjectScheduledId ? (
-    <CopyList subjectScheduledId={Number(subjectScheduledId)} />
+    // La clé remonte l'écran quand on passe d'une distribution à l'autre : sélection, tri et
+    // fenêtres ouvertes ne doivent pas suivre.
+    <CorrectionCopies key={subjectScheduledId} subjectScheduledId={Number(subjectScheduledId)} />
   ) : (
     <ScheduledList />
   );
@@ -66,6 +74,17 @@ function ScheduledList() {
   const [range, setRange] = useState<DateRange>({ begin: null, end: null });
   const [states, setStates] = useState<StateFilter[]>([]);
   const [groups, setGroups] = useState<string[]>([]);
+  const [display, setDisplayState] = useState<DisplayMode>(storedDisplay);
+  const [recipients, setRecipients] = useState<SubjectScheduled | null>(null);
+
+  const setDisplay = (mode: DisplayMode) => {
+    setDisplayState(mode);
+    try {
+      window.localStorage.setItem(DISPLAY_KEY, mode);
+    } catch {
+      // Stockage indisponible : la préférence vaut pour la session.
+    }
+  };
 
   const scheduledQuery = useQuery({
     queryKey: ['exercizer', 'scheduled', 'teacher'],
@@ -159,6 +178,14 @@ function ScheduledList() {
             ))}
           </div>
           <DateRangeFilter value={range} onChange={setRange} />
+          <SegmentedControl
+            options={[
+              { label: t('exercizer.display.cards'), value: 'domino' },
+              { label: t('exercizer.display.list'), value: 'array' },
+            ]}
+            value={display}
+            onChange={(value) => setDisplay(value as DisplayMode)}
+          />
         </div>
 
         <Heading level="h2" headingStyle="h4" className="mb-8">
@@ -180,6 +207,68 @@ function ScheduledList() {
             text={t(search ? 'exercizer.correction.search.empty' : 'exercizer.empty.corrections')}
             size={200}
           />
+        ) : display === 'array' ? (
+          <div className="table-responsive mt-16">
+            <Table>
+              <Table.Thead>
+                <Table.Tr>
+                  <Table.Th>{t('exercizer.subject.title')}</Table.Th>
+                  <Table.Th>{t('exercizer.state')}</Table.Th>
+                  <Table.Th>{t('exercizer.scheduled.subject.modified')}</Table.Th>
+                  <Table.Th>{t('exercizer.scheduled.subject.end')}</Table.Th>
+                  <Table.Th>{t('exercizer.scheduled.subject.to')}</Table.Th>
+                  <Table.Th>{t('exercizer.scheduled.subject.count.made')}</Table.Th>
+                </Table.Tr>
+              </Table.Thead>
+              <Table.Tbody>
+                {visible.map((scheduled) => {
+                  const copies = copiesByScheduled.get(scheduled.id) ?? [];
+                  const { submitted, total } = submissionCount(copies);
+                  const corrected = isFullyCorrected(scheduled, copies);
+                  return (
+                    <Table.Tr key={scheduled.id}>
+                      <Table.Td>
+                        <Button
+                          color="tertiary"
+                          variant="ghost"
+                          onClick={() => navigate(`/dashboard/teacher/correction/${scheduled.id}`)}
+                        >
+                          {scheduled.title}
+                        </Button>
+                        <small className="text-muted d-block">
+                          {scheduled.type === 'simple'
+                            ? t('exercizer.simple.subject')
+                            : t('exercizer.interactive.subject')}
+                        </small>
+                      </Table.Td>
+                      <Table.Td>
+                        <span className={corrected ? 'text-success' : 'text-warning'}>
+                          {t(scheduledStateKey(scheduled, copies))}
+                        </span>
+                      </Table.Td>
+                      <Table.Td>{formatDate(scheduled.modified)}</Table.Td>
+                      <Table.Td>{formatDate(scheduled.due_date)}</Table.Td>
+                      <Table.Td>
+                        {recipientsLabel(scheduled, 1) && (
+                          <Button
+                            size="sm"
+                            color="tertiary"
+                            variant="ghost"
+                            onClick={() => setRecipients(scheduled)}
+                          >
+                            {recipientsLabel(scheduled, 1)}
+                          </Button>
+                        )}
+                      </Table.Td>
+                      <Table.Td>
+                        {submitted} {t('exercizer.total.made')} {total}
+                      </Table.Td>
+                    </Table.Tr>
+                  );
+                })}
+              </Table.Tbody>
+            </Table>
+          </div>
         ) : (
           <div className="mt-16">
             {visible.map((scheduled) => {
@@ -239,222 +328,13 @@ function ScheduledList() {
           </div>
         )}
       </section>
-    </div>
-  );
-}
 
-type CopyDialog = { kind: 'exclude' } | { kind: 'unschedule' } | null;
-
-/** Second niveau : les copies d'une distribution. */
-function CopyList({ subjectScheduledId }: { subjectScheduledId: number }) {
-  const { t } = useTranslation(['exercizer', 'common']);
-  const navigate = useNavigate();
-  const queryClient = useQueryClient();
-
-  const [selected, setSelected] = useState<number[]>([]);
-  const [dialog, setDialog] = useState<CopyDialog>(null);
-
-  const scheduledQuery = useQuery({
-    queryKey: ['exercizer', 'scheduled', 'teacher'],
-    queryFn: getSubjectsScheduledAsTeacher,
-  });
-  const copiesQuery = useQuery({
-    queryKey: ['exercizer', 'copies', 'teacher'],
-    queryFn: getCopiesAsTeacher,
-  });
-
-  const scheduled = (scheduledQuery.data ?? []).find((s) => s.id === subjectScheduledId);
-  const copies = useMemo(
-    () =>
-      (copiesQuery.data ?? [])
-        .filter((copy) => copy.subject_scheduled_id === subjectScheduledId && !copy.is_training_copy)
-        .sort((a, b) => (a.owner_username ?? '').localeCompare(b.owner_username ?? '', 'fr')),
-    [copiesQuery.data, subjectScheduledId],
-  );
-
-  const refresh = () => {
-    void queryClient.invalidateQueries({ queryKey: ['exercizer', 'copies', 'teacher'] });
-    void queryClient.invalidateQueries({ queryKey: ['exercizer', 'scheduled', 'teacher'] });
-    setSelected([]);
-    setDialog(null);
-  };
-
-  const remind = useMutation({
-    mutationFn: () => remindCopiesAutomatically(selected, subjectScheduledId),
-    onSuccess: refresh,
-  });
-  const exclude = useMutation({ mutationFn: () => excludeCopies(selected), onSuccess: refresh });
-  const unschedule = useMutation({
-    mutationFn: () => unscheduleSubject(subjectScheduledId),
-    onSuccess: () => {
-      refresh();
-      navigate('/dashboard/teacher/correction');
-    },
-  });
-
-  if (scheduledQuery.isLoading || copiesQuery.isLoading) return null;
-  if (!scheduled) {
-    return (
-      <EmptyScreen imageSrc={illuExercizer} text={t('exercizer.empty.corrections')} size={200} />
-    );
-  }
-
-  const remaining = notCorrectedCount(copies);
-  const { submitted, total } = submissionCount(copies);
-  const at = t('exercizer.at');
-
-  const toggle = (id: number) =>
-    setSelected((current) =>
-      current.includes(id) ? current.filter((x) => x !== id) : [...current, id],
-    );
-
-  return (
-    <div className="mt-16">
-      {/* Retour à la liste : la route porte la distribution ouverte, le bouton n'a donc qu'à
-          remonter d'un cran — le retour du navigateur fait la même chose. */}
-      <div className="d-flex align-items-center gap-8">
-        <Button color="tertiary" variant="ghost" onClick={() => navigate('/dashboard/teacher/correction')}>
-          {t('exercizer.dashboard.instructer.tab2')}
-        </Button>
-        <Heading level="h2" headingStyle="h4" className="m-0">
-          {scheduled.title}
-        </Heading>
-      </div>
-
-      <div className="d-flex flex-wrap gap-16 justify-content-between align-items-center my-16">
-        <div className="d-flex flex-column gap-4">
-          <span>
-            {t('exercizer.scheduled.start')} {formatDateTime(scheduled.begin_date, at)}
-          </span>
-          <span>
-            {t('exercizer.scheduled.end')} {formatDateTime(scheduled.due_date, at)}
-          </span>
-          <span>
-            <strong>
-              {submitted} {t('exercizer.total.made')} {total}
-            </strong>
-            {remaining > 0 && (
-              <>
-                {' — '}
-                {t('exercizer.numbercopy.notcorrected')} {remaining}
-              </>
-            )}
-          </span>
-          {recipientsLabel(scheduled, 10) && (
-            <span className="text-muted">
-              {t('exercizer.scheduled.subject.to')} : {recipientsLabel(scheduled, 10)}
-            </span>
-          )}
-        </div>
-        <Button color="danger" variant="outline" onClick={() => setDialog({ kind: 'unschedule' })}>
-          {t('exercizer.unschedule')}
-        </Button>
-      </div>
-
-      <Table>
-        <Table.Thead>
-          <Table.Tr>
-            <Table.Th />
-            <Table.Th>{t('exercizer.author')}</Table.Th>
-            <Table.Th>{t('exercizer.state')}</Table.Th>
-            <Table.Th>{t('exercizer.domino.delivered')}</Table.Th>
-            <Table.Th>{t('exercizer.copy.final.score')}</Table.Th>
-          </Table.Tr>
-        </Table.Thead>
-        <Table.Tbody>
-          {copies.map((copy) => {
-            const stateKey = copyStateKey(copy);
-            return (
-              <Table.Tr key={copy.id}>
-                <Table.Td>
-                  <Checkbox
-                    aria-label={copy.owner_username ?? String(copy.id)}
-                    checked={selected.includes(copy.id)}
-                    onChange={() => toggle(copy.id)}
-                  />
-                </Table.Td>
-                <Table.Td>
-                  {copy.submitted_date ? (
-                    <Button
-                      color="tertiary"
-                      variant="ghost"
-                      onClick={() =>
-                        navigate(`/subject/copy/view/${scheduled.subject_id}/${copy.id}/`)
-                      }
-                    >
-                      {copy.owner_username}
-                    </Button>
-                  ) : (
-                    // Pas de copie rendue : rien à ouvrir. L'IHM AngularJS affichait un lien
-                    // inerte ; un simple libellé dit mieux qu'il n'y a rien derrière.
-                    <span>{copy.owner_username}</span>
-                  )}
-                </Table.Td>
-                <Table.Td>
-                  {stateKey && (
-                    <Badge
-                      variant={{
-                        type: 'content',
-                        level: copy.is_corrected ? 'success' : 'info',
-                        background: true,
-                      }}
-                      className={copyStateColorClass(copy) ?? undefined}
-                    >
-                      {t(stateKey)}
-                    </Badge>
-                  )}
-                </Table.Td>
-                <Table.Td>{formatDateTime(copy.submitted_date, at)}</Table.Td>
-                <Table.Td>
-                  {copy.is_corrected && copy.final_score !== null && copy.final_score !== undefined
-                    ? `${copy.final_score}/${scheduled.max_score ?? 0}`
-                    : `-/${scheduled.max_score ?? 0}`}
-                </Table.Td>
-              </Table.Tr>
-            );
-          })}
-        </Table.Tbody>
-      </Table>
-
-      {selected.length > 0 && (
-        <ActionBar>
-          <Button color="primary" variant="filled" onClick={() => remind.mutate()}>
-            {t('exercizer.reminder.raise')}
-          </Button>
-          <Button color="danger" variant="outline" onClick={() => setDialog({ kind: 'exclude' })}>
-            {t('exercizer.exclude')}
-          </Button>
-        </ActionBar>
-      )}
-
-      {dialog?.kind === 'exclude' && (
-        <ConfirmModal
-          title={t('exercizer.exclude')}
-          confirmLabel={t('exercizer.exclude')}
-          onClose={() => setDialog(null)}
-          onConfirm={() => exclude.mutate()}
-        >
-          <p>{t('exercizer.exclude.confirm')}</p>
-          <ul>
-            {selected.map((id) => (
-              <li key={id}>{copies.find((copy) => copy.id === id)?.owner_username}</li>
-            ))}
-          </ul>
-        </ConfirmModal>
-      )}
-
-      {dialog?.kind === 'unschedule' && (
-        <ConfirmModal
-          title={t('exercizer.unschedule.title')}
-          confirmLabel={t('exercizer.unschedule')}
-          onClose={() => setDialog(null)}
-          onConfirm={() => unschedule.mutate()}
-        >
-          <p>{t('exercizer.unschedule.confirm')}</p>
-        </ConfirmModal>
+      {recipients && (
+        <RecipientsDialog scheduled={recipients} onClose={() => setRecipients(null)} />
       )}
     </div>
   );
 }
+
 
 export default TeacherCorrections;

@@ -3,8 +3,9 @@ import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
 import { AutomaticCorrection, formatScore } from '../../correction';
-import { GRAIN, sanitizeScore } from '../../grains';
+import { GRAIN, isZoneType, sanitizeScore } from '../../grains';
 import { GrainCopy, GrainScheduled } from '../../types';
+import { ZoneReview } from '../zones/ZoneAnswers';
 import { AnswerReview } from './AnswerReview';
 import { GrainCopyDocuments, GrainCopyHeader, GrainCopyStatement } from './GrainCopyHeader';
 
@@ -19,6 +20,11 @@ export interface GrainCopyReviewProps {
    * et rien n'est enregistré depuis son écran (cf. `ViewCopy`).
    */
   mode: 'student' | 'teacher';
+  /**
+   * Propose le corrigé sur TOUTES les questions, sans rien rendre modifiable : la relecture
+   * d'une archive ou d'un aperçu par l'enseignant.
+   */
+  alwaysShowCorrection?: boolean;
   onChange?: (grainCopy: GrainCopy) => void;
 }
 
@@ -35,6 +41,7 @@ export function GrainCopyReview({
   reference,
   correction,
   mode,
+  alwaysShowCorrection = false,
   onChange,
 }: GrainCopyReviewProps) {
   const { t } = useTranslation(['exercizer', 'common']);
@@ -62,6 +69,7 @@ export function GrainCopyReview({
   const canShowCorrection =
     !!reference &&
     (editable ||
+      alwaysShowCorrection ||
       grainCopy.final_score === null ||
       grainCopy.final_score === undefined ||
       grainCopy.final_score < maxScore);
@@ -182,6 +190,16 @@ export function ExpectedAnswers({
   const { t } = useTranslation(['exercizer', 'common']);
   const data = reference.grain_data.custom_data ?? {};
 
+  // Un grain à zones se corrige EN PLACE : la bonne réponse de chaque zone, là où elle va.
+  if (isZoneType(grainTypeId)) {
+    return (
+      <section className="mt-8">
+        <p className="form-label mb-4">{t('exercizer.grain.correction')}</p>
+        <ZoneReview grainTypeId={grainTypeId} data={data} />
+      </section>
+    );
+  }
+
   const lines: string[] = (() => {
     switch (grainTypeId) {
       case GRAIN.SIMPLE_ANSWER:
@@ -202,7 +220,7 @@ export function ExpectedAnswers({
           .sort((a, b) => (a.order_by ?? 0) - (b.order_by ?? 0))
           .map((answer) => `${answer.order_by ?? ''}. ${answer.text ?? ''}`);
       default:
-        return (data.zones ?? []).map((zone, index) => `${index + 1}. ${zone.answer}`);
+        return [];
     }
   })();
 

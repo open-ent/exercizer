@@ -9,6 +9,7 @@
  * `XSRF-TOKEN`), sinon le filtre d'entcore répond 401 avant d'atteindre le contrôleur.
  */
 
+import { PilotageState } from './pilotage';
 import {
   Folder,
   Grain,
@@ -22,12 +23,16 @@ import {
   Section,
   Subject,
   SubjectCopy,
+  SubjectCopyFile,
   SubjectDocument,
   SubjectLessonLevel,
   SubjectLessonType,
   SubjectScheduled,
   SubjectSequence,
+  SubjectSequenceItem,
+  SubjectSequenceProgress,
   SubjectSequenceScheduled,
+  SubjectSequenceScheduledDetail,
   SubjectTag,
 } from './types';
 
@@ -65,6 +70,21 @@ const sendVoid = (method: string, url: string, body?: unknown) =>
     headers: body === undefined ? xsrfHeader() : mutHeaders(),
     body: body === undefined ? undefined : JSON.stringify(body),
   }).then(ok);
+
+/**
+ * Envoi d'un fichier en `multipart/form-data`. Pas de `Content-Type` : c'est le navigateur qui
+ * le pose, avec la frontière — le fixer à la main rend le corps illisible pour le serveur.
+ * Un 413 est remonté tel quel : l'écran le traduit en « fichier trop volumineux ».
+ */
+const upload = <T>(url: string, file: File) => {
+  const body = new FormData();
+  body.append('file', file);
+  return fetch(url, { ...base, method: 'PUT', headers: xsrfHeader(), body }).then((r) => json<T>(r));
+};
+
+/** `?id=1&id=2` — la forme que le serveur attend pour une liste d'identifiants. */
+const idsQuery = (ids: Array<number | string>) =>
+  ids.length ? `?${ids.map((id) => `id=${encodeURIComponent(id)}`).join('&')}` : '';
 
 // ── Dossiers ──────────────────────────────────────────────────────────────────
 
@@ -108,6 +128,98 @@ export const moveSubjects = (ids: number[], folderId: number | null) =>
 
 export const duplicateSubjects = (ids: number[], folderId: number | null) =>
   sendVoid('POST', '/exercizer/subject/duplicate', { ids, folderId });
+
+/**
+ * Duplique UN sujet par le service d'archivage de l'ENT — c'est lui qui recopie aussi les
+ * fichiers joints, ce que `POST /subject/duplicate` ne fait pas. L'ancienne IHM passait par là
+ * pour le bouton « Dupliquer ».
+ */
+export const duplicateSubjectDeep = (subjectId: number) =>
+  sendVoid('POST', '/archive/duplicate', {
+    application: 'exercizer',
+    resourceId: String(subjectId),
+  });
+
+/** Export d'un sujet interactif au format Moodle XML — une navigation, pas une requête. */
+export const exportMoodleUrl = (subject: Subject) =>
+  `/exercizer/subject/export-moodle/${subject.id}/${(subject.title ?? '').replace(/[^a-zA-Z0-9]/g, '')}`;
+
+/**
+ * Crée un sujet AVEC ses grains — l'import d'un fichier Moodle.
+ * ⚠ Le corps est validé contre `jsonschema/import.json` (`additionalProperties: false`) : le
+ * sujet n'y porte que son titre, sa description, son dossier et son image.
+ */
+export const importSubject = (
+  subject: { title: string; description?: string; folder_id: number | null; picture?: string },
+  grains: Array<{ grain_type_id: number; order_by: number; grain_data: GrainData }>,
+) => send<Subject>('POST', '/exercizer/subject/import', { subject, grains });
+
+/**
+ * Dépose une image dans l'espace documentaire et rend son identifiant. Sert à l'import, dont
+ * les images arrivent encodées dans le fichier.
+ */
+export const uploadWorkspaceImage = async (blob: Blob, name: string): Promise<string> => {
+  const body = new FormData();
+  body.append('blob', blob, name);
+  const thumbnails = [120, 150, 100, 290, 48, 82, 381]
+    .map((size) => `thumbnail=${size}x${size}`)
+    .join('&');
+  const res = await fetch(
+    `/workspace/document?protected=true&application=media-library&${thumbnails}`,
+    { ...base, method: 'POST', headers: xsrfHeader(), body },
+  );
+  return (await json<{ _id: string }>(res))._id;
+};
+
+/**
+ * Configuration publique du module. `libraryHost` est l'adresse de la bibliothèque externe,
+ * absente quand la plateforme n'en a pas — l'onglet « Bibliothèque » disparaît alors.
+ */
+export interface PublicConf {
+  libraryHost?: string;
+  /** La plateforme a renoncé à vérifier l'horloge des postes. */
+  'disable-timezone-check'?: boolean;
+}
+
+export const getPublicConf = async (): Promise<PublicConf> => {
+  try {
+    return (await get<PublicConf>('/exercizer/conf/public')) ?? {};
+  } catch {
+    return {};
+  }
+};
+
+/**
+ * « Création assistée » : un service de la plateforme lit l'image d'un énoncé (un document de
+ * l'espace documentaire) et remplit le sujet de questions. Long — plusieurs minutes parfois — et
+ * mené côté serveur : il aboutit même si l'usager quitte la page.
+ */
+export const generateSubject = (subjectId: number, fileId: string) =>
+  send<unknown>('POST', '/exercizer/subject/generate', { fileId, id: subjectId });
+
+// ── Ressources externes d'un sujet ────────────────────────────────────────────
+
+/** Un document importé depuis une adresse externe, et déposé dans le stockage de l'ENT. */
+export interface ExternalResource {
+  id: number | string;
+  title: string;
+}
+
+export const getExternalResources = (subjectId: number) =>
+  get<ExternalResource[]>(`/exercizer/subject/${subjectId}/external-resources`);
+
+/** Le SERVEUR télécharge l'adresse donnée : le poste de l'enseignant n'y accède pas lui-même. */
+export const importExternalResource = (subjectId: number, url: string, title: string) =>
+  sendVoid('POST', `/exercizer/subject/${subjectId}/external-resource`, { url, title });
+
+export const renameExternalResource = (subjectId: number, id: number | string, title: string) =>
+  sendVoid('PUT', `/exercizer/subject/${subjectId}/external-resource/${id}`, { title });
+
+export const removeExternalResource = (subjectId: number, id: number | string) =>
+  sendVoid('DELETE', `/exercizer/subject/${subjectId}/external-resource/${id}`);
+
+export const externalResourceUrl = (subjectId: number, id: number | string) =>
+  `/exercizer/subject/${subjectId}/external-resource/${id}/download`;
 
 export const listSubjectFiles = (id: number) =>
   get<SubjectDocument[]>(`/exercizer/subject/${id}/files`);
@@ -155,9 +267,47 @@ function parseScheduledAt(list: SubjectScheduled[]): SubjectScheduled[] {
   });
 }
 
-/** Les sujets distribués archivés (hors période courante). */
+/**
+ * Les sujets distribués archivés (hors période courante).
+ * ⚠ `corrected_metadata` arrive lui aussi en chaîne JSON (`ArchivesService`).
+ */
 export const getArchivedSubjectsScheduled = () =>
-  get<SubjectScheduled[]>('/exercizer/archive/subjects-scheduled').then(parseScheduledAt);
+  get<SubjectScheduled[]>('/exercizer/archive/subjects-scheduled')
+    .then(parseScheduledAt)
+    .then((list) => list.map(parseCorrectedMetadata));
+
+function parseCorrectedMetadata<T extends { corrected_metadata?: unknown }>(item: T): T {
+  if (typeof item.corrected_metadata !== 'string') return item;
+  try {
+    return { ...item, corrected_metadata: JSON.parse(item.corrected_metadata) };
+  } catch {
+    return { ...item, corrected_metadata: null };
+  }
+}
+
+/** Export CSV des distributions archivées choisies — une navigation, pas une requête. */
+export const archiveExportCsvUrl = (ids: number[]) =>
+  `/exercizer/archive/subjects-scheduled/export-csv${idsQuery(ids)}`;
+
+/**
+ * Modifie les bornes d'une distribution déjà faite (`SubjectScheduledService#modifySchedule`).
+ * `notify` prévient les destinataires ; l'ancienne IHM ne le coupait que lorsque seule l'option
+ * d'entraînement changeait.
+ */
+export const modifySchedule = (
+  subjectScheduledId: number,
+  body: {
+    beginDate: string;
+    dueDate: string;
+    correctedDate?: string;
+    isTrainingPermitted?: boolean;
+    notify: boolean;
+  },
+) =>
+  sendVoid('POST', `/exercizer/schedule-subject/modify/${subjectScheduledId}`, {
+    ...body,
+    offset: new Date().getTimezoneOffset(),
+  });
 
 export const unscheduleSubject = (id: number) =>
   sendVoid('DELETE', `/exercizer/unschedule-subject/${id}`);
@@ -208,8 +358,11 @@ export const getCopiesAsStudent = () => get<SubjectCopy[]>('/exercizer/subjects-
 export const getCopiesAsTeacher = () =>
   get<SubjectCopy[]>('/exercizer/subjects-copy-by-subjects-scheduled');
 
-export const getArchivedCopies = () =>
-  get<SubjectCopy[]>('/exercizer/archive/subjects-copy-by-subjects-scheduled');
+/** Les copies des distributions archivées données (`?id=…` répété). */
+export const getArchivedCopies = (subjectScheduledIds: number[]) =>
+  get<SubjectCopy[]>(
+    `/exercizer/archive/subjects-copy-by-subjects-scheduled${idsQuery(subjectScheduledIds)}`,
+  ).then((list) => (list ?? []).map(parseCorrectedMetadata));
 
 /** Les copies d'un sujet distribué donné (rechargement ciblé après une correction). */
 export const getCopiesBySubjectScheduled = (subjectScheduledId: number) =>
@@ -222,8 +375,24 @@ export const openCopy = (subjectScheduledId: number) =>
 export const updateCopy = (copy: SubjectCopy) =>
   send<SubjectCopy>('PUT', '/exercizer/subject-copy/correct', copy);
 
+/** Rend une copie de sujet « simple » : seuls l'identifiant et le décalage horaire partent. */
 export const submitSimpleCopy = (id: number) =>
-  send<SubjectCopy>('PUT', '/exercizer/subject-copy/submit', { id });
+  send<SubjectCopy>('PUT', '/exercizer/subject-copy/submit', {
+    id,
+    offset: new Date().getTimezoneOffset(),
+  });
+
+/**
+ * La copie de l'usager courant pour une distribution, avec cette distribution — ce dont le
+ * « linker » a besoin pour savoir où l'emmener.
+ */
+export const getCopyByScheduled = (subjectScheduledId: number) =>
+  get<{ subject_scheduled: SubjectScheduled; subject_copy: SubjectCopy }>(
+    `/exercizer/subject-copy-by-subject-schedule/${subjectScheduledId}`,
+  );
+
+/** L'heure du serveur, pour vérifier que l'horloge du poste n'est pas déréglée. */
+export const getServerNow = () => get<{ date: string }>('/exercizer/now');
 
 /** Relance par message : les copies visées, avec objet et corps libres. */
 export const remindCopies = (copyIds: number[], subject: string, body: string) =>
@@ -237,6 +406,72 @@ export const remindCopiesAutomatically = (copyIds: number[], subjectScheduledId:
 /** Retire des élèves de la distribution (leur copie n'est plus attendue). */
 export const excludeCopies = (copyIds: number[]) =>
   sendVoid('POST', '/exercizer/subject-copy/action/exclude', { ids: copyIds });
+
+/**
+ * La copie telle qu'on l'envoie : sans ses listes de fichiers, que le serveur ne sait pas relire
+ * (`cleanBeforeSave` de `SubjectCopyService`).
+ */
+function cleanCopyForSend(copy: SubjectCopy): Record<string, unknown> {
+  const clean: Record<string, unknown> = { ...copy };
+  delete clean.corrected_files;
+  delete clean.homework_files;
+  return clean;
+}
+
+/** Enregistre l'avancement d'une copie sans la rendre (`SubjectCopyService#update`). */
+export const reportCopy = (copy: SubjectCopy) =>
+  send<SubjectCopy>('PUT', '/exercizer/subject-copy/report', cleanCopyForSend(copy));
+
+/** L'enseignant considère une copie comme rendue, à la place de l'élève. */
+export const submitCopyAsTeacher = (copy: SubjectCopy) =>
+  send<SubjectCopy>('PUT', '/exercizer/subject-copy/submit', {
+    ...cleanCopyForSend(copy),
+    offset: new Date().getTimezoneOffset(),
+  });
+
+/** Repart d'une copie vierge pour un nouvel essai d'entraînement (`SubjectCopyService#retry`). */
+export const recreateGrainCopies = (subjectScheduledId: number, subjectCopyId: number) =>
+  sendVoid(
+    'POST',
+    `/exercizer/subject-scheduled/${subjectScheduledId}/subject-copy/${subjectCopyId}/recreate-grains`,
+    {},
+  );
+
+// ── Fichiers d'un sujet « simple » : rendus de l'élève, corrigés de l'enseignant ─────────────
+
+/** L'élève dépose un fichier sur sa copie. */
+export const addHomeworkFile = (copyId: number, file: File) =>
+  upload<SubjectCopyFile>(`/exercizer/subject-copy/${copyId}/homework`, file);
+
+export const removeHomeworkFile = (copyId: number, fileId: string) =>
+  sendVoid('DELETE', `/exercizer/subject-copy/${copyId}/homework/${fileId}`);
+
+/** L'enseignant dépose un corrigé INDIVIDUEL sur une copie. */
+export const addCopyCorrectedFile = (copyId: number, file: File) =>
+  upload<SubjectCopyFile>(`/exercizer/subject-copy/${copyId}/corrected`, file);
+
+export const removeCopyCorrectedFile = (copyId: number, fileId: string) =>
+  sendVoid('DELETE', `/exercizer/subject-copy/${copyId}/corrected/${fileId}`);
+
+/** L'enseignant dépose un corrigé pour TOUTE la distribution (rattaché au sujet). */
+export const uploadSubjectFile = (subjectId: number, file: File) =>
+  upload<SubjectDocument>(`/exercizer/subject/${subjectId}/file`, file);
+
+/** Rendu d'un élève, vu par l'enseignant. */
+export const homeworkFileUrl = (copyId: number, fileId: string) =>
+  `/exercizer/subject-copy/${copyId}/homework/${fileId}`;
+
+/** Les rendus de plusieurs copies, en une archive. */
+export const simpleCopiesZipUrl = (copyIds: number[]) =>
+  `/exercizer/subject-copy/simple/downloads${idsQuery(copyIds)}`;
+
+/** Corrigé individuel d'une copie. */
+export const copyCorrectedDocUrl = (copyId: number, fileId: string) =>
+  `/exercizer/subject-copy/${copyId}/corrected/${fileId}`;
+
+/** Corrigé commun d'une distribution. */
+export const scheduledFileUrl = (subjectScheduledId: number, docId: string) =>
+  `/exercizer/subject-scheduled/${subjectScheduledId}/file/${docId}`;
 
 // ── Grains ────────────────────────────────────────────────────────────────────
 
@@ -409,6 +644,24 @@ export const getGrainCopies = async (copy: SubjectCopy): Promise<GrainCopy[]> =>
 };
 
 /**
+ * Les copies de grains de PLUSIEURS copies, en un appel — pour les statistiques d'une
+ * distribution (`GrainCopyService#getListBySubjectCopies`). Rendues groupées par copie.
+ */
+export const getGrainCopiesByCopies = async (
+  copyIds: number[],
+): Promise<Map<number, GrainCopy[]>> => {
+  const byCopy = new Map<number, GrainCopy[]>(copyIds.map((id) => [id, []]));
+  if (copyIds.length === 0) return byCopy;
+  const list = await send<GrainCopy[]>('POST', '/exercizer/grains-copy-by-subjects', {
+    ids: copyIds,
+  });
+  for (const grainCopy of parseGrainCopies(list)) {
+    byCopy.get(grainCopy.subject_copy_id)?.push(grainCopy);
+  }
+  return byCopy;
+};
+
+/**
  * `grain_copy_data` arrive en **chaîne JSON**, comme `grain_data`.
  *
  * ⚠ Pour un grain de type 3 (énoncé), le serveur range le texte dans `custom_data` et non dans
@@ -548,8 +801,116 @@ export const getLessonLevels = () => get<SubjectLessonLevel[]>('/exercizer/subje
 
 export const getSubjectSequences = () => get<SubjectSequence[]>('/exercizer/subject-sequences');
 
+export const createSubjectSequence = (sequence: { title: string; description?: string }) =>
+  send<SubjectSequence>('POST', '/exercizer/subject-sequence', sequence);
+
+/** Le serveur ne relit que l'identifiant, le titre et la description (`cleanBeforeSave`). */
+export const updateSubjectSequence = (sequence: SubjectSequence) =>
+  send<{ modified?: string }>('PUT', `/exercizer/subject-sequence/${sequence.id}`, {
+    id: sequence.id,
+    owner: sequence.owner,
+    title: sequence.title,
+    description: sequence.description,
+  });
+
+/** Mise à la corbeille, comme pour un sujet. */
+export const removeSubjectSequences = (ids: number[]) =>
+  sendVoid('PUT', '/exercizer/subject-sequence/mark/delete', { ids });
+
+export const getSubjectSequenceItems = (sequenceId: number) =>
+  get<SubjectSequenceItem[]>(`/exercizer/subject-sequence/${sequenceId}/items`);
+
+export const addSubjectSequenceItem = (sequenceId: number, subjectId: number, orderBy: number) =>
+  send<{ id: number }>('POST', `/exercizer/subject-sequence/${sequenceId}/item`, {
+    subjectId,
+    orderBy,
+  });
+
+export const updateSubjectSequenceItem = (sequenceId: number, item: SubjectSequenceItem) =>
+  sendVoid('PUT', `/exercizer/subject-sequence/${sequenceId}/item/${item.id}`, {
+    subjectId: item.subject_id,
+    orderBy: item.order_by,
+  });
+
+/** L'identifiant de chaque item passe en paramètre de requête répété (`?itemId=1&itemId=2`). */
+export const removeSubjectSequenceItems = (sequenceId: number, itemIds: number[]) =>
+  sendVoid(
+    'DELETE',
+    `/exercizer/subject-sequence/${sequenceId}/items?${itemIds.map((id) => `itemId=${id}`).join('&')}`,
+  );
+
+/** Les distributions passées d'un parcours — seul chemin vers leur écran de suivi. */
+export const getSubjectSequenceSchedules = (sequenceId: number) =>
+  get<SubjectSequenceScheduled[]>(`/exercizer/subject-sequence/${sequenceId}/scheduled`);
+
+/** Les destinataires possibles d'un parcours — même forme que pour un sujet. */
+export const getSequenceShareTargets = (sequenceId: number, search?: string) =>
+  get<ShareTargets>(
+    `/exercizer/subject-sequence/share/json/${sequenceId}${search ? `?search=${encodeURIComponent(search)}` : ''}`,
+  );
+
+/**
+ * Distribue un parcours : chacun de ses sujets devient une distribution ordinaire, rattachée au
+ * parcours. Pas de mode entraînement pour un parcours.
+ */
+export const scheduleSubjectSequence = (
+  sequenceId: number,
+  body: {
+    beginDate: string;
+    dueDate: string;
+    estimatedDuration?: string;
+    isOneShotSubmit: boolean;
+    randomDisplay: boolean;
+    scheduledAt: ScheduledAt;
+  },
+) =>
+  send<{ id: number }>('POST', `/exercizer/schedule-subject-sequence/${sequenceId}`, {
+    ...body,
+    isTrainingMode: false,
+    isTrainingPermitted: false,
+  });
+
+export const unscheduleSubjectSequence = (id: number) =>
+  sendVoid('DELETE', `/exercizer/unschedule-subject-sequence/${id}`);
+
 export const getSubjectSequenceScheduled = (id: number) =>
-  get<SubjectSequenceScheduled>(`/exercizer/subject-sequence-scheduled/${id}`);
+  get<SubjectSequenceScheduledDetail>(`/exercizer/subject-sequence-scheduled/${id}`);
+
+export const getSubjectSequenceProgress = (id: number) =>
+  get<SubjectSequenceProgress>(`/exercizer/subject-sequence-scheduled/${id}/progress`);
+
+export const sequenceExportCsvUrl = (id: number) =>
+  `/exercizer/subject-sequence-scheduled/${id}/export-csv`;
+
+// ── Pilotage en direct d'une séance ───────────────────────────────────────────
+
+/** L'état consolidé de la séance — réservé au propriétaire de la distribution. */
+export const getPilotageState = (subjectScheduledId: number) =>
+  get<PilotageState>(`/exercizer/subject-scheduled/${subjectScheduledId}/pilotage`);
+
+export const pausePilotage = (subjectScheduledId: number) =>
+  sendVoid('PUT', `/exercizer/subject-scheduled/${subjectScheduledId}/pilotage/pause`, {});
+
+export const resumePilotage = (subjectScheduledId: number) =>
+  sendVoid('PUT', `/exercizer/subject-scheduled/${subjectScheduledId}/pilotage/resume`, {});
+
+/** Sans `studentId`, la prolongation vaut pour toute la classe. */
+export const extendPilotageTime = (subjectScheduledId: number, minutes: number, studentId?: string) =>
+  sendVoid('PUT', `/exercizer/subject-scheduled/${subjectScheduledId}/pilotage/extend-time`, {
+    minutes,
+    studentId: studentId ?? null,
+  });
+
+export const forcePilotageSubmit = (subjectScheduledId: number, studentId: string) =>
+  sendVoid('PUT', `/exercizer/subject-scheduled/${subjectScheduledId}/pilotage/force-submit`, {
+    studentId,
+  });
+
+export const sendPilotageMessage = (subjectScheduledId: number, message: string, studentId?: string) =>
+  sendVoid('POST', `/exercizer/subject-scheduled/${subjectScheduledId}/pilotage/message`, {
+    message,
+    studentId: studentId ?? null,
+  });
 
 // ── Téléchargements (navigations, pas des requêtes) ───────────────────────────
 

@@ -1,5 +1,6 @@
 import {
   ActionBar,
+  Alert,
   Button,
   Card,
   Checkbox,
@@ -8,6 +9,7 @@ import {
   SegmentedControl,
   Table,
   useEdificeClient,
+  useHasWorkflow,
 } from '@open-ent/react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useMemo, useState } from 'react';
@@ -17,9 +19,10 @@ import { useNavigate } from 'react-router-dom';
 import illuExercizer from '@images/emptyscreen/illu-exercizer.svg';
 import {
   createFolder,
-  duplicateSubjects,
+  duplicateSubjectDeep,
   getFolders,
   getSubjects,
+  moveFolders,
   moveSubjects,
   removeFolders,
   removeSubjects,
@@ -28,7 +31,16 @@ import {
 import { ConfirmModal } from '../components/ConfirmModal';
 import { FolderDialog } from '../components/FolderDialog';
 import { MoveDialog } from '../components/MoveDialog';
+import {
+  ExportMoodleDialog,
+  ImportSubjectDialog,
+  NewSubjectDialog,
+  PrintDialog,
+  ShareSubjectDialog,
+  SubjectPropertiesDialog,
+} from '../components/SubjectDialogs';
 import { FolderTree } from '../features/FolderTree';
+import { atLeast, lowestRight, subjectRight, WORKFLOW } from '../rights';
 import { ScheduleDialog } from './ScheduleDialog';
 import { Folder, Subject } from '../types';
 import { formatDate } from '../utils';
@@ -36,14 +48,29 @@ import { formatDate } from '../utils';
 /** Les deux rangements de l'ancienne IHM : ses propres sujets, et ceux qu'on lui a partagés. */
 type SubjectScope = 'mine' | 'shared';
 
-/** Vignettes ou tableau — préférence d'affichage, conservée le temps de la session. */
+/** Vignettes ou tableau — la préférence est mémorisée, sous la clé de l'ancienne IHM. */
 type DisplayMode = 'domino' | 'array';
+const DISPLAY_KEY = 'exercizer.teacher.subject.displayList';
+
+function storedDisplay(): DisplayMode {
+  try {
+    return window.localStorage.getItem(DISPLAY_KEY) === 'domino' ? 'domino' : 'array';
+  } catch {
+    return 'array';
+  }
+}
 
 type DialogState =
   | { kind: 'folder'; folder?: Folder }
   | { kind: 'move' }
   | { kind: 'remove' }
   | { kind: 'schedule'; subject: Subject }
+  | { kind: 'newSubject' }
+  | { kind: 'import' }
+  | { kind: 'properties'; subject: Subject }
+  | { kind: 'share'; subject: Subject }
+  | { kind: 'print'; subject: Subject }
+  | { kind: 'export'; subject: Subject }
   | null;
 
 /**
@@ -56,6 +83,10 @@ type DialogState =
  *    et reste la seule voie au clavier (l'ancienne IHM n'en offrait pas) ;
  *  - l'auto-complétion de recherche est remplacée par un filtre en place sur la liste, qui
  *    cherche dans TOUS les dossiers et non seulement le dossier courant.
+ *
+ * Les actions proposées sur une sélection dépendent du droit le plus FAIBLE qu'on y détient
+ * (`rights.ts`) : un sujet partagé en lecture ne se distribue pas, un sujet partagé en
+ * contribution se distribue mais ne se supprime pas — exactement les règles du « toaster ».
  */
 export function TeacherSubjects() {
   const { t } = useTranslation(['exercizer', 'common']);
@@ -65,7 +96,20 @@ export function TeacherSubjects() {
 
   const [scope, setScope] = useState<SubjectScope>('mine');
   const [currentFolderId, setCurrentFolderId] = useState<number | null>(null);
-  const [display, setDisplay] = useState<DisplayMode>('domino');
+  const [display, setDisplayState] = useState<DisplayMode>(storedDisplay);
+  const [notice, setNotice] = useState<{ type: 'success' | 'danger' | 'info'; text: string } | null>(
+    null,
+  );
+  const canImport = useHasWorkflow(WORKFLOW.import) as boolean | undefined;
+
+  const setDisplay = (mode: DisplayMode) => {
+    setDisplayState(mode);
+    try {
+      window.localStorage.setItem(DISPLAY_KEY, mode);
+    } catch {
+      // Stockage indisponible : la préférence vaut pour la session.
+    }
+  };
   const [search, setSearch] = useState('');
   const [selectedSubjects, setSelectedSubjects] = useState<number[]>([]);
   const [selectedFolders, setSelectedFolders] = useState<number[]>([]);
@@ -129,14 +173,25 @@ export function TeacherSubjects() {
   });
 
   const move = useMutation({
-    mutationFn: (targetFolderId: number | null) =>
-      moveSubjects(selectedSubjects, targetFolderId),
+    mutationFn: async (targetFolderId: number | null) => {
+      if (selectedSubjects.length) await moveSubjects(selectedSubjects, targetFolderId);
+      if (selectedFolders.length) await moveFolders(selectedFolders, targetFolderId);
+    },
     onSuccess: refresh,
   });
 
+  /**
+   * « Dupliquer » passe par le service d'archivage de l'ENT, qui recopie aussi les fichiers
+   * joints. La copie est faite en tâche de fond : on l'annonce, puis on recharge la liste.
+   */
   const duplicate = useMutation({
-    mutationFn: () => duplicateSubjects(selectedSubjects, currentFolderId),
-    onSuccess: refresh,
+    mutationFn: (subjectId: number) => duplicateSubjectDeep(subjectId),
+    onMutate: () => setNotice({ type: 'info', text: t('duplicate.start') }),
+    onSuccess: () => {
+      setNotice({ type: 'success', text: t('duplicate.done') });
+      refresh();
+    },
+    onError: () => setNotice({ type: 'danger', text: t('duplicate.error') }),
   });
 
   /**
@@ -165,12 +220,35 @@ export function TeacherSubjects() {
       current.includes(id) ? current.filter((x) => x !== id) : [...current, id],
     );
 
-  const openSubject = (subject: Subject) =>
-    navigate(
-      subject.type === 'simple'
-        ? `/subject/edit/simple/${subject.id}/`
-        : `/subject/edit/${subject.id}/`,
-    );
+  const rightOn = (subject: Subject) => subjectRight(subject, user);
+
+  /**
+   * Ouvrir un sujet mène à son éditeur — sauf si on ne l'a qu'en LECTURE : on n'en voit alors
+   * que l'aperçu, comme un élève le verrait.
+   */
+  const openSubject = (subject: Subject) => {
+    if (subject.type === 'simple') return navigate(`/subject/edit/simple/${subject.id}/`);
+    if (atLeast(rightOn(subject), 'contrib')) return navigate(`/subject/edit/${subject.id}/`);
+    return navigate(`/subject/copy/preview/perform/${subject.id}/`);
+  };
+
+  const chosenSubjects = subjects.filter((subject) => selectedSubjects.includes(subject.id));
+  const onlySubject = onlyOneSubject ? chosenSubjects[0] : undefined;
+  const right = lowestRight(chosenSubjects.map(rightOn));
+  const noSubject = selectedSubjects.length === 0;
+
+  const selectable = [
+    ...visibleFolders.map((folder) => `f${folder.id}`),
+    ...visibleSubjects.map((subject) => `s${subject.id}`),
+  ];
+  const allSelected =
+    selectable.length > 0 &&
+    visibleFolders.every((folder) => selectedFolders.includes(folder.id)) &&
+    visibleSubjects.every((subject) => selectedSubjects.includes(subject.id));
+  const toggleAll = () => {
+    setSelectedFolders(allSelected ? [] : visibleFolders.map((folder) => folder.id));
+    setSelectedSubjects(allSelected ? [] : visibleSubjects.map((subject) => subject.id));
+  };
 
   const empty = visibleFolders.length === 0 && visibleSubjects.length === 0;
 
@@ -212,11 +290,23 @@ export function TeacherSubjects() {
       <section className="g-col-12 g-col-lg-9">
         <div className="d-flex flex-wrap align-items-center justify-content-between gap-16 mb-16">
           <div className="d-flex align-items-center gap-8 flex-wrap">
-            <Button color="primary" variant="filled" onClick={() => navigate('/subject/create/simple/')}>
+            <Button
+              color="primary"
+              variant="filled"
+              onClick={() => setDialog({ kind: 'newSubject' })}
+            >
               {t('exercizer.new.subject')}
             </Button>
+            {canImport && (
+              <Button color="tertiary" variant="ghost" onClick={() => setDialog({ kind: 'import' })}>
+                {t('exercizer.import')}
+              </Button>
+            )}
             <Button color="tertiary" variant="ghost" onClick={() => navigate('/dashboard/teacher/archive')}>
               {t('exercizer.archive.open')}
+            </Button>
+            <Button color="tertiary" variant="ghost" onClick={() => navigate('/subject-sequence/list')}>
+              {t('exercizer.sequence.dashboard.title')}
             </Button>
           </div>
           <div className="d-flex align-items-center gap-16">
@@ -238,6 +328,27 @@ export function TeacherSubjects() {
             />
           </div>
         </div>
+
+        {notice && (
+          <Alert
+            type={notice.type}
+            isDismissible
+            onClose={() => setNotice(null)}
+            className="mb-16"
+          >
+            {notice.text}
+          </Alert>
+        )}
+
+        {!empty && (
+          <div className="mb-8">
+            <Checkbox
+              label={t('exercizer.select.all')}
+              checked={allSelected}
+              onChange={toggleAll}
+            />
+          </div>
+        )}
 
         {empty ? (
           <EmptyScreen imageSrc={illuExercizer} text={t('exercizer.empty.subjects')} size={200} />
@@ -359,13 +470,16 @@ export function TeacherSubjects() {
           actions qui ne valent que pour un seul élément ne s'affichent qu'alors. */}
       {selectionCount > 0 && (
         <ActionBar>
-          {onlyOneSubject && (
+          {selectionCount === 1 && (
             <Button
               color="primary"
               variant="filled"
               onClick={() => {
-                const subject = subjects.find((s) => s.id === selectedSubjects[0]);
-                if (subject) openSubject(subject);
+                if (onlySubject) openSubject(onlySubject);
+                else {
+                  setCurrentFolderId(selectedFolders[0]);
+                  setSelectedFolders([]);
+                }
               }}
             >
               {t('exercizer.instructer.toaster.open')}
@@ -374,7 +488,7 @@ export function TeacherSubjects() {
           {onlyOneFolder && (
             <Button
               color="primary"
-              variant="filled"
+              variant="outline"
               onClick={() =>
                 setDialog({
                   kind: 'folder',
@@ -385,32 +499,133 @@ export function TeacherSubjects() {
               {t('exercizer.instructer.toaster.property')}
             </Button>
           )}
-          {onlyOneSubject && (
+          {/* Les propriétés d'un sujet simple se règlent dans son éditeur, pas ici. */}
+          {onlySubject && atLeast(right, 'manager') && onlySubject.type !== 'simple' && (
+            <Button
+              color="primary"
+              variant="outline"
+              onClick={() => setDialog({ kind: 'properties', subject: onlySubject })}
+            >
+              {t('exercizer.instructer.toaster.property')}
+            </Button>
+          )}
+          {onlySubject && atLeast(right, 'manager') && (
+            <Button
+              color="primary"
+              variant="outline"
+              isLoading={duplicate.isPending}
+              onClick={() => duplicate.mutate(onlySubject.id)}
+            >
+              {t('duplicate')}
+            </Button>
+          )}
+          {onlySubject && atLeast(right, 'manager') && (
+            <Button
+              color="primary"
+              variant="outline"
+              onClick={() => setDialog({ kind: 'share', subject: onlySubject })}
+            >
+              {t('exercizer.instructer.toaster.share')}
+            </Button>
+          )}
+          {onlySubject && atLeast(right, 'contrib') && (
             <Button
               color="primary"
               variant="filled"
-              onClick={() => {
-                const subject = subjects.find((s) => s.id === selectedSubjects[0]);
-                if (subject) setDialog({ kind: 'schedule', subject });
-              }}
+              onClick={() => setDialog({ kind: 'schedule', subject: onlySubject })}
             >
               {t('exercizer.instructer.toaster.schedule')}
             </Button>
           )}
-          {selectedSubjects.length > 0 && selectedFolders.length === 0 && (
-            <>
-              <Button color="primary" variant="outline" onClick={() => duplicate.mutate()}>
-                {t('exercizer.duplicate')}
-              </Button>
-              <Button color="primary" variant="outline" onClick={() => setDialog({ kind: 'move' })}>
-                {t('exercizer.move')}
-              </Button>
-            </>
+          {/* Seul le propriétaire range un sujet : l'arborescence de dossiers est la sienne. */}
+          {(noSubject || right === 'owner') && (
+            <Button color="primary" variant="outline" onClick={() => setDialog({ kind: 'move' })}>
+              {t('exercizer.instructer.toaster.move')}
+            </Button>
           )}
-          <Button color="danger" variant="outline" onClick={() => setDialog({ kind: 'remove' })}>
-            {t('exercizer.remove')}
-          </Button>
+          {onlySubject && atLeast(right, 'manager') && onlySubject.type !== 'simple' && (
+            <Button
+              color="primary"
+              variant="outline"
+              onClick={() => setDialog({ kind: 'export', subject: onlySubject })}
+            >
+              {t('exercizer.instructer.toaster.export')}
+            </Button>
+          )}
+          {onlySubject && (
+            <Button
+              color="primary"
+              variant="outline"
+              onClick={() => setDialog({ kind: 'print', subject: onlySubject })}
+            >
+              {t('exercizer.instructer.toaster.print')}
+            </Button>
+          )}
+          {(noSubject || atLeast(right, 'manager')) && (
+            <Button color="danger" variant="outline" onClick={() => setDialog({ kind: 'remove' })}>
+              {t('exercizer.instructer.toaster.delete')}
+            </Button>
+          )}
         </ActionBar>
+      )}
+
+      {dialog?.kind === 'newSubject' && (
+        <NewSubjectDialog
+          folderId={currentFolderId}
+          onClose={() => setDialog(null)}
+          onGenerate={() => navigate('/subject/generate')}
+          onCreated={(subject) => {
+            refresh();
+            navigate(`/subject/edit/${subject.id}/`);
+          }}
+        />
+      )}
+
+      {dialog?.kind === 'import' && (
+        <ImportSubjectDialog
+          folderId={currentFolderId}
+          onClose={() => setDialog(null)}
+          onImported={() =>
+            void queryClient.invalidateQueries({ queryKey: ['exercizer', 'subjects'] })
+          }
+          onOpen={(subject) => navigate(`/subject/edit/${subject.id}/`)}
+        />
+      )}
+
+      {dialog?.kind === 'properties' && (
+        <SubjectPropertiesDialog
+          subject={dialog.subject}
+          onClose={() => setDialog(null)}
+          onSaved={refresh}
+        />
+      )}
+
+      {dialog?.kind === 'share' && (
+        <ShareSubjectDialog
+          subject={dialog.subject}
+          onClose={() => setDialog(null)}
+          onShared={refresh}
+        />
+      )}
+
+      {dialog?.kind === 'print' && (
+        <PrintDialog
+          subject={dialog.subject}
+          onClose={() => {
+            setDialog(null);
+            setSelectedSubjects([]);
+          }}
+        />
+      )}
+
+      {dialog?.kind === 'export' && (
+        <ExportMoodleDialog
+          subject={dialog.subject}
+          onClose={() => {
+            setDialog(null);
+            setSelectedSubjects([]);
+          }}
+        />
       )}
 
       {dialog?.kind === 'folder' && (

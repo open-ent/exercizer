@@ -56,6 +56,17 @@ export interface Subject {
   is_deleted?: boolean;
   type?: SubjectType;
   files?: SubjectDocument[];
+  /**
+   * Les partages du sujet (modèle entcore) : une entrée par personne ou par groupe, qui porte en
+   * clés les actions accordées — cf. `rights.ts`. Absent ou vide : le sujet n'est pas partagé.
+   */
+  shared?: SharedEntry[];
+}
+
+export interface SharedEntry {
+  userId?: string;
+  groupId?: string;
+  [action: string]: unknown;
 }
 
 /**
@@ -121,6 +132,13 @@ export interface SubjectScheduled {
   sequence_order_by?: number;
   /** Sections (sql/039) : une question par page (défaut) ou une section par page. */
   display_mode?: DisplayMode;
+  /** Les destinataires sont prévenus d'un changement de dates. */
+  is_notify?: boolean;
+  /** Archives : décomptes calculés par le serveur, et corrigé historique (un seul fichier). */
+  corrected_copy?: number;
+  total_copy?: number;
+  corrected_file_id?: string | null;
+  corrected_metadata?: { filename?: string } | null;
 }
 
 /** Affichage pour l'élève pendant la passation. */
@@ -128,10 +146,15 @@ export type DisplayMode = 'grain' | 'section';
 
 /** Fichier joint à une copie (rendu de l'élève, ou corrigé déposé par l'enseignant). */
 export interface SubjectCopyFile {
-  id: string;
-  name?: string;
-  title?: string;
-  created?: string;
+  /** Identifiant du fichier physique dans le stockage — c'est lui que les routes attendent. */
+  file_id: string;
+  file_type?: 'homework' | 'corrected';
+  metadata?: {
+    name?: string;
+    filename?: string;
+    size?: number;
+    'content-type'?: string;
+  };
 }
 
 /** La copie d'un élève pour un sujet distribué. */
@@ -162,6 +185,9 @@ export interface SubjectCopy {
   is_forced_submit?: boolean;
   /** Date de rendu recopiée par le serveur depuis le sujet distribué (routes élève). */
   dueDate?: string;
+  /** Archives : fichiers historiques d'une copie de sujet « simple » (un rendu, un corrigé). */
+  homework_metadata?: { filename?: string } | null;
+  corrected_metadata?: { filename?: string } | null;
 }
 
 /** Parcours : une suite ordonnée de sujets distribuée en un bloc. */
@@ -186,6 +212,48 @@ export interface SubjectSequenceScheduled {
   due_date?: string;
   created?: string;
   scheduled_at?: ScheduledAt;
+}
+
+/**
+ * Un sujet d'un parcours, à son rang. Le titre et le barème viennent d'une jointure serveur à la
+ * lecture ; l'écriture n'attend que `subjectId` et `orderBy`.
+ */
+export interface SubjectSequenceItem {
+  id: number;
+  subject_sequence_id: number;
+  subject_id: number;
+  order_by: number;
+  subject_title?: string;
+  subject_description?: string;
+  subject_max_score?: number;
+}
+
+/** Un parcours distribué, avec ses sujets distribués (`GET /subject-sequence-scheduled/:id`). */
+export interface SubjectSequenceScheduledDetail {
+  header: SubjectSequenceScheduled;
+  children: Array<{
+    id: number;
+    subjectId: number;
+    title: string;
+    sequenceOrderBy: number;
+    beginDate?: string;
+    dueDate?: string;
+    isOver?: boolean;
+  }>;
+}
+
+/** L'avancement de la classe sur un parcours distribué — réservé à son propriétaire. */
+export interface SubjectSequenceProgress {
+  totalItems: number;
+  students: Array<{
+    studentId: string;
+    studentName: string;
+    submittedItems: number;
+    correctedItems: number;
+    averageScore: number | null;
+    totalItems: number;
+    completionRate: number;
+  }>;
 }
 
 /** Étiquette libre posée sur un sujet (filtre de la bibliothèque). */
@@ -400,11 +468,18 @@ export interface GrainCustomCopyData {
   no_error_allowed?: boolean;
   multipleAnswers?: boolean;
   show_left_column?: boolean;
-  /** Types 10, 11, 12. */
+  /**
+   * Types 10, 11, 12 : la copie reprend TOUT le grain — texte, image de fond, propositions —
+   * avec les réponses des zones effacées (cf. `zones.ts#zoneCopyData`).
+   */
   zones?: GrainZone[];
   /** Type 13 (SCORM) : le paquet déposé, recopié du grain distribué pour que l'élève le joue. */
   packageId?: number;
   scormVersion?: string;
+  options?: string[];
+  answersType?: string;
+  htmlContent?: string;
+  _guideImage?: string;
   /** Type 3 (énoncé) : le serveur le range ici. */
   statement?: string;
 }

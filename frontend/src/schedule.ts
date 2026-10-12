@@ -9,6 +9,7 @@
  */
 
 import { GRAIN, isQuestion } from './grains';
+import { zoneCopyData } from './zones';
 import {
   DisplayMode,
   Grain,
@@ -239,8 +240,8 @@ export function initialCopyData(grain: Grain, random: () => number = Math.random
     case GRAIN.TEXT_TO_FILL:
     case GRAIN.AREA_SELECT:
     case GRAIN.AREA_SELECT_IMAGE:
-      // Les zones sont recopiées, vidées de leur réponse.
-      return { zones: (data.zones ?? []).map((zone) => ({ ...zone, answer: '' })) };
+      // Tout le grain est recopié — texte, image, propositions —, réponses des zones effacées.
+      return zoneCopyData(data);
 
     default:
       return {};

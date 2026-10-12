@@ -165,7 +165,7 @@ export function ViewCopy() {
 }
 
 /** Le résumé de la copie : scores et commentaire général. */
-function CopySummary({
+export function CopySummary({
   copy,
   scheduled,
   grainCopies,

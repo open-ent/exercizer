@@ -19,6 +19,7 @@ import {
 import { CopyCard } from '../features/CopyCard';
 import { DateRangeFilter, DateRange } from '../features/DateRangeFilter';
 import { SubjectCopy, SubjectScheduled } from '../types';
+import { SubjectSequenceBanner } from './SubjectSequenceScheduled';
 
 /** Les trois onglets, dans l'ordre de l'IHM AngularJS. */
 const TABS = ['todo', 'finished', 'training'] as const;
@@ -157,7 +158,12 @@ export function StudentDashboard() {
     content: loading ? null : panels[id],
   }));
 
-  return <Tabs items={items} defaultId={initialTab} />;
+  return (
+    <>
+      <SubjectSequenceBanner scheduled={scheduledQuery.data ?? []} copies={copiesQuery.data ?? []} />
+      <Tabs items={items} defaultId={initialTab} />
+    </>
+  );
 }
 
 interface TabProps {

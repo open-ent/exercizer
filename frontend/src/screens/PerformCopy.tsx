@@ -23,7 +23,8 @@ import {
   GrainCopyHeader,
   GrainCopyStatement,
 } from '../features/copies/GrainCopyHeader';
-import { copyQuestionNumber, GRAIN, isEditableHere, isQuestion } from '../grains';
+import { PilotageBanner, usePilotage } from '../features/PilotageBanner';
+import { copyQuestionNumber, GRAIN, isQuestion } from '../grains';
 import { useDebouncedSave } from '../hooks/useDebouncedSave';
 import { groupCopiesBySection, sectionProgress } from '../sections';
 import { GrainCopy, GrainCustomCopyData, ScheduledSection, SubjectCopy } from '../types';
@@ -68,6 +69,9 @@ export function PerformCopy() {
   const scheduled = (scheduledQuery.data ?? []).find(
     (item) => item.id === copy?.subject_scheduled_id,
   );
+
+  // Pilotage en direct : pause, prolongation, remise d'office et messages de l'enseignant.
+  const pilotage = usePilotage(scheduled, copy);
 
   const grainsQuery = useQuery({
     queryKey: ['exercizer', 'grain-copies', subjectCopyId],
@@ -141,6 +145,9 @@ export function PerformCopy() {
   };
 
   const onAnswerChange = (grainCopy: GrainCopy, next: GrainCustomCopyData) => {
+    // Séance en pause ou copie remise d'office : on n'envoie même pas la requête, le serveur la
+    // refuserait.
+    if (pilotage.readOnly) return;
     const updated: GrainCopy = {
       ...grainCopy,
       grain_copy_data: { ...grainCopy.grain_copy_data, custom_copy_data: next },
@@ -151,6 +158,7 @@ export function PerformCopy() {
 
   const submit = useMutation({
     mutationFn: async () => {
+      if (pilotage.readOnly) throw new Error('pilotage');
       await flush();
       // Dernière vérification : l'enseignant a pu ouvrir la correction pendant la passation.
       const stillOpen = await canStillSubmit(subjectCopyId);
@@ -169,9 +177,16 @@ export function PerformCopy() {
     },
     onError: (err) => {
       setConfirming(false);
-      setError(err instanceof Error && err.message === 'corrected'
-        ? t('exercizer.check.corrected')
-        : t('exercizer.error'));
+      const reason = err instanceof Error ? err.message : '';
+      setError(
+        t(
+          reason === 'corrected'
+            ? 'exercizer.check.corrected'
+            : reason === 'pilotage'
+              ? 'exercizer.pilotage.copy.submitted'
+              : 'exercizer.error',
+        ),
+      );
     },
   });
 
@@ -232,6 +247,8 @@ export function PerformCopy() {
           </span>
         </div>
       </div>
+
+      <PilotageBanner pilotage={pilotage} />
 
       {!canSubmit && !copy.is_training_copy && (
         <Alert type="info" className="mb-16">
@@ -322,33 +339,12 @@ export function PerformCopy() {
               <GrainCopyStatement grainCopy={grainCopy} />
               <GrainCopyDocuments grainCopy={grainCopy} />
 
-              {isEditableHere(grainCopy.grain_type_id) ? (
-                <AnswerFields
-                  grainTypeId={grainCopy.grain_type_id}
-                  data={grainCopy.grain_copy_data.custom_copy_data ?? {}}
-                  onChange={(next) => onAnswerChange(grainCopy, next)}
-                  readOnly={!canSubmit && !copy.is_training_copy}
-                />
-              ) : (
-                // Grain « à zones » : il reste à porter. On ne montre pas un champ qui ne
-                // s'enregistrerait pas — mieux vaut renvoyer l'élève là où il peut répondre.
-                <Alert type="warning">
-                  <div className="d-flex flex-column gap-8">
-                    <span>{t('exercizer.grain.zone.notmigrated.perform')}</span>
-                    <div>
-                      <Button
-                        color="primary"
-                        variant="outline"
-                        onClick={() => {
-                          window.location.href = `/exercizer?ui=angular#/subject/copy/perform/${subjectCopyId}/`;
-                        }}
-                      >
-                        {t('exercizer.switch.notmigrated.action')}
-                      </Button>
-                    </div>
-                  </div>
-                </Alert>
-              )}
+              <AnswerFields
+                grainTypeId={grainCopy.grain_type_id}
+                data={grainCopy.grain_copy_data.custom_copy_data ?? {}}
+                onChange={(next) => onAnswerChange(grainCopy, next)}
+                readOnly={(!canSubmit && !copy.is_training_copy) || pilotage.readOnly}
+              />
             </article>
           ))}
 
@@ -375,7 +371,7 @@ export function PerformCopy() {
               <Button
                 color="primary"
                 variant="filled"
-                disabled={!canSubmit}
+                disabled={!canSubmit || pilotage.readOnly}
                 onClick={() => setConfirming(true)}
               >
                 {t('exercizer.make.copy')}

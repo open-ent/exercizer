@@ -1,65 +1,69 @@
 # IHM React d'Exercizer
 
-Nouvelle interface du module « Exercices et évaluations », destinée à remplacer l'IHM AngularJS
-de `src/main/resources/public/ts/`. La migration est **en cours** : les deux interfaces
-cohabitent, et c'est l'usager (ou la plateforme) qui décide laquelle est servie.
+Nouvelle interface du module « Exercices et évaluations », qui remplace l'IHM AngularJS de
+`src/main/resources/public/ts/`. **Tous les écrans de l'ancienne interface y sont portés** ; les
+deux interfaces restent servies côte à côte, et c'est l'usager (ou la plateforme) qui décide
+laquelle il voit — le temps que la bascule soit décidée, cf. « Arbitrage » ci-dessous.
 
-## Ce qui est porté
+## Les écrans
 
-| Écran | Route | État |
-| --- | --- | --- |
-| Tableau de bord apprenant (à faire / terminés / entraînement) | `#/dashboard/student` | porté |
-| Tableau de bord enseignant — Mes sujets (dossiers, liste, recherche, rangement) | `#/dashboard/teacher` | porté |
-| Mes corrections — liste des distributions | `#/dashboard/teacher/correction` | porté |
-| Mes corrections — copies d'une distribution | `#/dashboard/teacher/correction/:id` | porté |
-| Édition d'un sujet interactif et de ses grains | `#/subject/edit/:id/` | porté, sauf les 3 types « à zones » |
-| Sujet « simple » : création, titre, description, corrigés | `#/subject/create/simple/`, `#/subject/edit/simple/:id/` | porté |
-| Passation d'une copie par l'élève | `#/subject/copy/perform/:id/` | porté, sauf les 3 types « à zones » |
-| Consultation d'une copie corrigée | `#/subject/copy/view/:id/` | porté |
-| Score d'une copie d'entraînement | `#/subject/copy/view/final-score/:id/` | porté |
-| Correction d'une copie par l'enseignant | `#/subject/copy/view/:subjectId/:copyId/` | porté |
-| Distribution d'un sujet (type, destinataires, options) | fenêtre de `#/subject/edit/:id/` | porté |
+| Écran | Route |
+| --- | --- |
+| Tableau de bord apprenant (à faire / terminés / entraînement, bandeau « Parcours ») | `#/dashboard/student` |
+| Mes sujets — dossiers, liste, recherche, actions selon le droit détenu sur chaque sujet | `#/dashboard/teacher` |
+| Nouveau sujet, propriétés (titre, description, image), import Moodle, partage, export Moodle | fenêtres de `#/dashboard/teacher` |
+| Mes corrections — distributions, puis copies d'une distribution (interactive ou « simple ») | `#/dashboard/teacher/correction[/:id]` |
+| Statistiques d'une distribution et leurs exports CSV | vue de `#/dashboard/teacher/correction/:id` |
+| Pilotage en direct d'une séance | `#/dashboard/teacher/pilotage/:id` |
+| Archives — distributions, copies, copie | `#/dashboard/teacher/archive[/:id[/:copyId]]` |
+| Édition d'un sujet interactif, ressources externes, réutilisation de questions | `#/subject/edit/:id/` |
+| Sujet « simple » : création, titre, description, corrigés | `#/subject/create/simple/`, `#/subject/edit/simple/:id/` |
+| Création assistée (génération à partir d'une image) | `#/subject/generate` |
+| Aperçu de la passation, puis de la correction | `#/subject/copy/preview/perform/:id/`, `#/subject/copy/view/preview/:id/` |
+| Impression d'un sujet, avec ou sans les réponses | `#/subject/print/:id?responses=true|false` |
+| Parcours — liste, édition, affectation | `#/subject-sequence/list`, `#/subject-sequence/edit/:id/` |
+| Parcours distribué — navigation de l'élève, suivi de la classe | `#/subject-sequence-scheduled/:id/` |
+| Passation d'une copie, d'un sujet « simple » (dépôt de fichiers) | `#/subject/copy/perform/:id/`, `#/subject/copy/perform/simple/:id/` |
+| Consultation d'une copie corrigée, score d'un entraînement | `#/subject/copy/view/:id/`, `#/subject/copy/view/final-score/:id/` |
+| Correction d'une copie par l'enseignant | `#/subject/copy/view/:subjectId/:copyId/` |
+| Liens du « linker » du portail | `#/linker/:subjectScheduledId` |
+
+Les chemins sont ceux de l'IHM AngularJS, à l'identique : un lien de notification, du linker ou
+copié dans l'une des deux interfaces s'ouvre dans l'autre.
 
 ### Types de grains
 
-| Type | id | Édition |
-| --- | --- | --- |
-| Énoncé | 3 | portée (texte riche) |
-| Réponse simple | 4 | portée |
-| Réponse ouverte | 5 | portée (rien à régler) |
-| Réponses multiples | 6 | portée |
-| QCM | 7 | portée |
-| Association | 8 | portée |
-| Mise en ordre | 9 | portée (boutons monter/descendre, clavier compris) |
-| Texte à trous | 10 | **non portée** |
-| Zone à remplir (texte) | 11 | **non portée** |
-| Zone à remplir (images) | 12 | **non portée** |
+Les dix types s'éditent, se répondent, se relisent et s'impriment : énoncé (3), réponse simple
+(4), réponse ouverte (5), réponses multiples (6), QCM (7), association (8), mise en ordre (9),
+**texte à trous (10)**, **zones de texte (11)** et **zones d'images (12)** sur une image de fond.
 
-Les mêmes sept types se répondent et se relisent côté élève. La **correction automatique** est
-portée pour tous, y compris les trois types « à zones » : une copie faite dans l'ancienne
-interface se relit donc entièrement ici, même si elle ne s'y répond pas.
+### Ce qui n'est délibérément pas repris
 
-Un grain d'un type non porté reste À SA PLACE, garde son titre, son barème et son énoncé, et
-n'est **jamais réenregistré** depuis la nouvelle IHM : aucune donnée ne peut être abîmée par un
-passage ici. L'écran le dit et propose d'ouvrir le sujet dans la version précédente.
+- **Publier dans la bibliothèque** : l'ancienne IHM masquait déjà l'action (`display: () => false`
+  dans le « toaster »), la Bibliothèque de ressources n'étant pas provisionnée. L'onglet
+  « Bibliothèque » du tableau de bord, lui, est repris : il ouvre la bibliothèque EXTERNE quand la
+  plateforme en déclare une (`libraryHost` de `/exercizer/conf/public`).
+- **L'onglet interne `/dashboard/teacher/library`** : aucune route de l'ancienne IHM n'y menait.
+- **« Copier » une sélection** (WB-1205) : retiré de l'ancienne barre d'actions, non repris.
+- **Créer un sujet « simple »** depuis « Nouveau sujet » : comme dans l'ancienne IHM, la carte
+  renvoie vers l'application Casier. Les routes `subject/create/simple/` existent toujours, pour
+  les liens entrants.
+- **Les téléchargements d'un sujet simple ARCHIVÉ** fichier par fichier : les routes
+  `…/corrected/download/…` qu'appelait l'ancienne IHM n'existent plus côté serveur. Les rendus
+  d'une copie archivée se téléchargent en archive (`/subject-copy/simple/downloads`).
 
-## Ce qui reste à porter
+### Écarts assumés avec l'ancienne IHM
 
-Dans l'ordre où cela bloque le plus :
-
-1. **Les trois types « à zones »** (10, 11, 12). Leur édition reposait sur l'éditeur riche
-   d'AngularJS, dans lequel l'enseignant insérait des balises `<fill-zone>` via une option de
-   barre d'outils, et sur un placement libre de zones au-dessus d'une image de fond. Les porter
-   demande une extension tiptap dédiée et un composant de placement : c'est un chantier à part.
-2. **Passation d'un sujet « simple »** (dépôt d'un fichier par l'élève) et **pilotage en direct**
-   (WebSocket `real-time`, port 8106).
-3. **Partage** d'un sujet entre enseignants (le panneau de partage du socle).
-4. Archives, parcours (`subject-sequence`), impression, import, publication en bibliothèque,
-   génération automatique d'un sujet, statistiques de correction, image de couverture d'un sujet.
-
-Toute route non portée tombe sur `screens/NotMigrated.tsx`, qui renvoie vers l'ancienne IHM **en
-conservant le chemin demandé** (`/exercizer?ui=angular#<même chemin>`) : les deux interfaces
-partagent leurs routes, ce qui garde valides les liens des notifications et du « linker ».
+- **Glisser-déposer** : remplacé partout par une action au clavier comme à la souris — « Déplacer »
+  pour ranger un sujet, « Ajouter » pour reprendre une question d'un autre sujet, une liste
+  déroulante des étiquettes encore libres pour un texte à trous ou des zones de texte en mode
+  « glisser-déposer ». Les zones posées sur une image se déplacent à la souris, au doigt ET aux
+  flèches du clavier ; les vignettes d'une zone d'images se glissent ou se cliquent.
+- **Horloge du poste** : l'ancienne IHM exigeait la même heure ronde que le serveur et refusait
+  donc l'accès quelques instants à chaque changement d'heure ; on tolère moins d'une heure d'écart.
+- **Copie archivée** : elle se retrouve par son identifiant, le lien tient au rechargement (elle
+  vivait dans un service en mémoire).
+- **Tri des tableaux de copies** : les copies sans valeur vont toujours en fin de liste.
 
 ## Arbitrage entre les deux interfaces
 
@@ -107,14 +111,46 @@ copient après l'étape qui produit `view/` depuis `view-src/`.
 
 - `api.ts` — client REST, un appel par endpoint, nommé comme le service AngularJS d'origine ;
 - `types.ts` — le modèle tel que le serveur le renvoie (noms de colonnes conservés) ;
-- `copies.ts`, `corrections.ts`, `grains.ts`, `correction.ts`, `schedule.ts` — les **règles**
-  (état d'une copie, ce que l'élève peut ouvrir, avancement d'une distribution, barème et
-  numérotation d'un sujet, correction automatique, distribution), sans réseau ni composant, et
-  couvertes par des tests ;
+- les **règles**, sans réseau ni composant, chacune avec ses tests :
+  `copies.ts` (état d'une copie, ce que l'élève peut ouvrir), `corrections.ts` (avancement d'une
+  distribution, tri), `grains.ts` (barème, numérotation), `correction.ts` (correction
+  automatique), `schedule.ts` (distribution), `sections.ts` (parties), `stats.ts` (matrice élève ×
+  question, exports CSV), `zones.ts` (grains à zones : modèle, HTML du texte à trous, géométrie),
+  `pilotage.ts` (canal, temps restant, événements), `moodleImport.ts` (lecture d'un fichier
+  Moodle XML), `rights.ts` (droits de workflow, droit détenu sur un sujet) ;
 - `latinise.ts` — table de translittération **recopiée telle quelle** depuis l'IHM AngularJS :
   elle sert à comparer les réponses, donc à calculer des notes, et ne doit pas diverger ;
 - `screens/` — un écran par route ; `features/` — morceaux réutilisés (`features/grains/` : un
-  éditeur par type de grain) ; `components/` — fenêtres ; `hooks/` — l'enregistrement différé.
+  éditeur par type de grain ; `features/zones/` : les trois types à zones) ; `components/` —
+  fenêtres ; `hooks/` — l'enregistrement différé.
+
+### Les grains à zones
+
+Un **texte à trous** est un HTML dans lequel l'ancien éditeur insérait des balises
+`<fill-zone zone-id="…">`. `features/zones/FillZoneExtension.ts` les déclare à l'éditeur du socle
+(tiptap) : sans elle, il les écarterait comme inconnues en ouvrant le grain, et l'enregistrement
+suivant effacerait toutes les zones. La balise est relue et réécrite TELLE QUELLE, pour que les
+deux interfaces continuent de s'échanger les sujets.
+
+À l'affichage (passation, relecture, impression) le texte est rendu HORS de l'éditeur — il faut y
+glisser des champs. `zones.ts#fillTextSlots` l'assainit et remplace chaque zone par un
+emplacement, où `FillTextHtml` monte un composant React par portail.
+
+Les positions des **zones posées sur une image** sont enregistrées dans un repère de 760 × 600,
+coin haut-gauche du bloc. `zones.ts#toScreen` / `toModel` convertissent par le CENTRE du bloc,
+comme l'original : le bloc garde sa taille quand l'image rétrécit, et convertir son coin le
+décalerait.
+
+⚠ À la distribution, la copie d'un grain à zones reprend TOUT le grain — texte, image,
+propositions — avec les réponses effacées (`zones.ts#zoneCopyData`). Ne recopier que les zones,
+comme le faisait une première version de ce portage, produit des copies sans texte ni image.
+
+### Le pilotage en direct
+
+L'écran de l'enseignant affiche TOUJOURS l'état que le serveur consolide (`GET …/pilotage`) : le
+WebSocket ne sert qu'à savoir quand le redemander, et un sondage toutes les vingt secondes prend
+le relais s'il ne s'ouvre pas. L'élève, lui, n'a pas le droit de demander cet état : le sien est
+lu sur sa distribution et sa copie, puis tenu à jour par les événements (`pilotage.ts`).
 
 ### La correction automatique est calculée par le CLIENT
 
@@ -186,7 +222,7 @@ Chapitre → Activités de LearnHouse). Règles pures dans `sections.ts` :
 
 ## Tests
 
-- unitaires : `pnpm test` — `copies`, `corrections`, `grains`, `correction`, `schedule`, `sections` ;
+- unitaires : `pnpm test` — toutes les règles listées plus haut ;
 - de bout en bout, depuis la racine du dépôt :
   ```bash
   npx playwright test tests/exercizer-react.spec.ts tests/exercizer-ui-switch.spec.ts \

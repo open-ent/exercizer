@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { AutomaticCorrection } from '../../correction';
 import { GRAIN } from '../../grains';
 import { GrainAnswer, GrainCustomCopyData } from '../../types';
+import { ZoneReview } from '../zones/ZoneAnswers';
 
 /**
  * L'affichage des réponses d'une copie CORRIGÉE — portage des directives `view*`.
@@ -38,7 +39,7 @@ export function AnswerReview({ grainTypeId, data, correction }: AnswerReviewProp
     case GRAIN.TEXT_TO_FILL:
     case GRAIN.AREA_SELECT:
     case GRAIN.AREA_SELECT_IMAGE:
-      return <ZoneAnswers data={data} correction={correction} />;
+      return <ZoneReview grainTypeId={grainTypeId} data={data} correction={correction} />;
     default:
       return null;
   }
@@ -189,36 +190,6 @@ function OrderAnswers({
             <AnswerText value={answer.text} />
           </span>
           <Verdict verdict={correction.answers[answer.order_by ?? 0]} />
-        </li>
-      ))}
-    </ol>
-  );
-}
-
-/** Grains « à zones » : la réponse de chaque zone, dans l'ordre. */
-function ZoneAnswers({
-  data,
-  correction,
-}: {
-  data: GrainCustomCopyData;
-  correction: AutomaticCorrection;
-}) {
-  const { t } = useTranslation(['exercizer', 'common']);
-  const zones = data.zones ?? [];
-  if (zones.length === 0) {
-    return <em className="text-muted">{t('exercizer.grain.noanswer')}</em>;
-  }
-  return (
-    <ol className="list-unstyled d-flex flex-column gap-4">
-      {zones.map((zone, index) => (
-        <li key={index} className="d-flex align-items-center gap-8">
-          <span className="fw-bold px-8" aria-hidden="true">
-            {index + 1}
-          </span>
-          <span className={reviewClass(correction.answers[index])}>
-            <AnswerText value={zone.answer} />
-          </span>
-          <Verdict verdict={correction.answers[index]} />
         </li>
       ))}
     </ol>

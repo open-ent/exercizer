@@ -43,14 +43,7 @@ export const isQuestion = (grainTypeId: number): boolean => grainTypeId > GRAIN.
 export const isUndecided = (grainTypeId: number): boolean =>
   grainTypeId === GRAIN.CHOOSE || grainTypeId === GRAIN.CHOOSE_ANSWER;
 
-/**
- * Les trois types « à zones » (texte à trous, zones de texte, zones d'images) ne sont pas encore
- * portés : leur édition reposait sur l'éditeur riche d'AngularJS, dans lequel l'enseignant
- * insérait des balises `<fill-zone>`, et sur un placement libre de zones au-dessus d'une image.
- *
- * Ils restent LISIBLES dans la nouvelle IHM, et ne sont jamais réenregistrés : tant qu'on ne les
- * sauvegarde pas, aucune donnée ne peut être abîmée.
- */
+/** Les trois types « à zones » : texte à trous, zones de texte et zones d'images sur un fond. */
 export const ZONE_TYPES: readonly number[] = [
   GRAIN.TEXT_TO_FILL,
   GRAIN.AREA_SELECT,
@@ -60,13 +53,7 @@ export const ZONE_TYPES: readonly number[] = [
 /** Un module SCORM : un paquet déposé, joué dans un cadre cloisonné. */
 export const isScorm = (grainTypeId: number): boolean => grainTypeId === GRAIN.SCORM;
 
-/**
- * Un module SCORM n'a pas davantage de champs à éditer ici : on remplace le paquet, on ne
- * retouche pas son contenu. Il reste en revanche JOUABLE en passation, contrairement aux types
- * à zones.
- */
-export const isEditableHere = (grainTypeId: number): boolean =>
-  !ZONE_TYPES.includes(grainTypeId) && !isScorm(grainTypeId);
+export const isZoneType = (grainTypeId: number): boolean => ZONE_TYPES.includes(grainTypeId);
 
 /**
  * Ordre d'affichage des types dans le choix d'une question — celui de l'ancienne IHM
@@ -231,6 +218,12 @@ export function defaultCustomData(grainTypeId: number): GrainCustomData {
         ],
         no_error_allowed: false,
       };
+    case GRAIN.TEXT_TO_FILL:
+    case GRAIN.AREA_SELECT:
+      // L'élève tape sa réponse, tant que l'enseignant n'a pas choisi une liste ou des étiquettes.
+      return { zones: [], options: [], answersType: 'text' };
+    case GRAIN.AREA_SELECT_IMAGE:
+      return { zones: [], options: [] };
     default:
       // Réponse ouverte (5) et grains pas encore décidés : rien à régler.
       return {};

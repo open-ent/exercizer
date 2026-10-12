@@ -5,6 +5,7 @@ import { useTranslation } from 'react-i18next';
 import { GRAIN } from '../../grains';
 import { GrainAnswer, GrainCustomCopyData } from '../../types';
 import { RichTextEditor } from '../RichTextEditor';
+import { ZoneAnswerFields } from '../zones/ZoneAnswers';
 import { ScormPlayer } from './ScormPlayer';
 
 /**
@@ -47,8 +48,19 @@ export function AnswerFields({ grainTypeId, data, onChange, readOnly }: AnswerFi
         // avec l'URL du contenu, et c'est elle qui fait foi — pas ce qu'a recopié la copie.
         <ScormPlayer packageId={data.packageId} readOnly={readOnly} />
       );
+    case GRAIN.TEXT_TO_FILL:
+    case GRAIN.AREA_SELECT:
+    case GRAIN.AREA_SELECT_IMAGE:
+      return (
+        <ZoneAnswerFields
+          grainTypeId={grainTypeId}
+          data={data}
+          onChange={onChange}
+          readOnly={readOnly}
+        />
+      );
     default:
-      // Énoncé : rien à remplir. Grains « à zones » : pas encore saisissables ici.
+      // Énoncé : rien à remplir.
       return null;
   }
 }

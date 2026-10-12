@@ -8,7 +8,7 @@ import {
   duplicatedTitle,
   GRAIN,
   grainDisplayName,
-  isEditableHere,
+  isZoneType,
   isQuestion,
   isUndecided,
   moveGrain,
@@ -45,12 +45,21 @@ describe('natures de grain', () => {
     expect(isUndecided(GRAIN.STATEMENT)).toBe(false);
   });
 
-  it('écarte de l’édition les trois types à zones, et eux seuls', () => {
-    expect(isEditableHere(GRAIN.TEXT_TO_FILL)).toBe(false);
-    expect(isEditableHere(GRAIN.AREA_SELECT)).toBe(false);
-    expect(isEditableHere(GRAIN.AREA_SELECT_IMAGE)).toBe(false);
-    expect(isEditableHere(GRAIN.QCM)).toBe(true);
-    expect(isEditableHere(GRAIN.STATEMENT)).toBe(true);
+  it('reconnaît les trois types à zones, et eux seuls', () => {
+    expect(isZoneType(GRAIN.TEXT_TO_FILL)).toBe(true);
+    expect(isZoneType(GRAIN.AREA_SELECT)).toBe(true);
+    expect(isZoneType(GRAIN.AREA_SELECT_IMAGE)).toBe(true);
+    expect(isZoneType(GRAIN.QCM)).toBe(false);
+    expect(isZoneType(GRAIN.STATEMENT)).toBe(false);
+  });
+
+  it('prépare un grain à zones vide, en saisie libre', () => {
+    expect(defaultCustomData(GRAIN.TEXT_TO_FILL)).toEqual({
+      zones: [],
+      options: [],
+      answersType: 'text',
+    });
+    expect(defaultCustomData(GRAIN.AREA_SELECT_IMAGE)).toEqual({ zones: [], options: [] });
   });
 
   it('propose les types du plus courant au plus spécialisé', () => {

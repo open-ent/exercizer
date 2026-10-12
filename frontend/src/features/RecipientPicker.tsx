@@ -3,7 +3,7 @@ import { useQuery } from '@tanstack/react-query';
 import { useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
-import { getGroupMembers, getShareTargets } from '../api';
+import { getGroupMembers, getShareTargets, ShareTargets } from '../api';
 import { PickedGroup, PickedUser } from '../schedule';
 
 /**
@@ -16,6 +16,11 @@ import { PickedGroup, PickedUser } from '../schedule';
  */
 export interface RecipientPickerProps {
   subjectId: number;
+  /**
+   * D'où viennent les destinataires possibles, quand ce n'est pas du partage d'un sujet — un
+   * parcours a sa propre route. `key` distingue les deux dans le cache des requêtes.
+   */
+  source?: { key: string; fetch: (search?: string) => Promise<ShareTargets> };
   groups: PickedGroup[];
   users: PickedUser[];
   onChange: (next: { groups: PickedGroup[]; users: PickedUser[] }) => void;
@@ -24,7 +29,13 @@ export interface RecipientPickerProps {
 /** Au-dessous, la recherche serveur n'est pas déclenchée — c'est la règle de l'ancienne IHM. */
 const MIN_SEARCH = 3;
 
-export function RecipientPicker({ subjectId, groups, users, onChange }: RecipientPickerProps) {
+export function RecipientPicker({
+  subjectId,
+  source,
+  groups,
+  users,
+  onChange,
+}: RecipientPickerProps) {
   const { t } = useTranslation(['exercizer', 'common']);
   const [search, setSearch] = useState('');
   const [error, setError] = useState<string | null>(null);
@@ -36,8 +47,11 @@ export function RecipientPicker({ subjectId, groups, users, onChange }: Recipien
    */
   const prefix = search.trim().slice(0, MIN_SEARCH).toLowerCase();
   const targetsQuery = useQuery({
-    queryKey: ['exercizer', 'share-targets', subjectId, prefix],
-    queryFn: () => getShareTargets(subjectId, prefix.length >= MIN_SEARCH ? prefix : undefined),
+    queryKey: ['exercizer', 'share-targets', source?.key ?? 'subject', subjectId, prefix],
+    queryFn: () => {
+      const text = prefix.length >= MIN_SEARCH ? prefix : undefined;
+      return source ? source.fetch(text) : getShareTargets(subjectId, text);
+    },
     enabled: search.trim().length === 0 || prefix.length >= MIN_SEARCH,
     staleTime: 60_000,
   });

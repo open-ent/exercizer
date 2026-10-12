@@ -1,3 +1,5 @@
+import { Subject } from './types';
+
 /**
  * Droits du module Exercizer — mêmes clés que l'IHM AngularJS (`public/ts/behaviours.ts`), pour
  * que les deux interfaces accordent exactement les mêmes permissions.
@@ -36,3 +38,42 @@ export const RESOURCE = {
 export type ExercizerRole = 'teacher' | 'student';
 
 export const roleFor = (canCreate: boolean): ExercizerRole => (canCreate ? 'teacher' : 'student');
+
+/**
+ * Ce qu'un usager peut faire d'un sujet, du plus au moins étendu — `checkRightFn` du « toaster »
+ * de l'ancienne IHM. Le propriétaire a tout ; un sujet partagé donne, selon le partage, la
+ * gestion, la contribution (qui permet de distribuer) ou la seule lecture.
+ */
+export type SubjectRight = 'owner' | 'manager' | 'contrib' | 'read';
+
+const RANK: Record<SubjectRight, number> = { read: 0, contrib: 1, manager: 2, owner: 3 };
+
+export function subjectRight(
+  subject: Subject,
+  user: { userId?: string; groupsIds?: string[] } | undefined,
+): SubjectRight {
+  // Session pas encore connue : on ne masque rien, le serveur reste seul juge des droits.
+  if (!user?.userId || subject.owner === user.userId) return 'owner';
+  const mine = (subject.shared ?? []).filter(
+    (entry) =>
+      entry.userId === user.userId ||
+      (entry.groupId !== undefined && (user.groupsIds ?? []).includes(entry.groupId)),
+  );
+  if (mine.some((entry) => entry[RESOURCE.manager])) return 'manager';
+  if (mine.some((entry) => entry[RESOURCE.contrib])) return 'contrib';
+  return 'read';
+}
+
+/**
+ * Le droit le plus FAIBLE d'une sélection : une action groupée n'est proposée que si elle est
+ * permise sur chacun des sujets choisis.
+ */
+export function lowestRight(rights: SubjectRight[]): SubjectRight {
+  return rights.reduce<SubjectRight>(
+    (lowest, right) => (RANK[right] < RANK[lowest] ? right : lowest),
+    'owner',
+  );
+}
+
+export const atLeast = (right: SubjectRight, expected: SubjectRight): boolean =>
+  RANK[right] >= RANK[expected];

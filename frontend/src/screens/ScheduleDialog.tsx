@@ -400,7 +400,7 @@ function nextStep(step: Step, isSimple: boolean): Step {
  * et l'accessibilité sans code. L'ancienne IHM avait son propre `date-picker` et une heure en
  * texte libre, qu'il fallait valider à la main.
  */
-function DateTimeField({
+export function DateTimeField({
   id,
   label,
   date,

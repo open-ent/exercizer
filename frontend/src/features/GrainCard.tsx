@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next';
 
 import {
   GRAIN,
-  isEditableHere,
+  isZoneType,
   isQuestion,
   isUndecided,
   questionNumber,
@@ -17,7 +17,7 @@ import { GrainTypePicker } from './GrainTypePicker';
 import { AssociationEditor, MultipleAnswerEditor, OrderEditor, QcmEditor } from './grains/ListTypes';
 import { OpenAnswerEditor, SimpleAnswerEditor } from './grains/SimpleTypes';
 import { ScormGrainNotice } from './grains/ScormGrainNotice';
-import { ZoneGrainNotice } from './grains/ZoneGrainNotice';
+import { ZoneEditor } from './zones/ZoneEditors';
 import { RichTextEditor } from './RichTextEditor';
 
 export interface GrainCardProps {
@@ -204,12 +204,15 @@ export function GrainCard({
 
           {/* ── Contenu propre au type ── */}
           {grain.grain_type_id === GRAIN.SCORM ? (
-            // Avant le cas général des types non éditables : un module SCORM n'est pas un grain
-            // « à zones », et renvoyer l'enseignant vers l'ancienne IHM n'aurait aucun sens —
-            // elle ne connaît pas ce type.
+            // Un module SCORM n'a rien à éditer ici : on remplace le paquet, on ne retouche pas
+            // son contenu.
             <ScormGrainNotice grain={grain} />
-          ) : !isEditableHere(grain.grain_type_id) ? (
-            <ZoneGrainNotice grain={grain} />
+          ) : isZoneType(grain.grain_type_id) ? (
+            <ZoneEditor
+              grainTypeId={grain.grain_type_id}
+              customData={customData}
+              onChange={patchCustom}
+            />
           ) : grain.grain_type_id === GRAIN.SIMPLE_ANSWER ? (
             <SimpleAnswerEditor customData={customData} onChange={patchCustom} />
           ) : grain.grain_type_id === GRAIN.OPEN_ANSWER ? (
@@ -222,9 +225,7 @@ export function GrainCard({
             <AssociationEditor customData={customData} onChange={patchCustom} />
           ) : grain.grain_type_id === GRAIN.ORDER_BY ? (
             <OrderEditor customData={customData} onChange={patchCustom} />
-          ) : (
-            <Alert type="info">{t('exercizer.grain.zone.notmigrated')}</Alert>
-          )}
+          ) : null}
 
           {/* ── Aide et explication ── */}
           <div className="grid gap-16">
