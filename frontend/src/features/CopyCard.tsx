@@ -73,6 +73,7 @@ export function CopyCard({ copy, scheduled, onOpen, onCreateTraining }: CopyCard
   return (
     <Card
       className="mb-16"
+      isSelectable={false}
       isClickable={!disabled}
       onClick={disabled ? undefined : () => onOpen(action, copy, scheduled)}
     >

@@ -280,6 +280,7 @@ function ScheduledList() {
                 <Card
                   key={scheduled.id}
                   className="mb-16"
+                  isSelectable={false}
                   isClickable
                   onClick={() => navigate(`/dashboard/teacher/correction/${scheduled.id}`)}
                 >

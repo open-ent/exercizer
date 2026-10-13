@@ -250,7 +250,9 @@ function CatalogCard({
   const { t } = useTranslation(['exercizer', 'common']);
   const description = plainText(subject.description);
   return (
-    <Card isClickable onClick={onOpen} className="h-100">
+    // Sans `isSelectable={false}`, le socle pose un bouton « ⋯ » sans menu : les actions
+    // (copier, retirer) sont dans l'aperçu qu'ouvre le clic sur la carte.
+    <Card isSelectable={false} isClickable onClick={onOpen} className="h-100">
       <Card.Body>
         <div className="d-flex flex-column gap-8 flex-fill">
           <Card.Title>{subject.title}</Card.Title>
