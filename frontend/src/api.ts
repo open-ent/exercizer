@@ -11,6 +11,10 @@
 
 import { PilotageState } from './pilotage';
 import {
+  CatalogPage,
+  CatalogReferential,
+  CatalogSubjectDetail,
+  Classification,
   Folder,
   Grain,
   GrainCopy,
@@ -796,6 +800,63 @@ export const removeSubjectFile = (subjectId: number, docId: string) =>
 export const getSubjectTags = () => get<SubjectTag[]>('/exercizer/subject-tags');
 export const getLessonTypes = () => get<SubjectLessonType[]>('/exercizer/subject-lesson-types');
 export const getLessonLevels = () => get<SubjectLessonLevel[]>('/exercizer/subject-lesson-levels');
+
+// ── Catalogue d'exercices partagé entre établissements ────────────────────────
+
+export const getCatalogReferential = () => get<CatalogReferential>('/exercizer/catalog/referential');
+
+export interface CatalogSearch {
+  q?: string;
+  levels?: number[];
+  disciplines?: number[];
+  limit?: number;
+  offset?: number;
+}
+
+/** Les paramètres de la recherche, sans ceux qui sont vides. */
+export function catalogSearchParams(search: CatalogSearch): string {
+  const params = new URLSearchParams();
+  if (search.q?.trim()) params.set('q', search.q.trim());
+  if (search.levels?.length) params.set('levels', search.levels.join(','));
+  if (search.disciplines?.length) params.set('disciplines', search.disciplines.join(','));
+  if (search.limit !== undefined) params.set('limit', String(search.limit));
+  if (search.offset !== undefined) params.set('offset', String(search.offset));
+  return params.toString();
+}
+
+export const searchCatalog = (search: CatalogSearch) =>
+  get<CatalogPage>(`/exercizer/catalog/subjects?${catalogSearchParams(search)}`);
+
+export const getCatalogSubject = async (id: number): Promise<CatalogSubjectDetail> => {
+  const detail = await get<CatalogSubjectDetail>(`/exercizer/catalog/subject/${id}`);
+  return { ...detail, grains: parseGrains(detail.grains) };
+};
+
+/** Copie un sujet du catalogue dans « Mes sujets » ; renvoie l'id du sujet créé. */
+export const copyCatalogSubject = (id: number, folderId: number | null) =>
+  send<{ id: number }>('POST', `/exercizer/catalog/subject/${id}/copy`, { folder_id: folderId });
+
+export const removeCatalogSubject = (id: number) =>
+  sendVoid('DELETE', `/exercizer/catalog/subject/${id}`);
+
+export const reclassifyCatalogSubject = (id: number, classification: Classification) =>
+  sendVoid('PUT', `/exercizer/catalog/subject/${id}/classification`, classification);
+
+/** Le classement d'un de MES sujets (le serveur refuse les autres). */
+export const getClassification = (subjectId: number) =>
+  get<Classification>(`/exercizer/subject/${subjectId}/classification`).then((c) => ({
+    level_ids: c?.level_ids ?? [],
+    discipline_ids: c?.discipline_ids ?? [],
+  }));
+
+export const setClassification = (subjectId: number, classification: Classification) =>
+  sendVoid('PUT', `/exercizer/subject/${subjectId}/classification`, classification);
+
+/** Publie au catalogue une COPIE d'un de mes sujets ; renvoie l'id du sujet du catalogue. */
+export const publishToCatalog = (
+  subjectId: number,
+  publication: Classification & { authors?: string },
+) => send<{ id: number }>('POST', `/exercizer/subject/${subjectId}/catalog`, publication);
 
 // ── Parcours ──────────────────────────────────────────────────────────────────
 

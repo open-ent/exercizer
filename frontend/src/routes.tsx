@@ -27,6 +27,7 @@ const CorrectCopy = lazy(() => import('./screens/CorrectCopy'));
 // Les corrections embarquent elles aussi l'éditeur riche (relance personnalisée) : différées.
 const TeacherCorrections = lazy(() => import('./screens/TeacherCorrections'));
 const Archives = lazy(() => import('./screens/Archives'));
+const Catalog = lazy(() => import('./screens/Catalog'));
 const Pilotage = lazy(() => import('./screens/Pilotage'));
 const PrintSubject = lazy(() => import('./screens/PrintSubject'));
 const SubjectSequenceScheduled = lazy(() => import('./screens/SubjectSequenceScheduled'));
@@ -78,6 +79,7 @@ export const routes: RouteObject[] = [
         element: teacher(<TeacherCorrections />),
       },
       // Archives : la liste, les copies d'une distribution, puis une copie.
+      { path: 'dashboard/teacher/catalog', element: teacher(<Catalog />) },
       { path: 'dashboard/teacher/archive', element: teacher(<Archives />) },
       { path: 'dashboard/teacher/archive/:subjectScheduledId', element: teacher(<Archives />) },
       {

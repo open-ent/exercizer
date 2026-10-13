@@ -216,24 +216,24 @@ public class SubjectServiceSqlImpl extends AbstractExercizerServiceSqlImpl imple
 
 		if (searchData.containsKey("subject_lesson_type_id") || searchData.containsKey("subject_lesson_level_id")) {
 
-			joins.add("JOIN exercizer.subject_libray_main_information slmi ON r.id = slmi.subject_id");
+			joins.add("JOIN exercizer.subject_library_main_information slmi ON r.id = slmi.subject_id");
 
 			if (searchData.containsKey("subject_lesson_type_id")) {
-				joins.add("AND slmi.subject_lesson_type_id = " + searchData.getString("subject_lesson_type_id"));
+				joins.add("AND slmi.subject_lesson_type_id = " + safeId(searchData.getValue("subject_lesson_type_id")));
 			}
 			
 			if (searchData.containsKey("subject_lesson_level_id")) {
-				joins.add("AND slmi.subject_lesson_level_id = " + searchData.getString("subject_lesson_level_id"));
+				joins.add("AND slmi.subject_lesson_level_id = " + safeId(searchData.getValue("subject_lesson_level_id")));
 			}
 		}
 
 		if (searchData.containsKey("subject_tags")) {
 			JsonArray subjectTags = searchData.getJsonArray("subject_tags");
 			
-			joins.add("JOIN exercizer.subject_libray_tag slt ON r.id = slt.subject_id");
+			joins.add("JOIN exercizer.subject_library_tag slt ON r.id = slt.subject_id");
 			
 			for (Object subjectTag : subjectTags) {
-				joins.add("AND slt.subject_tag_id = " + subjectTag);
+				joins.add("AND slt.subject_tag_id = " + safeId(subjectTag));
 			}
 		}
 
@@ -243,7 +243,7 @@ public class SubjectServiceSqlImpl extends AbstractExercizerServiceSqlImpl imple
 		filters.add("AND r.is_deleted = false");
 		
 		if (searchData.containsKey("subject_title")) {
-			filters.add("AND r.title ~* '.*" + searchData.getString("subject_title") + ".*'");
+			filters.add("AND r.title ILIKE '%" + likeLiteral(searchData.getString("subject_title")) + "%'");
 		}
 
 		JsonArray orderBy = new JsonArray();
@@ -253,8 +253,8 @@ public class SubjectServiceSqlImpl extends AbstractExercizerServiceSqlImpl imple
 		String offset = null;
 		
 		if (searchData.containsKey("limit") && searchData.containsKey("offset")) {
-			limit = searchData.getString("limit");
-			offset = searchData.getString("offset");
+			limit = String.valueOf(safeId(searchData.getValue("limit")));
+			offset = String.valueOf(safeId(searchData.getValue("offset")));
 		}
 		
 		super.list("r", joins, filters, orderBy, limit, offset, handler);
@@ -269,24 +269,24 @@ public class SubjectServiceSqlImpl extends AbstractExercizerServiceSqlImpl imple
 
 		if (searchData.containsKey("subject_lesson_type_id") || searchData.containsKey("subject_lesson_level_id")) {
 
-			joins.add("JOIN exercizer.subject_libray_main_information slmi ON r.id = slmi.subject_id");
+			joins.add("JOIN exercizer.subject_library_main_information slmi ON r.id = slmi.subject_id");
 
 			if (searchData.containsKey("subject_lesson_type_id")) {
-				joins.add("AND slmi.subject_lesson_type_id = " + searchData.getString("subject_lesson_type_id"));
+				joins.add("AND slmi.subject_lesson_type_id = " + safeId(searchData.getValue("subject_lesson_type_id")));
 			}
 			
 			if (searchData.containsKey("subject_lesson_level_id")) {
-				joins.add("AND slmi.subject_lesson_level_id = " + searchData.getString("subject_lesson_level_id"));
+				joins.add("AND slmi.subject_lesson_level_id = " + safeId(searchData.getValue("subject_lesson_level_id")));
 			}
 		}
 
 		if (searchData.containsKey("subject_tags")) {
 			JsonArray subjectTags = searchData.getJsonArray("subject_tags");
 			
-			joins.add("JOIN exercizer.subject_libray_tag slt ON r.id = slt.subject_id");
+			joins.add("JOIN exercizer.subject_library_tag slt ON r.id = slt.subject_id");
 			
 			for (Object subjectTag : subjectTags) {
-				joins.add("AND slt.subject_tag_id = " + subjectTag);
+				joins.add("AND slt.subject_tag_id = " + safeId(subjectTag));
 			}
 		}
 
@@ -296,7 +296,7 @@ public class SubjectServiceSqlImpl extends AbstractExercizerServiceSqlImpl imple
 		filters.add("AND r.is_deleted = false");
 		
 		if (searchData.containsKey("subject_title")) {
-			filters.add("AND r.title ~* '.*" + searchData.getString("subject_title") + ".*'");
+			filters.add("AND r.title ILIKE '%" + likeLiteral(searchData.getString("subject_title")) + "%'");
 		}
 		
 		super.count("r", joins, filters, handler);
@@ -366,6 +366,7 @@ public class SubjectServiceSqlImpl extends AbstractExercizerServiceSqlImpl imple
 							duplicateSubject(s, newSubjectId, fromSubjectId, folderId, user, titleSuffix);
 							duplicateSubjectDocuments(s, newSubjectId, fromSubjectId, false );
 							duplicationGrain(s, newSubjectId, fromSubjectId);
+							CatalogSql.copyClassification(s, newSubjectId, fromSubjectId);
 						}
 						sql.transaction(s.build(), SqlResult.validUniqueResultHandler(0, handler));
 					} else {
@@ -427,6 +428,8 @@ public class SubjectServiceSqlImpl extends AbstractExercizerServiceSqlImpl imple
 
 	private void insertSubjectMainInformation(Long newSubjectId, SqlStatementsBuilder s, Long typeId, Long levelId) {
 		s.insert(schema+"subject_library_main_information", new JsonObject().put("subject_id", newSubjectId).put("subject_lesson_type_id", typeId).put("subject_lesson_level_id", levelId));
+		// Le catalogue lit le classement dans subject_level / subject_discipline (sql/041).
+		CatalogSql.replaceClassification(s, newSubjectId, new JsonArray().add(levelId), new JsonArray().add(typeId));
 	}
 
 	private void insertSubjectTag(Long newSubjectId, SqlStatementsBuilder s, JsonArray tag) {
@@ -614,4 +617,22 @@ public class SubjectServiceSqlImpl extends AbstractExercizerServiceSqlImpl imple
 		sql.prepared(delete.toString(), values, SqlResult.validUniqueResultHandler(handler));
 	}
 
+
+	/**
+	 * Les recherches de l'ancienne bibliothèque assemblent leur SQL par concaténation : chaque valeur
+	 * venue du corps de la requête passe par ici (entier) ou par {@link #likeLiteral} (texte).
+	 */
+	static long safeId(final Object value) {
+		if (value instanceof Number) return ((Number) value).longValue();
+		try {
+			return Long.parseLong(String.valueOf(value).trim());
+		} catch (NumberFormatException e) {
+			throw new IllegalArgumentException("invalid id: " + value);
+		}
+	}
+
+	/** Un texte cherché, rendu inoffensif dans un littéral SQL '…' et un motif ILIKE. */
+	static String likeLiteral(final String text) {
+		return (text == null ? "" : text).replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_").replace("'", "''");
+	}
 }

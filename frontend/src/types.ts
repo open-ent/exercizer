@@ -272,6 +272,67 @@ export interface SubjectLessonLevel {
   label: string;
 }
 
+// ── Catalogue d'exercices (sql/041-subject-catalog.sql) ───────────────────────
+
+/** Groupe d'affichage des niveaux, dans l'ordre de la scolarité. */
+export type LevelGroup = 'maternelle' | 'elementaire' | 'college' | 'lycee' | 'lycee_pro' | 'superieur';
+
+/** Un niveau scolaire du référentiel : `label` est une clé i18n, `code` un identifiant stable. */
+export interface CatalogLevel {
+  id: number;
+  code: string | null;
+  label: string;
+  rank: number | null;
+  level_group: LevelGroup | null;
+}
+
+/** Une matière du référentiel (`subject_lesson_type`) : `label` est une clé i18n. */
+export interface CatalogDiscipline {
+  id: number;
+  code: string | null;
+  label: string;
+}
+
+export interface CatalogReferential {
+  levels: CatalogLevel[];
+  disciplines: CatalogDiscipline[];
+}
+
+/** Le classement d'un sujet : des id de niveaux et de matières. */
+export interface Classification {
+  level_ids: number[];
+  discipline_ids: number[];
+}
+
+/** Un sujet du catalogue, tel que la recherche le renvoie. */
+export interface CatalogSubject extends Classification {
+  id: number;
+  title: string;
+  description?: string | null;
+  picture?: string | null;
+  max_score?: number | null;
+  type: 'interactive' | 'simple';
+  /** L'auteur de la publication (ou l'usager technique des exercices fournis par Open ENT). */
+  owner: string;
+  owner_username: string;
+  authors_contributors?: string | null;
+  question_count: number;
+  created?: string;
+  modified?: string;
+}
+
+export interface CatalogPage {
+  total: number;
+  subjects: CatalogSubject[];
+}
+
+/** Un sujet du catalogue ouvert : ses grains et ses sections, pour l'aperçu. */
+export interface CatalogSubjectDetail {
+  subject: CatalogSubject;
+  grains: Grain[];
+  sections: Section[];
+}
+
 /**
  * Les états d'une copie, dans l'ordre où l'IHM AngularJS les évalue
  * (`SubjectCopyService#copyState`). `null` = copie jamais ouverte.

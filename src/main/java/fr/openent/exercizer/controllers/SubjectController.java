@@ -76,6 +76,8 @@ import io.vertx.core.http.HttpClient;
 import io.vertx.core.http.HttpServerRequest;
 import io.vertx.core.json.DecodeException;
 import io.vertx.core.json.JsonArray;
+import org.entcore.common.sql.Sql;
+import org.entcore.common.sql.SqlResult;
 import io.vertx.core.json.JsonObject;
 
 public class SubjectController extends ControllerHelper {
@@ -1046,7 +1048,45 @@ public class SubjectController extends ControllerHelper {
 	@ApiDoc("Duplicate subjects from library.")
 	@SecuredAction(value = "exercizer.subject.duplicate.library")
 	public void duplicateSubjectsFromLibrary(final HttpServerRequest request) {
-		duplicateSubjects(request);
+		UserUtils.getUserInfos(eb, request, user -> {
+			if (user == null) {
+				unauthorized(request);
+				return;
+			}
+			RequestUtils.bodyToJson(request, pathPrefix + "subjects", data -> {
+				// Seuls des sujets de la bibliothèque : cette route reprenait telle quelle la duplication
+				// ordinaire, SANS son filtre de partage, et dupliquait donc n'importe quel sujet par son id.
+				final JsonArray ids = new JsonArray();
+				try {
+					for (Object id : data.getJsonArray("ids", new JsonArray())) {
+						ids.add(Long.parseLong(String.valueOf(id)));
+					}
+				} catch (NumberFormatException e) {
+					badRequest(request);
+					return;
+				}
+				if (ids.isEmpty()) {
+					badRequest(request);
+					return;
+				}
+				Sql.getInstance().prepared("SELECT count(*) AS n FROM exercizer.subject WHERE is_library_subject = true " +
+						"AND is_deleted = false AND id IN " + Sql.listPrepared(ids.getList()), ids,
+						SqlResult.validUniqueResultHandler(count -> {
+							if (count.isLeft() || count.right().getValue().getLong("n", 0L) != ids.size()) {
+								unauthorized(request);
+								return;
+							}
+							final String titleSuffix = i18n.translate("exercizer.subject.title.copySuffix", Renders.getHost(request), I18n.acceptLanguage(request));
+							subjectService.duplicateSubjects(ids, data.getLong("folderId"), titleSuffix, user, event -> {
+								if (event.isRight()) {
+									Renders.created(request);
+								} else {
+									Renders.renderError(request, new JsonObject().put("error", "exercizer.error"));
+								}
+							});
+						}));
+			});
+		});
 	}
 
 	@Post("/subject/:id/duplicate/grains")

@@ -52,11 +52,11 @@ public class SubjectLessonTypeServiceSqlImpl extends AbstractExercizerServiceSql
 
 		JsonArray filters = new JsonArray();
 		filters.add("WHERE");
-		filters.add("slmi.subject_id = " + subjectIdList.getValue(0));
+		filters.add("slmi.subject_id = " + SubjectServiceSqlImpl.safeId(subjectIdList.getValue(0)));
 
 		for (Object subjectId : subjectIdList) {
 			if (!subjectIdList.getValue(0).equals(subjectId)) {
-				filters.add("OR slmi.subject_id = " + subjectId);
+				filters.add("OR slmi.subject_id = " + SubjectServiceSqlImpl.safeId(subjectId));
 			}
 		}
 		

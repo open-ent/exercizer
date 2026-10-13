@@ -173,7 +173,7 @@ export function PrintSubject() {
   );
 }
 
-function PrintedGrain({
+export function PrintedGrain({
   grain,
   grains,
   showResponses,

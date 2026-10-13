@@ -103,6 +103,12 @@ public class Exercizer extends BaseServer {
             sectionConf.setTable("subject");
             sectionConf.setShareTable("subject_shares");
 
+            // Catalogue : les routes /subject/:id/… (classement, publication) visent un sujet de l'usager.
+            SqlConf catalogConf = SqlConfs.createConf(CatalogController.class.getName());
+            catalogConf.setSchema("exercizer");
+            catalogConf.setTable("subject");
+            catalogConf.setShareTable("subject_shares");
+
             SqlConf subjectScheduledConf = SqlConfs.createConf(SubjectScheduledController.class.getName());
             subjectScheduledConf.setSchema("exercizer");
             subjectScheduledConf.setTable("subject");
@@ -144,6 +150,7 @@ public class Exercizer extends BaseServer {
             addController(subjectController);
             addController(new GrainTypeController());
             addController(new SectionController());
+            addController(new CatalogController());
             final SubjectScheduledController subjectScheduledController = new SubjectScheduledController(storage);
             addController(subjectScheduledController);
             addController(new GrainScheduledController());

@@ -28,6 +28,7 @@ import {
   removeSubjects,
   updateFolder,
 } from '../api';
+import { ClassificationDialog, PublishToCatalogDialog } from '../components/CatalogDialogs';
 import { ConfirmModal } from '../components/ConfirmModal';
 import { FolderDialog } from '../components/FolderDialog';
 import { MoveDialog } from '../components/MoveDialog';
@@ -71,6 +72,8 @@ type DialogState =
   | { kind: 'share'; subject: Subject }
   | { kind: 'print'; subject: Subject }
   | { kind: 'export'; subject: Subject }
+  | { kind: 'classify'; subject: Subject }
+  | { kind: 'publishCatalog'; subject: Subject }
   | null;
 
 /**
@@ -101,6 +104,7 @@ export function TeacherSubjects() {
     null,
   );
   const canImport = useHasWorkflow(WORKFLOW.import) as boolean | undefined;
+  const canPublish = useHasWorkflow(WORKFLOW.publish) as boolean | undefined;
 
   const setDisplay = (mode: DisplayMode) => {
     setDisplayState(mode);
@@ -509,6 +513,25 @@ export function TeacherSubjects() {
               {t('exercizer.instructer.toaster.property')}
             </Button>
           )}
+          {/* Le classement et la publication au catalogue sont réservés à l'auteur du sujet. */}
+          {onlySubject && right === 'owner' && (
+            <Button
+              color="primary"
+              variant="outline"
+              onClick={() => setDialog({ kind: 'classify', subject: onlySubject })}
+            >
+              {t('exercizer.catalog.classify.title')}
+            </Button>
+          )}
+          {onlySubject && right === 'owner' && canPublish && (
+            <Button
+              color="primary"
+              variant="outline"
+              onClick={() => setDialog({ kind: 'publishCatalog', subject: onlySubject })}
+            >
+              {t('exercizer.catalog.publish.title')}
+            </Button>
+          )}
           {onlySubject && atLeast(right, 'manager') && (
             <Button
               color="primary"
@@ -597,6 +620,30 @@ export function TeacherSubjects() {
           subject={dialog.subject}
           onClose={() => setDialog(null)}
           onSaved={refresh}
+        />
+      )}
+
+      {dialog?.kind === 'classify' && (
+        <ClassificationDialog
+          subject={dialog.subject}
+          onClose={() => setDialog(null)}
+          onSaved={() => {
+            setDialog(null);
+            setNotice({ type: 'success', text: t('exercizer.catalog.classify.saved') });
+          }}
+        />
+      )}
+
+      {dialog?.kind === 'publishCatalog' && (
+        <PublishToCatalogDialog
+          subject={dialog.subject}
+          onClose={() => setDialog(null)}
+          onPublished={() => {
+            setDialog(null);
+            setSelectedSubjects([]);
+            setNotice({ type: 'success', text: t('exercizer.catalog.publish.done') });
+            void queryClient.invalidateQueries({ queryKey: ['exercizer', 'catalog'] });
+          }}
         />
       )}
 

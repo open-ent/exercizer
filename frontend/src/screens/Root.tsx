@@ -15,6 +15,7 @@ import { useTranslation } from 'react-i18next';
 
 import { getPublicConf, getServerNow } from '../api';
 import { UiSwitchBanner } from '../features/UiSwitchBanner';
+import { isCatalogAudience } from '../catalog';
 import { WORKFLOW } from '../rights';
 import { Unauthorized } from '../components/Unauthorized';
 
@@ -62,9 +63,10 @@ export function TeacherOnly({ children }: { children: ReactNode }) {
   return canCreate ? <>{children}</> : <Unauthorized text={t('exercizer.unauthorized')} />;
 }
 
-/** Les deux sections de l'enseignant, et la route de chacune. */
+/** Les sections de l'enseignant, et la route de chacune. */
 const TEACHER_SECTIONS = {
   mySubjects: '/dashboard/teacher',
+  catalog: '/dashboard/teacher/catalog',
   correction: '/dashboard/teacher/correction',
 } as const;
 type TeacherSection = keyof typeof TEACHER_SECTIONS;
@@ -78,7 +80,7 @@ type TeacherSection = keyof typeof TEACHER_SECTIONS;
  */
 export function Root() {
   const { t } = useTranslation(['exercizer', 'common']);
-  const { init, currentApp } = useEdificeClient();
+  const { init, currentApp, user } = useEdificeClient();
   const navigate = useNavigate();
   const location = useLocation();
 
@@ -97,11 +99,12 @@ export function Root() {
 
   const isStudentView = location.pathname.startsWith('/dashboard/student');
   const onCorrection = location.pathname.startsWith(TEACHER_SECTIONS.correction);
-  // Les sections ne coiffent que leurs deux écrans : les archives et le pilotage ont leur propre
+  const onCatalog = location.pathname.startsWith(TEACHER_SECTIONS.catalog);
+  // Les sections ne coiffent que leurs écrans : les archives et le pilotage ont leur propre
   // fil d'Ariane, et y laisser la barre surlignerait « Mes sujets » à tort.
   const onTeacherDashboard =
-    onCorrection || /^\/dashboard\/teacher\/?$/.test(location.pathname);
-  const section: TeacherSection = onCorrection ? 'correction' : 'mySubjects';
+    onCorrection || onCatalog || /^\/dashboard\/teacher\/?$/.test(location.pathname);
+  const section: TeacherSection = onCorrection ? 'correction' : onCatalog ? 'catalog' : 'mySubjects';
   // La bibliothèque est un service EXTERNE à l'ENT, que la plateforme déclare ou non.
   const libraryHost = confQuery.data?.libraryHost;
 
@@ -158,6 +161,9 @@ export function Root() {
               label: t('exercizer.dashboard.instructer.tab1'),
               content: null,
             },
+            ...(isCatalogAudience(user?.type)
+              ? [{ id: 'catalog', icon: null, label: t('exercizer.catalog.title'), content: null }]
+              : []),
             {
               id: 'correction',
               icon: null,

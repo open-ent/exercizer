@@ -334,6 +334,7 @@ public class FolderServiceSqlImpl extends AbstractExercizerServiceSqlImpl implem
     private void duplicationGrain(final SqlStatementsBuilder s, final Number newSubjectId, final Number fromSubjectId) {
         // Les sections partent avec les grains (cf. SectionSql).
         SectionSql.copySectionsAndGrains(s, newSubjectId, fromSubjectId);
+        CatalogSql.copyClassification(s, newSubjectId, fromSubjectId);
     }
 
 }

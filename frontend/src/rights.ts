@@ -22,6 +22,8 @@ export const WORKFLOW = {
   view: 'fr.openent.exercizer.controllers.SubjectController|view',
   /** Produire un sujet automatiquement à partir d'un document. */
   generate: 'fr.openent.exercizer.controllers.SubjectController|generate',
+  /** Modérer le catalogue d'exercices : retirer ou reclasser n'importe quel sujet publié. */
+  catalogManage: 'fr.openent.exercizer.controllers.CatalogController|manage',
 } as const;
 
 /** Droits de ressource (clés en tirets, comme dans `shared`). */
