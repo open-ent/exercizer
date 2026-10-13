@@ -817,5 +817,9 @@
   "exercizer.catalog.publish.authors": "Displayed author(s)",
   "exercizer.catalog.publish.action": "Publish",
   "exercizer.catalog.publish.done": "The exercise has been published to the catalogue.",
-  "exercizer.catalog.publish.classification.required": "Choose at least one level and one subject."
+  "exercizer.catalog.publish.classification.required": "Choose at least one level and one subject.",
+  "exercizer.import.moodle.calculated": "Calculated and Calculated multichoice",
+  "exercizer.import.info.cloze": "Cloze (embedded answers): each gap keeps a single correct answer. Gaps become drop-down lists if they are all choices, typed answers otherwise. A question with a multiple-response gap or a numerical answer with a tolerance is not imported.",
+  "exercizer.import.info.markers": "Drag and drop markers: each zone (circle, rectangle, polygon) becomes a box placed at its top-left corner, to be adjusted if needed.",
+  "exercizer.import.info.calculatedsimple": "Simple calculated: values are frozen on the first dataset; the expected answer is exact, rounded as stated in the question."
 }

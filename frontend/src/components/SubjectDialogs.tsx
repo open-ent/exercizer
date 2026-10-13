@@ -424,9 +424,11 @@ export function ImportSubjectDialog({
                   {t('exercizer.import.moodle')}
                 </Heading>
                 <ul>
-                  {[1, 2, 3, 4].map((n) => (
-                    <li key={n}>{t(`exercizer.import.moodle.type${n}`)}</li>
-                  ))}
+                  {/* La nouvelle interface importe aussi le cloze, les marqueurs, la mise en ordre
+                      et la calculée simple : ne restent que ces deux-là. L'ancienne IHM garde sa
+                      liste (types 1 à 4), elle n'a pas ces conversions. */}
+                  <li>{t('exercizer.import.moodle.type1')}</li>
+                  <li>{t('exercizer.import.moodle.calculated')}</li>
                 </ul>
               </div>
               <div className="g-col-12 g-col-md-6">
@@ -445,6 +447,9 @@ export function ImportSubjectDialog({
             <ul className="mb-0">
               <li>{t('exercizer.import.info1')}</li>
               <li>{t('exercizer.import.info2')}</li>
+              <li>{t('exercizer.import.info.cloze')}</li>
+              <li>{t('exercizer.import.info.markers')}</li>
+              <li>{t('exercizer.import.info.calculatedsimple')}</li>
             </ul>
           </>
         )}

@@ -135,7 +135,8 @@ export function parseMoodleXml(
       continue;
     }
 
-    const title = textOf(question, 'name text');
+    // Le `<name>` DIRECT de la question : une calculée a aussi des `<name>` dans ses variables.
+    const title = firstText(question, ':scope > name > text');
     const data: GrainData = { title };
     const rank = order++;
 
@@ -170,7 +171,9 @@ export function parseMoodleXml(
       data.answer_explanation = plainText(explanation);
     }
 
-    if (type !== 'description' && type !== 'gapselect' && type !== 'ddwtos') {
+    // Les textes à trous portent leur énoncé dans `htmlContent`, la Calculée simple le sien,
+    // valeurs figées.
+    if (!['description', 'gapselect', 'ddwtos', 'multianswer', 'calculatedsimple'].includes(type ?? '')) {
       data.statement = statement;
     }
 
@@ -210,14 +213,31 @@ export function parseMoodleXml(
         grainTypeId = GRAIN.AREA_SELECT_IMAGE;
         fillAreaSelect(data, question, score, grainImages, textToImage);
         break;
+      case 'ddmarker':
+        grainTypeId = fillMarkers(data, question, score, grainImages, textToImage);
+        break;
+      case 'ordering':
+        grainTypeId = fillOrdering(data, question, score);
+        break;
+      case 'multianswer':
+        grainTypeId = fillCloze(data, score, statement);
+        break;
+      case 'calculatedsimple':
+        grainTypeId = fillCalculatedSimple(data, question, score, statement);
+        break;
       default:
-        // Le rang est rendu : une question ignorée ne doit pas laisser de trou dans le sujet.
-        order--;
-        images.delete(rank);
-        unsupported.push(title);
+        break;
     }
 
-    if (grainTypeId !== null) grains.push({ grain_type_id: grainTypeId, order_by: rank, grain_data: data });
+    if (grainTypeId === null) {
+      // Le rang est rendu : une question ignorée — type inconnu, ou contenu que le module ne
+      // sait pas représenter — ne doit pas laisser de trou dans le sujet.
+      order--;
+      images.delete(rank);
+      unsupported.push(title);
+    }
+
+    else grains.push({ grain_type_id: grainTypeId, order_by: rank, grain_data: data });
   }
 
   return { grains, images, unsupported, total: questions.length - categories };
@@ -360,6 +380,387 @@ function fillAreaSelect(
 
   data.max_score = score ?? zones.length;
   data.custom_data = { zones, options: [] };
+}
+
+/**
+ * Mise en ordre (`ordering`, extension Moodle). Les éléments sont exportés dans le bon ordre, leur
+ * position rangée dans `fraction` (1, 2, 3…) : on s'y fie si elle est complète et sans doublon,
+ * sinon on garde l'ordre du fichier.
+ */
+function fillOrdering(data: GrainData, question: Element, score: number | null): number | null {
+  const items = Array.from(question.querySelectorAll('answer')).map((answer, index) => ({
+    text: plainText(firstText(answer, 'text')).trim(),
+    rank: Number(answer.getAttribute('fraction')),
+    index,
+  }));
+  if (items.length < 2) return null;
+  const ranked =
+    items.every((item) => Number.isFinite(item.rank)) &&
+    new Set(items.map((item) => item.rank)).size === items.length;
+  items.sort((a, b) => (ranked ? a.rank - b.rank : a.index - b.index));
+  data.max_score = score ?? items.length;
+  data.custom_data = {
+    no_error_allowed: false,
+    correct_answer_list: items.map((item, position) => ({ text: item.text, order_by: position + 1 })),
+  };
+  return GRAIN.ORDER_BY;
+}
+
+// ── Cloze (réponses intégrées) ────────────────────────────────────────────────
+
+/** Un trou cloze : `{poids:TYPE:réponses}`, accolade fermante échappée par `\}`. */
+const CLOZE_GAP = /\{(\d*):([A-Z_]+):((?:\\.|[^\\}])*)\}/g;
+
+type ClozeFamily = 'text' | 'numerical' | 'choice';
+
+/** Les familles que le texte à trous sait représenter ; les réponses multiples (MR) n'en sont pas. */
+function clozeFamily(kind: string): ClozeFamily | null {
+  if (/^(SHORTANSWER(_C)?|SA|MW|SAC|MWC)$/.test(kind)) return 'text';
+  if (/^(NUMERICAL|NM)$/.test(kind)) return 'numerical';
+  if (/^(MULTICHOICE(_[VH]?S?)?|MC[VH]?S?)$/.test(kind)) return 'choice';
+  return null;
+}
+
+/** Découpe sur un séparateur non échappé. */
+function splitUnescaped(text: string, separator: string): string[] {
+  const parts: string[] = [];
+  let current = '';
+  for (let i = 0; i < text.length; i++) {
+    if (text[i] === '\\' && i + 1 < text.length) {
+      current += text[i] + text[i + 1];
+      i++;
+    } else if (text[i] === separator) {
+      parts.push(current);
+      current = '';
+    } else {
+      current += text[i];
+    }
+  }
+  parts.push(current);
+  return parts;
+}
+
+const unescapeCloze = (text: string) => text.replace(/\\(.)/g, '$1');
+
+/** Les réponses d'un trou : `=bonne`, `%50%partielle`, `fausse`, chacune suivie d'un `#commentaire`. */
+export function parseClozeAnswers(body: string): { text: string; fraction: number }[] {
+  return splitUnescaped(body, '~')
+    .map((raw) => splitUnescaped(raw, '#')[0])
+    .filter((raw) => raw.trim().length > 0)
+    .map((raw) => {
+      const weighted = /^%(-?\d+(?:\.\d+)?)%/.exec(raw);
+      if (raw.startsWith('=')) return { text: unescapeCloze(raw.slice(1)), fraction: 100 };
+      if (weighted) return { text: unescapeCloze(raw.slice(weighted[0].length)), fraction: Number(weighted[1]) };
+      return { text: unescapeCloze(raw), fraction: 0 };
+    });
+}
+
+const escapeHtml = (text: string) =>
+  text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+
+/**
+ * Cloze (`multianswer`) → texte à trous. Chaque trou devient une zone dont la réponse est la
+ * réponse à 100 %. Le texte à trous n'a qu'un mode de réponse pour toutes ses zones : listes si
+ * TOUS les trous sont des choix, saisie libre sinon. Une seule bonne réponse par zone : les
+ * variantes acceptées d'une réponse courte, et les réponses partielles, sont perdues.
+ *
+ * La question est écartée si un trou n'a pas d'équivalent : réponses multiples (MR), réponse
+ * numérique avec tolérance, joker `*` d'une réponse courte, ou trou sans réponse à 100 %.
+ */
+function fillCloze(data: GrainData, score: number | null, statement: string): number | null {
+  const gaps: { answer: string; options: string[]; family: ClozeFamily }[] = [];
+  let representable = true;
+
+  const html = statement.replace(CLOZE_GAP, (matched, _weight: string, kind: string, body: string) => {
+    const family = clozeFamily(kind);
+    const answers = parseClozeAnswers(body);
+    const correct = answers.find((answer) => answer.fraction === 100);
+    if (!family || !correct) {
+      representable = false;
+      return matched;
+    }
+    let answer = plainText(correct.text).trim();
+    if (family === 'numerical') {
+      const [value, tolerance] = answer.split(':');
+      if (tolerance !== undefined && Number(tolerance) !== 0) {
+        representable = false;
+        return matched;
+      }
+      answer = value.trim().replace('.', ',');
+    }
+    if (family === 'text' && answer.includes('*')) {
+      representable = false;
+      return matched;
+    }
+    const options = family === 'choice' ? answers.map((option) => plainText(option.text).trim()) : [];
+    const id = gaps.length;
+    gaps.push({ answer, options, family });
+    return (
+      '<span contenteditable="false">' +
+      FILL_ZONE_TEMPLATE.replace('@ID@', String(id)).replace('@answer@', escapeHtml(answer))
+    );
+  });
+
+  if (!representable || gaps.length === 0) return null;
+  const allChoices = gaps.every((gap) => gap.family === 'choice');
+  data.max_score = score ?? gaps.length;
+  data.custom_data = {
+    options: [],
+    zones: gaps.map((gap, id) => ({ answer: gap.answer, options: allChoices ? gap.options : [], id })),
+    answersType: allChoices ? 'list' : 'text',
+    htmlContent: html,
+  };
+  return GRAIN.TEXT_TO_FILL;
+}
+
+// ── Marqueurs à glisser-déposer ───────────────────────────────────────────────
+
+/**
+ * Coin haut-gauche d'une zone Moodle. Les zones d'images de l'ENT sont des cases posées en un
+ * point : un cercle, un rectangle ou un polygone est ramené au coin de son rectangle englobant.
+ */
+export function markerTopLeft(shape: string, coords: string): { x: number; y: number } | null {
+  const points = coords
+    .split(';')
+    .map((pair) => pair.split(',').map((value) => Number(value.trim())));
+  if (points.some((point) => point.some((value) => !Number.isFinite(value)))) return null;
+  switch (shape.trim()) {
+    case 'circle': {
+      // « x,y;r »
+      const [[x, y], [radius]] = points;
+      if (radius === undefined) return null;
+      return { x: Math.round(x - radius), y: Math.round(y - radius) };
+    }
+    case 'rectangle': {
+      // « x,y;largeur,hauteur »
+      const [[x, y]] = points;
+      return { x: Math.round(x), y: Math.round(y) };
+    }
+    case 'polygon': {
+      // « x1,y1;x2,y2;… »
+      if (points.some((point) => point.length < 2)) return null;
+      return {
+        x: Math.round(Math.min(...points.map(([x]) => x))),
+        y: Math.round(Math.min(...points.map(([, y]) => y))),
+      };
+    }
+    default:
+      return null;
+  }
+}
+
+/**
+ * Marqueurs à glisser-déposer (`ddmarker`) → zones d'images, comme `ddimageortext` : chaque
+ * étiquette (texte) devient une image, chaque zone attend la sienne. Moodle note la PRÉSENCE d'un
+ * marqueur dans une forme ; l'ENT, une étiquette posée dans une case.
+ */
+function fillMarkers(
+  data: GrainData,
+  question: Element,
+  score: number | null,
+  images: GrainImages,
+  textToImage: (text: string) => string | null,
+): number | null {
+  const guide = Array.from(question.children).find((child) => child.tagName === 'file');
+  if (!guide) return null;
+  addImage(images.drag_drop, 0, guide.textContent, guide.getAttribute('name'));
+
+  for (const drag of Array.from(question.querySelectorAll('drag'))) {
+    const text = plainText(textOf(drag, 'text')).trim();
+    addImage(
+      images.drag_drop,
+      Number(textOf(drag, 'no')),
+      textToImage(text),
+      `${text.replace(/[^\w]/gi, '') || 'marqueur'}.png`,
+    );
+  }
+
+  const zones: GrainZone[] = [];
+  for (const [index, drop] of Array.from(question.querySelectorAll('drop')).entries()) {
+    const corner = markerTopLeft(textOf(drop, 'shape'), textOf(drop, 'coords'));
+    if (!corner) return null;
+    zones.push({
+      position: { ...corner, z: Number(textOf(drop, 'no')) || index + 1 },
+      // Provisoire : le RANG de l'étiquette attendue, remplacé par son lien après le dépôt.
+      answer: textOf(drop, 'choice'),
+    });
+  }
+  if (zones.length === 0) return null;
+
+  data.max_score = score ?? zones.length;
+  data.custom_data = { zones, options: [] };
+  return GRAIN.AREA_SELECT_IMAGE;
+}
+
+// ── Calculée simple ───────────────────────────────────────────────────────────
+
+/** Un nombre à la française : virgule décimale. */
+const frenchNumber = (value: number) => String(value).replace('.', ',');
+
+/**
+ * Calculée simple (`calculatedsimple`) → réponse simple, valeurs FIGÉES : chaque variable prend
+ * la première valeur de son jeu de données, l'énoncé est écrit avec ces valeurs et la réponse
+ * attendue est calculée une fois pour toutes. Moodle tirait un jeu différent par élève et
+ * acceptait une tolérance ; l'ENT compare une réponse exacte, d'où l'indice sur l'arrondi.
+ */
+function fillCalculatedSimple(
+  data: GrainData,
+  question: Element,
+  score: number | null,
+  statement: string,
+): number | null {
+  const variables = new Map<string, number>();
+  for (const definition of Array.from(question.querySelectorAll('dataset_definition'))) {
+    const name = firstText(definition, 'name text').trim();
+    const item = definition.querySelector('dataset_items dataset_item');
+    const value = item ? Number(textOf(item, 'value')) : Number.NaN;
+    if (!name || !Number.isFinite(value)) return null;
+    variables.set(name, value);
+  }
+
+  const answer = Array.from(question.querySelectorAll('answer')).find(
+    (candidate) => Number(candidate.getAttribute('fraction')) === 100,
+  );
+  if (!answer) return null;
+  const result = evaluateFormula(firstText(answer, 'text'), variables);
+  if (result === null) return null;
+
+  const significant = textOf(answer, 'correctanswerformat').trim() === '2';
+  const length = Number(textOf(answer, 'correctanswerlength') || 2);
+  const rounded = significant
+    ? Number(result.toPrecision(Math.min(21, Math.max(1, length))))
+    : Number(result.toFixed(Math.min(20, Math.max(0, length))));
+
+  // Les formules en ligne `{={a}*2}`, puis les variables `{a}`.
+  let text = statement.replace(/\{=((?:[^{}]|\{\w+\})*)\}/g, (matched, formula: string) => {
+    const value = evaluateFormula(formula, variables);
+    return value === null ? matched : frenchNumber(value);
+  });
+  for (const [name, value] of variables) text = text.split(`{${name}}`).join(frenchNumber(value));
+  if (/\{[A-Za-z_]\w*\}/.test(text)) return null;
+
+  data.statement = text;
+  data.max_score = score ?? 1;
+  data.answer_hint = significant
+    ? `Donnez le résultat avec ${length} chiffre(s) significatif(s).`
+    : length > 0
+      ? `Arrondissez le résultat à ${length} décimale(s) au plus, avec une virgule.`
+      : 'Donnez le résultat arrondi à l’unité.';
+  data.custom_data = { correct_answer: frenchNumber(rounded) };
+  return GRAIN.SIMPLE_ANSWER;
+}
+
+/** Les fonctions des formules Moodle (celles de PHP), et leur nombre d'arguments. */
+const FORMULA_FUNCTIONS: Record<string, { arity: number[]; apply: (...args: number[]) => number }> = {
+  abs: { arity: [1], apply: Math.abs },
+  acos: { arity: [1], apply: Math.acos },
+  acosh: { arity: [1], apply: Math.acosh },
+  asin: { arity: [1], apply: Math.asin },
+  asinh: { arity: [1], apply: Math.asinh },
+  atan: { arity: [1], apply: Math.atan },
+  atan2: { arity: [2], apply: Math.atan2 },
+  atanh: { arity: [1], apply: Math.atanh },
+  ceil: { arity: [1], apply: Math.ceil },
+  cos: { arity: [1], apply: Math.cos },
+  cosh: { arity: [1], apply: Math.cosh },
+  deg2rad: { arity: [1], apply: (x) => (x * Math.PI) / 180 },
+  exp: { arity: [1], apply: Math.exp },
+  expm1: { arity: [1], apply: Math.expm1 },
+  floor: { arity: [1], apply: Math.floor },
+  fmod: { arity: [2], apply: (x, y) => x % y },
+  log: { arity: [1, 2], apply: (x, base) => (base === undefined ? Math.log(x) : Math.log(x) / Math.log(base)) },
+  log10: { arity: [1], apply: Math.log10 },
+  log1p: { arity: [1], apply: Math.log1p },
+  max: { arity: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10], apply: Math.max },
+  min: { arity: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10], apply: Math.min },
+  pi: { arity: [0], apply: () => Math.PI },
+  pow: { arity: [2], apply: Math.pow },
+  rad2deg: { arity: [1], apply: (x) => (x * 180) / Math.PI },
+  round: {
+    arity: [1, 2],
+    apply: (x, digits = 0) => Math.round(x * 10 ** digits) / 10 ** digits,
+  },
+  sin: { arity: [1], apply: Math.sin },
+  sinh: { arity: [1], apply: Math.sinh },
+  sqrt: { arity: [1], apply: Math.sqrt },
+  tan: { arity: [1], apply: Math.tan },
+  tanh: { arity: [1], apply: Math.tanh },
+};
+
+/**
+ * Évalue une formule de question calculée : nombres, variables `{a}`, `+ - * / % **`,
+ * parenthèses et fonctions de {@link FORMULA_FUNCTIONS}. Jamais d'`eval` : un fichier importé
+ * vient de l'extérieur. Renvoie null pour toute formule illisible ou tout résultat non fini.
+ */
+export function evaluateFormula(formula: string, variables: Map<string, number>): number | null {
+  const tokens = formula.match(/\{[A-Za-z_]\w*\}|\d+(?:\.\d*)?(?:[eE][+-]?\d+)?|\.\d+|[A-Za-z_]\w*|\*\*|[-+*/%(),]|\S/g) ?? [];
+  let position = 0;
+  const peek = () => tokens[position];
+  const next = () => tokens[position++];
+  const fail = (): never => {
+    throw new Error('formula');
+  };
+
+  // expression := terme (('+' | '-') terme)*
+  const expression = (): number => {
+    let value = term();
+    while (peek() === '+' || peek() === '-') value = next() === '+' ? value + term() : value - term();
+    return value;
+  };
+  // terme := puissance (('*' | '/' | '%') puissance)*
+  const term = (): number => {
+    let value = power();
+    while (peek() === '*' || peek() === '/' || peek() === '%') {
+      const operator = next();
+      const right = power();
+      value = operator === '*' ? value * right : operator === '/' ? value / right : value % right;
+    }
+    return value;
+  };
+  // puissance := unaire ('**' puissance)?   (associative à droite)
+  const power = (): number => {
+    const base = unary();
+    return peek() === '**' ? (next(), base ** power()) : base;
+  };
+  const unary = (): number => {
+    if (peek() === '-') return next(), -unary();
+    if (peek() === '+') return next(), unary();
+    return primary();
+  };
+  const primary = (): number => {
+    const token = next();
+    if (token === undefined) return fail();
+    if (token === '(') {
+      const value = expression();
+      if (next() !== ')') fail();
+      return value;
+    }
+    if (/^\{\w+\}$/.test(token)) {
+      const value = variables.get(token.slice(1, -1));
+      return value === undefined ? fail() : value;
+    }
+    if (/^(\d|\.\d)/.test(token)) return Number(token);
+    const fn = FORMULA_FUNCTIONS[token.toLowerCase()];
+    if (!fn || next() !== '(') return fail();
+    const args: number[] = [];
+    if (peek() !== ')') {
+      args.push(expression());
+      while (peek() === ',') {
+        next();
+        args.push(expression());
+      }
+    }
+    if (next() !== ')' || !fn.arity.includes(args.length)) fail();
+    return fn.apply(...args);
+  };
+
+  try {
+    const value = expression();
+    if (position !== tokens.length || !Number.isFinite(value)) return null;
+    return value;
+  } catch {
+    return null;
+  }
 }
 
 /** Dessine un texte dans une image PNG, rendue en base64 sans son préfixe `data:`. */

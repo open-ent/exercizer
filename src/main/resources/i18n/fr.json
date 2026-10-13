@@ -817,5 +817,9 @@
   "exercizer.catalog.publish.authors": "Auteur(s) affiché(s)",
   "exercizer.catalog.publish.action": "Publier",
   "exercizer.catalog.publish.done": "Le sujet a été publié au catalogue.",
-  "exercizer.catalog.publish.classification.required": "Choisissez au moins un niveau et une matière."
+  "exercizer.catalog.publish.classification.required": "Choisissez au moins un niveau et une matière.",
+  "exercizer.import.moodle.calculated": "Calculée et Calculée à choix multiple",
+  "exercizer.import.info.cloze": "Cloze (réponses intégrées) : chaque trou garde une seule bonne réponse. Les trous sont des listes si tous sont des choix, à saisir sinon. Une question avec un trou à réponses multiples ou une réponse numérique avec tolérance n'est pas importée.",
+  "exercizer.import.info.markers": "Marqueurs à glisser-déposer : chaque zone (cercle, rectangle, polygone) devient une case placée à son coin supérieur gauche, à ajuster si besoin.",
+  "exercizer.import.info.calculatedsimple": "Calculée simple : les valeurs sont figées sur le premier jeu de données ; la réponse attendue est exacte, arrondie comme indiqué dans la question."
 }
