@@ -497,8 +497,8 @@ public class SubjectServiceSqlImpl extends AbstractExercizerServiceSqlImpl imple
 		}
 		//caution original_subject_id unmanagment
 		final String subjectCopy = "INSERT INTO exercizer.subject (id, folder_id, owner, owner_username, title, description, picture, max_score, " +
-				"is_library_subject, is_deleted, authors_contributors, type) " +
-				"SELECT ?, ?, ?, ?, s.title || ?, s.description, s.picture, s.max_score, ?, s.is_deleted, ?, s.type FROM exercizer.subject as s " +
+				"is_library_subject, is_deleted, authors_contributors, type, large_display) " +
+				"SELECT ?, ?, ?, ?, s.title || ?, s.description, s.picture, s.max_score, ?, s.is_deleted, ?, s.type, s.large_display FROM exercizer.subject as s " +
 				"WHERE s.id = ?";
 
 		final JsonArray values = new JsonArray().add(newSubjectId).add(folderId).add(user.getUserId())

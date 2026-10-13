@@ -321,8 +321,8 @@ public class FolderServiceSqlImpl extends AbstractExercizerServiceSqlImpl implem
         String userQuery = "SELECT " + schema + "merge_users(?,?)";
         s.prepared(userQuery, new JsonArray().add(user.getUserId()).add(user.getUsername()));
 
-        final String subjectCopy = "INSERT INTO " + schema + "subject (id, folder_id, owner, owner_username, title, description, picture, max_score) " +
-                "SELECT ?, ?, ?, ?, s.title || ?, s.description, s.picture, s.max_score FROM " + schema + "subject as s " +
+        final String subjectCopy = "INSERT INTO " + schema + "subject (id, folder_id, owner, owner_username, title, description, picture, max_score, large_display) " +
+                "SELECT ?, ?, ?, ?, s.title || ?, s.description, s.picture, s.max_score, s.large_display FROM " + schema + "subject as s " +
                 "WHERE s.id = ?";
 
         final JsonArray values = new JsonArray().add(newSubjectId).add(folderId).add(user.getUserId())

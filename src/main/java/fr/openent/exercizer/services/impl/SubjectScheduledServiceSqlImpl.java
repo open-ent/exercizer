@@ -281,8 +281,8 @@ public class SubjectScheduledServiceSqlImpl extends AbstractExercizerServiceSqlI
 	private void createScheduledSubject(final SqlStatementsBuilder s, final Long subjectId, final Long scheduledSubjectId, final JsonObject scheduledSubject, UserInfos user) {
 
 		final String query = "INSERT INTO " + schema + "subject_scheduled (id, subject_id, title, description, picture, max_score, " +
-				"owner, owner_username, begin_date, due_date, estimated_duration, is_one_shot_submit, random_display, is_training_mode, is_training_permitted, scheduled_at, type, is_notify, use_time, locale, display_mode) " +
-				"SELECT ?, s.id, s.title, s.description, s.picture, s.max_score, ?, ?, ?::timestamp , ?::timestamp, ?, ?, ?, ?, ?, ?::json, s.type, ?, ?, ?, ? FROM " + schema + "subject as s " +
+				"owner, owner_username, begin_date, due_date, estimated_duration, is_one_shot_submit, random_display, is_training_mode, is_training_permitted, scheduled_at, type, is_notify, use_time, locale, display_mode, large_display) " +
+				"SELECT ?, s.id, s.title, s.description, s.picture, s.max_score, ?, ?, ?::timestamp , ?::timestamp, ?, ?, ?, ?, ?, ?::json, s.type, ?, ?, ?, ?, s.large_display FROM " + schema + "subject as s " +
 				"WHERE s.id=? RETURNING id";
 
 		final JsonArray values = new JsonArray();
@@ -310,8 +310,8 @@ public class SubjectScheduledServiceSqlImpl extends AbstractExercizerServiceSqlI
 	private void createSimpleScheduledSubject(final SqlStatementsBuilder s, final Long subjectId, final Long scheduledSubjectId, final JsonObject scheduledSubject, UserInfos user) {
 
 		final String query = "INSERT INTO " + schema + "subject_scheduled (id, subject_id, title, description, picture, " +
-				"owner, owner_username, begin_date, due_date, corrected_date, scheduled_at, type, is_notify, use_time, locale) " +
-				"SELECT ?, s.id, s.title, s.description, s.picture, ?, ?, ?::timestamp , ?::timestamp, ?::timestamp, ?::json, s.type, ?, ?, ? FROM " + schema + "subject as s " +
+				"owner, owner_username, begin_date, due_date, corrected_date, scheduled_at, type, is_notify, use_time, locale, large_display) " +
+				"SELECT ?, s.id, s.title, s.description, s.picture, ?, ?, ?::timestamp , ?::timestamp, ?::timestamp, ?::json, s.type, ?, ?, ?, s.large_display FROM " + schema + "subject as s " +
 				"WHERE s.id=? RETURNING id";
 
 		final JsonArray values = new JsonArray();

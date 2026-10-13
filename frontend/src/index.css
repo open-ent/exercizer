@@ -10,3 +10,76 @@
   margin-top: var(--openent-spacing-24, 1.5rem);
   background: var(--openent-white);
 }
+
+/* Grand format (sql/043) : la passation des jeunes élèves. Le socle n'a pas d'échelle de texte
+   au-delà de `fs-1` ; on agrandit donc tout l'écran d'un cran, champs et cases compris, et on
+   donne aux cibles la taille d'un doigt d'enfant. 1rem = 10px (`--openent-root-font-size`). */
+.exercizer-large {
+  font-size: 2.4rem;
+}
+.exercizer-large h1 {
+  font-size: 3.6rem;
+}
+.exercizer-large .card.exercizer-large-stage {
+  font-size: 3.2rem;
+  line-height: 1.4;
+}
+/* Le thème fixe la taille des paragraphes et des libellés : on les ramène à celle de la scène. */
+.exercizer-large .card.exercizer-large-stage :is(p, li, label, .form-check-label) {
+  font-size: inherit;
+}
+.exercizer-large .card.exercizer-large-stage h2 {
+  font-size: 3.6rem;
+}
+.exercizer-large .form-check {
+  display: flex;
+  align-items: center;
+  gap: 1.2rem;
+  margin-bottom: 1.2rem;
+}
+.exercizer-large .form-control,
+.exercizer-large .form-select,
+.exercizer-large .btn {
+  font-size: 2.4rem;
+  min-height: 5.6rem;
+}
+.exercizer-large .form-check-input {
+  width: 4rem;
+  height: 4rem;
+  margin: 0;
+}
+.exercizer-large-dot {
+  width: 4.8rem;
+  height: 4.8rem;
+  border-radius: 50%;
+  border: 0.3rem solid var(--openent-gray-400);
+  background: var(--openent-white);
+  font-size: 2rem;
+  font-weight: bold;
+}
+.exercizer-large-dot[aria-current='step'] {
+  border-color: var(--openent-primary);
+  box-shadow: 0 0 0 0.3rem var(--openent-primary-200, var(--openent-gray-300));
+}
+.exercizer-large-dot.is-answered {
+  background: var(--openent-gray-300);
+}
+.exercizer-large-dot.is-correct {
+  background: var(--openent-success);
+  border-color: var(--openent-success);
+  color: var(--openent-white);
+}
+.exercizer-large-dot.is-partial {
+  background: var(--openent-warning);
+  border-color: var(--openent-warning);
+}
+.exercizer-large-dot.is-wrong {
+  background: var(--openent-danger);
+  border-color: var(--openent-danger);
+  color: var(--openent-white);
+}
+.exercizer-large-stars,
+.exercizer-large-verdict {
+  font-size: 3.2rem;
+  font-weight: bold;
+}

@@ -55,6 +55,8 @@ export interface Subject {
   is_library_subject?: boolean;
   is_deleted?: boolean;
   type?: SubjectType;
+  /** Passation en grand format pour les jeunes élèves (sql/043), recopiée sur la distribution. */
+  large_display?: boolean;
   files?: SubjectDocument[];
   /**
    * Les partages du sujet (modèle entcore) : une entrée par personne ou par groupe, qui porte en
@@ -132,6 +134,8 @@ export interface SubjectScheduled {
   sequence_order_by?: number;
   /** Sections (sql/039) : une question par page (défaut) ou une section par page. */
   display_mode?: DisplayMode;
+  /** Grand format (sql/043) : gros caractères, une question à l'écran, énoncé lu à voix haute. */
+  large_display?: boolean;
   /** Les destinataires sont prévenus d'un changement de dates. */
   is_notify?: boolean;
   /** Archives : décomptes calculés par le serveur, et corrigé historique (un seul fichier). */

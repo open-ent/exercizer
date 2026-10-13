@@ -2,6 +2,7 @@ import {
   Alert,
   Button,
   Card,
+  Checkbox,
   FormControl,
   Heading,
   Input,
@@ -11,6 +12,7 @@ import {
   Radio,
   TextArea,
   useEdificeClient,
+  useEdificeTheme,
   useHasWorkflow,
   useMediaLibrary,
 } from '@open-ent/react';
@@ -42,12 +44,20 @@ function pictureUrl(result: unknown): string | null {
 }
 
 /** Les trois champs d'un sujet : image de couverture, titre, description. */
+interface SubjectFieldValues {
+  title: string;
+  description: string;
+  picture: string;
+  /** Passation en grand format pour les jeunes élèves (sql/043). */
+  large_display: boolean;
+}
+
 function SubjectFields({
   value,
   onChange,
 }: {
-  value: { title: string; description: string; picture: string };
-  onChange: (next: { title: string; description: string; picture: string }) => void;
+  value: SubjectFieldValues;
+  onChange: (next: SubjectFieldValues) => void;
 }) {
   const { t } = useTranslation(['exercizer', 'common']);
   const id = useId();
@@ -101,6 +111,16 @@ function SubjectFields({
             onChange={(event) => onChange({ ...value, description: event.target.value })}
           />
         </FormControl>
+        <div className="mt-16">
+          <Checkbox
+            label={t('exercizer.subject.large.display')}
+            checked={value.large_display}
+            onChange={(event) => onChange({ ...value, large_display: event.target.checked })}
+          />
+          <small className="d-block text-gray-700 mt-4">
+            {t('exercizer.subject.large.display.help')}
+          </small>
+        </div>
       </div>
 
       <MediaLibrary
@@ -140,8 +160,16 @@ export function NewSubjectDialog({
   const { t } = useTranslation(['exercizer', 'common']);
   const id = useId();
   const canGenerate = useHasWorkflow(WORKFLOW.generate) as boolean | undefined;
+  const { theme } = useEdificeTheme();
   const [step, setStep] = useState<'choose' | 'subject'>('choose');
-  const [fields, setFields] = useState({ title: '', description: '', picture: '' });
+  // Un enseignant du premier degré écrit d'abord pour de jeunes élèves : le grand format est
+  // proposé d'office, il le décoche pour un sujet destiné aux plus grands.
+  const [fields, setFields] = useState<SubjectFieldValues>({
+    title: '',
+    description: '',
+    picture: '',
+    large_display: !!theme?.is1d,
+  });
   const [error, setError] = useState<string | null>(null);
 
   const create = useMutation({
@@ -150,6 +178,7 @@ export function NewSubjectDialog({
         title: fields.title.trim(),
         description: fields.description,
         picture: fields.picture || undefined,
+        large_display: fields.large_display,
         folder_id: folderId,
       }),
     onSuccess: onCreated,
@@ -263,10 +292,11 @@ export function SubjectPropertiesDialog({
 }) {
   const { t } = useTranslation(['exercizer', 'common']);
   const id = useId();
-  const [fields, setFields] = useState({
+  const [fields, setFields] = useState<SubjectFieldValues>({
     title: subject.title ?? '',
     description: subject.description ?? '',
     picture: subject.picture ?? '',
+    large_display: !!subject.large_display,
   });
   const [error, setError] = useState<string | null>(null);
 
@@ -277,6 +307,7 @@ export function SubjectPropertiesDialog({
         title: fields.title.trim(),
         description: fields.description,
         picture: fields.picture,
+        large_display: fields.large_display,
       }),
     onSuccess: onSaved,
     onError: () => setError(t('exercizer.error')),
@@ -339,10 +370,16 @@ export function ImportSubjectDialog({
   onOpen: (subject: Subject) => void;
 }) {
   const { t } = useTranslation(['exercizer', 'common']);
+  const { theme } = useEdificeTheme();
   const id = useId();
   const input = useRef<HTMLInputElement>(null);
   const [step, setStep] = useState<ImportStep>('begin');
-  const [fields, setFields] = useState({ title: '', description: '', picture: '' });
+  const [fields, setFields] = useState<SubjectFieldValues>({
+    title: '',
+    description: '',
+    picture: '',
+    large_display: !!theme?.is1d,
+  });
   const [file, setFile] = useState<File | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<{
@@ -369,7 +406,7 @@ export function ImportSubjectDialog({
         }),
       );
       applyImageLinks(parsed.grains, parsed.images);
-      const subject = await importSubject(
+      const imported = await importSubject(
         {
           title: fields.title.trim(),
           description: fields.description || undefined,
@@ -378,6 +415,11 @@ export function ImportSubjectDialog({
         },
         parsed.grains,
       );
+      // Le schéma de l'import (`jsonschema/import.json`) n'a pas la clé : la modifier exigerait un
+      // redémarrage complet de l'ENT. Le grand format se pose donc ensuite, comme une propriété.
+      const subject = fields.large_display
+        ? await updateSubject({ ...imported, large_display: true })
+        : imported;
       return {
         subject,
         count: `${parsed.grains.length}/${parsed.total}`,

@@ -821,5 +821,16 @@
   "exercizer.import.moodle.calculated": "Calculée et Calculée à choix multiple",
   "exercizer.import.info.cloze": "Cloze (réponses intégrées) : chaque trou garde une seule bonne réponse. Les trous sont des listes si tous sont des choix, à saisir sinon. Une question avec un trou à réponses multiples ou une réponse numérique avec tolérance n'est pas importée.",
   "exercizer.import.info.markers": "Marqueurs à glisser-déposer : chaque zone (cercle, rectangle, polygone) devient une case placée à son coin supérieur gauche, à ajuster si besoin.",
-  "exercizer.import.info.calculatedsimple": "Calculée simple : les valeurs sont figées sur le premier jeu de données ; la réponse attendue est exacte, arrondie comme indiqué dans la question."
+  "exercizer.import.info.calculatedsimple": "Calculée simple : les valeurs sont figées sur le premier jeu de données ; la réponse attendue est exacte, arrondie comme indiqué dans la question.",
+  "exercizer.subject.large.display": "Affichage grand format (jeunes élèves)",
+  "exercizer.subject.large.display.help": "Pour la maternelle et le début de l'élémentaire : une question à l'écran, de gros caractères, l'énoncé lu à voix haute et, en entraînement, la réponse vérifiée aussitôt.",
+  "exercizer.large.listen": "Écouter",
+  "exercizer.large.stop": "Arrêter",
+  "exercizer.large.check": "Vérifier",
+  "exercizer.large.question": "Question [[number]] sur [[total]]",
+  "exercizer.large.goto": "Aller à l'étape [[number]]",
+  "exercizer.large.stars": "[[count]] bonne(s) réponse(s)",
+  "exercizer.large.verdict.correct": "Bravo, c'est juste !",
+  "exercizer.large.verdict.partial": "Presque ! Il manque encore quelque chose.",
+  "exercizer.large.verdict.wrong": "Ce n'est pas ça. Essaie encore !"
 }

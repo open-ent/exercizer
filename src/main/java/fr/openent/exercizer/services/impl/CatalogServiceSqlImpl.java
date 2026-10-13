@@ -156,9 +156,9 @@ public class CatalogServiceSqlImpl extends AbstractExercizerServiceSqlImpl imple
             s.prepared("SELECT " + S + "merge_users(?,?)", new JsonArray().add(user.getUserId()).add(user.getUsername()));
             // Le dossier n'est retenu que s'il appartient à l'usager ; sinon le sujet arrive à la racine.
             s.prepared("INSERT INTO " + S + "subject (id, folder_id, owner, owner_username, title, description, picture, " +
-                            "max_score, is_library_subject, is_deleted, authors_contributors, type) " +
+                            "max_score, is_library_subject, is_deleted, authors_contributors, type, large_display) " +
                             "SELECT ?, (SELECT f.id FROM " + S + "folder AS f WHERE f.id = ? AND f.owner = ?), ?, ?, " +
-                            "s.title, s.description, s.picture, s.max_score, false, false, s.authors_contributors, s.type " +
+                            "s.title, s.description, s.picture, s.max_score, false, false, s.authors_contributors, s.type, s.large_display " +
                             "FROM " + S + "subject AS s WHERE s.id = ? AND " + CATALOG_GUARD,
                     new JsonArray().add(newId).add(folderId).add(user.getUserId()).add(user.getUserId())
                             .add(user.getUsername()).add(catalogSubjectId));
@@ -182,8 +182,8 @@ public class CatalogServiceSqlImpl extends AbstractExercizerServiceSqlImpl imple
             final SqlStatementsBuilder s = new SqlStatementsBuilder();
             s.prepared("SELECT " + S + "merge_users(?,?)", new JsonArray().add(user.getUserId()).add(user.getUsername()));
             s.prepared("INSERT INTO " + S + "subject (id, folder_id, owner, owner_username, title, description, picture, " +
-                            "max_score, is_library_subject, is_deleted, authors_contributors, type) " +
-                            "SELECT ?, NULL, ?, ?, s.title, s.description, s.picture, s.max_score, true, false, ?, s.type " +
+                            "max_score, is_library_subject, is_deleted, authors_contributors, type, large_display) " +
+                            "SELECT ?, NULL, ?, ?, s.title, s.description, s.picture, s.max_score, true, false, ?, s.type, s.large_display " +
                             "FROM " + S + "subject AS s WHERE s.id = ? AND s.owner = ? " +
                             "AND s.is_library_subject = false AND s.is_deleted = false",
                     new JsonArray().add(newId).add(user.getUserId()).add(user.getUsername())

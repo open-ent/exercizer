@@ -821,5 +821,16 @@
   "exercizer.import.moodle.calculated": "Calculated and Calculated multichoice",
   "exercizer.import.info.cloze": "Cloze (embedded answers): each gap keeps a single correct answer. Gaps become drop-down lists if they are all choices, typed answers otherwise. A question with a multiple-response gap or a numerical answer with a tolerance is not imported.",
   "exercizer.import.info.markers": "Drag and drop markers: each zone (circle, rectangle, polygon) becomes a box placed at its top-left corner, to be adjusted if needed.",
-  "exercizer.import.info.calculatedsimple": "Simple calculated: values are frozen on the first dataset; the expected answer is exact, rounded as stated in the question."
+  "exercizer.import.info.calculatedsimple": "Simple calculated: values are frozen on the first dataset; the expected answer is exact, rounded as stated in the question.",
+  "exercizer.subject.large.display": "Large display (young pupils)",
+  "exercizer.subject.large.display.help": "For nursery and early primary school: one question on screen, large text, the question read aloud and, in practice mode, each answer checked straight away.",
+  "exercizer.large.listen": "Listen",
+  "exercizer.large.stop": "Stop",
+  "exercizer.large.check": "Check",
+  "exercizer.large.question": "Question [[number]] of [[total]]",
+  "exercizer.large.goto": "Go to step [[number]]",
+  "exercizer.large.stars": "[[count]] correct answer(s)",
+  "exercizer.large.verdict.correct": "Well done, that's right!",
+  "exercizer.large.verdict.partial": "Almost! Something is still missing.",
+  "exercizer.large.verdict.wrong": "That's not it. Try again!"
 }

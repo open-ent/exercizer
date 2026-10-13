@@ -10,6 +10,7 @@ import {
   getCopiesAsStudent,
   getCopySections,
   getGrainCopies,
+  getGrainsScheduled,
   getSubjectsScheduledAsStudent,
   setCurrentGrain,
   submitCopy,
@@ -23,6 +24,7 @@ import {
   GrainCopyHeader,
   GrainCopyStatement,
 } from '../features/copies/GrainCopyHeader';
+import { LargePerform } from '../features/copies/LargePerform';
 import { PilotageBanner, usePilotage } from '../features/PilotageBanner';
 import { copyQuestionNumber, GRAIN, isQuestion } from '../grains';
 import { useDebouncedSave } from '../hooks/useDebouncedSave';
@@ -46,6 +48,9 @@ import { formatDateTime } from '../utils';
  * ⚠ Cet écran ne charge **jamais** les grains distribués (`/grains-scheduled`) : ils portent les
  * réponses attendues, et les demander ici les mettrait dans le navigateur de l'élève. Seule la
  * consultation d'une copie corrigée y a droit. L'ancienne IHM observe la même règle.
+ * Exception : le GRAND FORMAT en entraînement (`LargePerform`), où l'élève vérifie chaque réponse
+ * aussitôt donnée. Le serveur les lui sert déjà — une distribution d'entraînement a son échéance
+ * au 1er janvier 1970 — et c'est la nature même d'un entraînement, non noté.
  */
 export function PerformCopy() {
   const { subjectCopyId: param } = useParams();
@@ -73,6 +78,11 @@ export function PerformCopy() {
   // Pilotage en direct : pause, prolongation, remise d'office et messages de l'enseignant.
   const pilotage = usePilotage(scheduled, copy);
 
+  // Grand format (sql/043) : toujours une question à l'écran, même si la distribution demandait
+  // une section par page — c'est tout l'objet du mode. En entraînement, chaque réponse se vérifie.
+  const large = !!scheduled?.large_display;
+  const instantCheck = large && (!!scheduled?.is_training_mode || !!copy?.is_training_copy);
+
   const grainsQuery = useQuery({
     queryKey: ['exercizer', 'grain-copies', subjectCopyId],
     queryFn: () => getGrainCopies(copy!),
@@ -95,10 +105,17 @@ export function PerformCopy() {
     enabled: !!copy,
   });
 
+  const referenceQuery = useQuery({
+    queryKey: ['exercizer', 'grains-scheduled', copy?.subject_scheduled_id],
+    queryFn: () => getGrainsScheduled(copy!.subject_scheduled_id),
+    enabled: !!copy && instantCheck,
+    staleTime: Infinity,
+  });
+
   const grainCopies = useMemo(() => grainsQuery.data ?? [], [grainsQuery.data]);
   const sections = useMemo(() => sectionsQuery.data ?? [], [sectionsQuery.data]);
   const groups = useMemo(() => groupCopiesBySection(grainCopies, sections), [grainCopies, sections]);
-  const bySection = scheduled?.display_mode === 'section' && sections.length > 0;
+  const bySection = !large && scheduled?.display_mode === 'section' && sections.length > 0;
   const pages = useMemo(
     () =>
       bySection
@@ -226,6 +243,107 @@ export function PerformCopy() {
   const showSectionDescription =
     !!pageSection?.description && (bySection || firstOfSection?.id === page[0]?.id);
 
+  const buttonSize = large ? 'lg' : 'md';
+  const banners = (
+    <>
+      <PilotageBanner pilotage={pilotage} />
+
+      {!canSubmit && !copy.is_training_copy && (
+        <Alert type="info" className="mb-16">
+          {t('exercizer.check.corrected')}
+        </Alert>
+      )}
+      {error && (
+        <Alert type="danger" isDismissible onClose={() => setError(null)} className="mb-16">
+          {error}
+        </Alert>
+      )}
+    </>
+  );
+  const actions = (
+    <>
+      {index > 0 && (
+        <Button size={buttonSize} color="tertiary" variant="ghost" onClick={() => goTo(index - 1)}>
+          {t(bySection ? 'exercizer.section.previous' : 'exercizer.previous')}
+        </Button>
+      )}
+      {index < pages.length - 1 ? (
+        <Button size={buttonSize} color="primary" variant="filled" onClick={() => goTo(index + 1)}>
+          {t(bySection ? 'exercizer.section.next' : 'exercizer.next')}
+        </Button>
+      ) : copy.is_training_copy ? (
+        <Button
+          size={buttonSize}
+          color="primary"
+          variant="filled"
+          isLoading={submit.isPending}
+          onClick={() => submit.mutate()}
+        >
+          {t('exercizer.copy.see.final.score')}
+        </Button>
+      ) : (
+        <Button
+          size={buttonSize}
+          color="primary"
+          variant="filled"
+          disabled={!canSubmit || pilotage.readOnly}
+          onClick={() => setConfirming(true)}
+        >
+          {t('exercizer.make.copy')}
+        </Button>
+      )}
+    </>
+  );
+  const confirmModal = (
+    <>
+      {confirming && (
+        <ConfirmModal
+          title={t('exercizer.make.copy')}
+          confirmLabel={t('exercizer.make.copy')}
+          isLoading={submit.isPending}
+          onClose={() => setConfirming(false)}
+          onConfirm={() => submit.mutate()}
+        >
+          <p>
+            {t('exercizer.make.copy.confirm')} <em>{scheduled.title}</em> {t('exercizer.copy.to')}{' '}
+            <strong>{scheduled.owner_username}</strong> ?
+          </p>
+          <Alert type="info" className="my-8">
+            {t('exercizer.make.copy.info')}
+          </Alert>
+          {/* Le rendu est définitif ou non : c'est ce que l'élève doit savoir avant de cliquer. */}
+          <Alert type="warning">
+            {t(
+              scheduled.is_one_shot_submit
+                ? 'exercizer.one.submit'
+                : 'exercizer.several.submit',
+            )}
+          </Alert>
+        </ConfirmModal>
+      )}
+    </>
+  );
+
+  if (large) {
+    return (
+      <>
+        <LargePerform
+          title={scheduled.title}
+          grainCopies={pages.map((item) => item[0])}
+          index={index}
+          onGoTo={goTo}
+          hasAnswer={hasAnswer}
+          onAnswerChange={onAnswerChange}
+          readOnly={(!canSubmit && !copy.is_training_copy) || pilotage.readOnly}
+          reference={instantCheck ? referenceQuery.data : undefined}
+          banners={banners}
+          actions={actions}
+        />
+        {confirmModal}
+      </>
+    );
+  }
+
   return (
     <div className="mt-16">
       <div className="d-flex flex-wrap align-items-center justify-content-between gap-16 mb-16">
@@ -248,18 +366,7 @@ export function PerformCopy() {
         </div>
       </div>
 
-      <PilotageBanner pilotage={pilotage} />
-
-      {!canSubmit && !copy.is_training_copy && (
-        <Alert type="info" className="mb-16">
-          {t('exercizer.check.corrected')}
-        </Alert>
-      )}
-      {error && (
-        <Alert type="danger" isDismissible onClose={() => setError(null)} className="mb-16">
-          {error}
-        </Alert>
-      )}
+      {banners}
 
       <div className="grid gap-24">
         <aside className="g-col-12 g-col-lg-3">
@@ -349,63 +456,12 @@ export function PerformCopy() {
           ))}
 
           <div className="d-flex justify-content-end gap-16 mt-16 flex-wrap">
-            {index > 0 && (
-              <Button color="tertiary" variant="ghost" onClick={() => goTo(index - 1)}>
-                {t(bySection ? 'exercizer.section.previous' : 'exercizer.previous')}
-              </Button>
-            )}
-            {index < pages.length - 1 ? (
-              <Button color="primary" variant="filled" onClick={() => goTo(index + 1)}>
-                {t(bySection ? 'exercizer.section.next' : 'exercizer.next')}
-              </Button>
-            ) : copy.is_training_copy ? (
-              <Button
-                color="primary"
-                variant="filled"
-                isLoading={submit.isPending}
-                onClick={() => submit.mutate()}
-              >
-                {t('exercizer.copy.see.final.score')}
-              </Button>
-            ) : (
-              <Button
-                color="primary"
-                variant="filled"
-                disabled={!canSubmit || pilotage.readOnly}
-                onClick={() => setConfirming(true)}
-              >
-                {t('exercizer.make.copy')}
-              </Button>
-            )}
+            {actions}
           </div>
         </section>
       </div>
 
-      {confirming && (
-        <ConfirmModal
-          title={t('exercizer.make.copy')}
-          confirmLabel={t('exercizer.make.copy')}
-          isLoading={submit.isPending}
-          onClose={() => setConfirming(false)}
-          onConfirm={() => submit.mutate()}
-        >
-          <p>
-            {t('exercizer.make.copy.confirm')} <em>{scheduled.title}</em> {t('exercizer.copy.to')}{' '}
-            <strong>{scheduled.owner_username}</strong> ?
-          </p>
-          <Alert type="info" className="my-8">
-            {t('exercizer.make.copy.info')}
-          </Alert>
-          {/* Le rendu est définitif ou non : c'est ce que l'élève doit savoir avant de cliquer. */}
-          <Alert type="warning">
-            {t(
-              scheduled.is_one_shot_submit
-                ? 'exercizer.one.submit'
-                : 'exercizer.several.submit',
-            )}
-          </Alert>
-        </ConfirmModal>
-      )}
+      {confirmModal}
     </div>
   );
 }
