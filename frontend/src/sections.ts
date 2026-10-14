@@ -88,10 +88,19 @@ export function structurePayload(groups: EditorGroup[]): SubjectStructure {
 
 /** Déplace une section d'un cran (`delta` = -1 ou +1), avec tous ses grains. */
 export function moveSection(groups: EditorGroup[], sectionId: number, delta: -1 | 1): EditorGroup[] {
+  const from = groups.slice(1).findIndex((group) => group.section?.id === sectionId);
+  return from < 0 ? groups : moveSectionTo(groups, sectionId, from + delta);
+}
+
+/**
+ * Place une section au rang `to` (0 = première section), avec tous ses grains — le
+ * glisser-déposer du sommaire. Le groupe hors section reste en tête : il n'est pas déplaçable.
+ * Rang hors bornes ou inchangé : les groupes sont rendus tels quels.
+ */
+export function moveSectionTo(groups: EditorGroup[], sectionId: number, to: number): EditorGroup[] {
   const [head, ...rest] = groups;
   const from = rest.findIndex((group) => group.section?.id === sectionId);
-  const to = from + delta;
-  if (from < 0 || to < 0 || to >= rest.length) return groups;
+  if (from < 0 || to < 0 || to >= rest.length || to === from) return groups;
   const next = [...rest];
   const [moved] = next.splice(from, 1);
   next.splice(to, 0, moved);

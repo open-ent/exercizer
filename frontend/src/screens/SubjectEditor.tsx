@@ -48,6 +48,7 @@ import {
   moveGrainAcross,
   moveGrainToSection,
   moveSection,
+  moveSectionTo,
   rankAtEndOf,
   sectionMaxScore,
   structurePayload,
@@ -446,6 +447,7 @@ export function SubjectEditor() {
                 scrollToGrain(grain);
               }}
               onMoveSection={(sectionId, delta) => void applyGroups(moveSection(groups, sectionId, delta))}
+              onMoveSectionTo={(sectionId, to) => void applyGroups(moveSectionTo(groups, sectionId, to))}
               onMoveGrain={(grainId, delta) => {
                 const next = moveGrainAcross(groups, grainId, delta);
                 void applyGroups(next);

@@ -8,6 +8,7 @@ import {
   moveGrainAcross,
   moveGrainToSection,
   moveSection,
+  moveSectionTo,
   rankAtEndOf,
   sectionMaxScore,
   sectionProgress,
@@ -81,6 +82,38 @@ describe('flattenGroups', () => {
       [10, 2],
     ]);
     expect(changed.map((g) => g.id)).toEqual([4, 2, 3]);
+  });
+});
+
+describe('moveSectionTo', () => {
+  // Trois parties pour que le saut de plus d'un cran ait un sens.
+  const three = [...sections, section(30, 3)];
+  const withThird = [...grains, grain(5, 5, 30)];
+  const order = (groups: ReturnType<typeof groupBySection>) => groups.map((g) => g.section?.id ?? null);
+
+  it('saute plusieurs rangs d\'un coup, avec les grains de la partie', () => {
+    const groups = moveSectionTo(groupBySection(withThird, three), 30, 0);
+    expect(order(groups)).toEqual([null, 30, 10, 20]);
+    expect(groups[1].grains.map((g) => g.id)).toEqual([5]);
+    expect(structurePayload(groups).sections.map((s) => s.id)).toEqual([30, 10, 20]);
+  });
+
+  it('descend une partie en dernière position', () => {
+    expect(order(moveSectionTo(groupBySection(withThird, three), 10, 2))).toEqual([null, 20, 30, 10]);
+  });
+
+  it('laisse les grains hors section en tête', () => {
+    const groups = moveSectionTo(groupBySection(withThird, three), 20, 0);
+    expect(groups[0].section).toBeNull();
+    expect(groups[0].grains.map((g) => g.id)).toEqual([1]);
+  });
+
+  it('rend les groupes tels quels si rien ne bouge', () => {
+    const groups = groupBySection(withThird, three);
+    expect(moveSectionTo(groups, 10, 0)).toBe(groups);
+    expect(moveSectionTo(groups, 10, 5)).toBe(groups);
+    expect(moveSectionTo(groups, 10, -1)).toBe(groups);
+    expect(moveSectionTo(groups, 99, 1)).toBe(groups);
   });
 });
 
