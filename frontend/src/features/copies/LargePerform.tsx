@@ -3,6 +3,7 @@ import { ReactNode, useCallback, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
 import { isQuestion } from '../../grains';
+import { dateLocale } from '../../locale';
 import { canCheckInstantly, instantVerdict, speechText, Verdict } from '../../largeDisplay';
 import { GrainCopy, GrainCustomCopyData, GrainScheduled } from '../../types';
 import { AnswerFields } from './AnswerFields';
@@ -181,7 +182,9 @@ function useSpeech() {
       if (synth.speaking) return stop();
       if (!text) return;
       const utterance = new SpeechSynthesisUtterance(text);
-      utterance.lang = document.documentElement.lang || 'fr-FR';
+      // Repli sur la locale de la session plutôt que sur le français : la synthèse vocale
+      // doit lire l'énoncé dans la langue où il est affiché.
+      utterance.lang = document.documentElement.lang || dateLocale();
       // Un peu plus lent que la voix par défaut : elle s'adresse à de jeunes enfants.
       utterance.rate = 0.9;
       utterance.onend = () => setSpeaking(false);

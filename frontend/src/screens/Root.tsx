@@ -14,6 +14,7 @@ import { Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 
 import { getPublicConf, getServerNow } from '../api';
+import { setLanguage } from '../locale';
 import { UiSwitchBanner } from '../features/UiSwitchBanner';
 import { isCatalogAudience } from '../catalog';
 import { WORKFLOW } from '../rights';
@@ -80,7 +81,13 @@ type TeacherSection = keyof typeof TEACHER_SECTIONS;
  */
 export function Root() {
   const { t } = useTranslation(['exercizer', 'common']);
-  const { init, currentApp, user } = useEdificeClient();
+  const { init, currentApp, currentLanguage, user } = useEdificeClient();
+
+  // La locale de formatage des dates suit la langue de la session (cf. locale.ts). Elle est
+  // posée pendant le rendu, et non dans un effet : les écrans sont montés sous ce composant
+  // et formateraient leurs premières dates en français avant que l'effet ne s'exécute.
+  setLanguage(currentLanguage);
+
   const navigate = useNavigate();
   const location = useLocation();
 
