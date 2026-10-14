@@ -597,6 +597,9 @@ export function TeacherSubjects() {
           folderId={currentFolderId}
           onClose={() => setDialog(null)}
           onGenerate={() => navigate('/subject/generate')}
+          onDigitize={() =>
+            navigate(`/subject/digitize${currentFolderId ? `?folder=${currentFolderId}` : ''}`)
+          }
           onCreated={(subject) => {
             refresh();
             navigate(`/subject/edit/${subject.id}/`);

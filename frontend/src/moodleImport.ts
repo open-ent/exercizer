@@ -63,6 +63,11 @@ const FILL_ZONE_TEMPLATE =
   '</i><!-- end ngIf: optionData.mode === \'edit\' --><!-- ngIf: optionData.mode === \'view\' --><!-- ngIf: optionData.mode === \'edit\' --><input type="text" disabled="" placeholder="@answer@" ng-if="optionData.mode === \'edit\'" class="ng-scope">' +
   '<!-- end ngIf: optionData.mode === \'edit\' --><!-- ngIf: optionData.mode === \'perform-text\' --><!-- ngIf: optionData.mode === \'perform-list\' --><!-- ngIf: optionData.mode === \'perform-drag\' --></text-zone></fill-zone>&nbsp;</span>';
 
+/** Une zone d'un texte à trous, dans le HTML que relisent les deux IHM. */
+export const fillZoneHtml = (id: number, answer: string): string =>
+  '<span contenteditable="false">' +
+  FILL_ZONE_TEMPLATE.replace('@ID@', String(id)).replace('@answer@', escapeHtml(answer));
+
 /** Le texte de TOUS les descendants qui correspondent — le `.find(sel).text()` de jQuery. */
 const textOf = (root: Element, selector: string): string =>
   Array.from(root.querySelectorAll(selector))
@@ -455,7 +460,7 @@ export function parseClozeAnswers(body: string): { text: string; fraction: numbe
     });
 }
 
-const escapeHtml = (text: string) =>
+export const escapeHtml = (text: string) =>
   text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 
 /**
@@ -495,10 +500,7 @@ function fillCloze(data: GrainData, score: number | null, statement: string): nu
     const options = family === 'choice' ? answers.map((option) => plainText(option.text).trim()) : [];
     const id = gaps.length;
     gaps.push({ answer, options, family });
-    return (
-      '<span contenteditable="false">' +
-      FILL_ZONE_TEMPLATE.replace('@ID@', String(id)).replace('@answer@', escapeHtml(answer))
-    );
+    return fillZoneHtml(id, answer);
   });
 
   if (!representable || gaps.length === 0) return null;

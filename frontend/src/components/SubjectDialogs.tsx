@@ -151,15 +151,19 @@ export function NewSubjectDialog({
   onClose,
   onCreated,
   onGenerate,
+  onDigitize,
 }: {
   folderId: number | null;
   onClose: () => void;
   onCreated: (subject: Subject) => void;
   onGenerate: () => void;
+  onDigitize: () => void;
 }) {
   const { t } = useTranslation(['exercizer', 'common']);
   const id = useId();
   const canGenerate = useHasWorkflow(WORKFLOW.generate) as boolean | undefined;
+  // La numérisation crée le sujet par l'import : elle en demande le droit.
+  const canDigitize = useHasWorkflow(WORKFLOW.import) as boolean | undefined;
   const { theme } = useEdificeTheme();
   const [step, setStep] = useState<'choose' | 'subject'>('choose');
   // Un enseignant du premier degré écrit d'abord pour de jeunes élèves : le grand format est
@@ -203,6 +207,17 @@ export function NewSubjectDialog({
             info: t('exercizer.choose.assist.info'),
             action: t('exercizer.create'),
             onClick: onGenerate,
+          },
+        ]
+      : []),
+    ...(canDigitize
+      ? [
+          {
+            key: 'digitize',
+            title: t('exercizer.choose.digitize.title'),
+            info: t('exercizer.choose.digitize.info'),
+            action: t('exercizer.choose.digitize.button'),
+            onClick: onDigitize,
           },
         ]
       : []),
