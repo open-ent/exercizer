@@ -1,5 +1,5 @@
 import { Button, EmptyScreen, Heading, LoadingScreen, Table } from '@open-ent/react';
-import { useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate, useParams } from 'react-router-dom';
@@ -10,6 +10,7 @@ import {
   getGrainCopies,
   getGrainsScheduled,
   getSubjectsScheduledAsStudent,
+  retryCopy,
 } from '../api';
 import { automaticCorrection, formatScore, totalCalculatedScore } from '../correction';
 import { copyQuestionNumber, isQuestion } from '../grains';
@@ -29,6 +30,7 @@ export function CopyFinalScore() {
   const subjectCopyId = Number(param);
   const { t } = useTranslation(['exercizer', 'common']);
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
 
   const copiesQuery = useQuery({ queryKey: ['exercizer', 'copies'], queryFn: getCopiesAsStudent });
   const scheduledQuery = useQuery({
@@ -51,6 +53,15 @@ export function CopyFinalScore() {
     queryFn: () => getGrainsScheduled(copy!.subject_scheduled_id),
     enabled: !!copy,
     staleTime: Infinity,
+  });
+
+  // « Recommencer » : repart d'une copie vierge puis ouvre la saisie (parité `retrySubjectCopy`).
+  const retryMutation = useMutation({
+    mutationFn: () => retryCopy(copy!),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ['exercizer'] });
+      navigate(`/subject/copy/perform/${subjectCopyId}/`);
+    },
   });
 
   const grainCopies = grainsQuery.data ?? [];
@@ -146,6 +157,11 @@ export function CopyFinalScore() {
         </Table.Tbody>
       </Table>
 
+      {retryMutation.isError && (
+        <p className="text-danger mt-16" role="alert">
+          {t('exercizer.error')}
+        </p>
+      )}
       <div className="d-flex justify-content-end gap-16 mt-24">
         <Button
           color="primary"
@@ -153,6 +169,15 @@ export function CopyFinalScore() {
           onClick={() => navigate('/dashboard/student?tab=training')}
         >
           {t('exercizer.dashboard.learner.tab3')}
+        </Button>
+        <Button
+          color="primary"
+          variant="filled"
+          isLoading={retryMutation.isPending}
+          data-retry-copy
+          onClick={() => retryMutation.mutate()}
+        >
+          {t('exercizer.retry')}
         </Button>
       </div>
     </div>

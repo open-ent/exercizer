@@ -433,6 +433,18 @@ export const submitCopyAsTeacher = (copy: SubjectCopy) =>
     offset: new Date().getTimezoneOffset(),
   });
 
+/**
+ * Nouvel essai d'une copie d'entraînement (`SubjectCopyService#retry`) : la copie repasse « commencée », le
+ * grain courant est remis à zéro et les copies de grains sont recréées vierges. Les trois appels sont
+ * indépendants côté serveur, comme dans l'ancienne IHM.
+ */
+export const retryCopy = (copy: SubjectCopy) =>
+  Promise.all([
+    reportCopy({ ...copy, has_been_started: true }),
+    setCurrentGrain(copy.id, -1),
+    recreateGrainCopies(copy.subject_scheduled_id, copy.id),
+  ]);
+
 /** Repart d'une copie vierge pour un nouvel essai d'entraînement (`SubjectCopyService#retry`). */
 export const recreateGrainCopies = (subjectScheduledId: number, subjectCopyId: number) =>
   sendVoid(

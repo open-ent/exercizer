@@ -1,4 +1,4 @@
-import { Button, Checkbox, EmptyScreen, Heading, LoadingScreen } from '@open-ent/react';
+import { Alert, Button, Checkbox, EmptyScreen, Heading, LoadingScreen } from '@open-ent/react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useCallback, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -80,6 +80,8 @@ export function SubjectEditor() {
   const queryClient = useQueryClient();
   const [searchParams, setSearchParams] = useSearchParams();
 
+  // Enregistrement de l'ordre refusé : message visible (avant, l'ordre saisi disparaissait sans un mot).
+  const [orderError, setOrderError] = useState(false);
   const [toRemove, setToRemove] = useState<Grain | null>(null);
   const [sectionToRemove, setSectionToRemove] = useState<Section | null>(null);
   const [removeWithGrains, setRemoveWithGrains] = useState(false);
@@ -216,8 +218,10 @@ export function SubjectEditor() {
     setSections(ordered);
     try {
       await saveStructure(subjectId, structurePayload(next));
+      setOrderError(false);
     } catch {
       // Le serveur fait foi : on relit plutôt que de laisser un ordre qu'il n'a pas.
+      setOrderError(true);
       await refresh();
     }
   };
@@ -396,6 +400,11 @@ export function SubjectEditor() {
 
   return (
     <div className="mt-16">
+      {orderError && (
+        <Alert type="danger" isDismissible onClose={() => setOrderError(false)} className="mb-16">
+          {t('exercizer.error')}
+        </Alert>
+      )}
       <div className="d-flex flex-wrap align-items-center justify-content-between gap-16 mb-24">
         <Heading level="h2" headingStyle="h4" className="m-0">
           {subject.title}
