@@ -145,6 +145,9 @@ buildReactFrontend () {
     && pnpm install --no-frozen-lockfile \
     && pnpm build ) || exit 1
   mkdir -p ./src/main/resources/public ./src/main/resources/view
+  # Les noms portent une empreinte : sans purge, chaque build s'ajoute aux précédents dans le jar.
+  find ./src/main/resources/public -maxdepth 1 -type f -regextype posix-extended \
+    -regex '.*-[A-Za-z0-9_-]{8}\.[a-z0-9]+' -delete
   cp -r ./frontend/dist/public/. ./src/main/resources/public/
   cp ./frontend/dist/index.html ./src/main/resources/view/exercizer-react.html
 }
