@@ -26,6 +26,7 @@ import {
 } from '../api';
 import { ConfirmModal } from '../components/ConfirmModal';
 import { RichTextEditor } from '../features/RichTextEditor';
+import { SaveStatus } from '../features/SaveStatus';
 import { useDebouncedSave } from '../hooks/useDebouncedSave';
 import { Subject, SubjectDocument } from '../types';
 
@@ -120,7 +121,7 @@ export function SimpleSubjectEditor({ mode }: { mode: 'create' | 'edit' }) {
     void queryClient.invalidateQueries({ queryKey: ['exercizer', 'subjects'] });
   };
 
-  const { schedule, flush, pending } = useDebouncedSave(saveSubject);
+  const { schedule, flush, pending, failed, retry } = useDebouncedSave(saveSubject);
   const scheduleSave = (patch: { title?: string; description?: string }) => {
     const next = { title: patch.title ?? title, description: patch.description ?? description };
     if (patch.title !== undefined) setTitle(patch.title);
@@ -172,9 +173,7 @@ export function SimpleSubjectEditor({ mode }: { mode: 'create' | 'edit' }) {
           {title || t('exercizer.simple.default.title')}
         </Heading>
         <div className="d-flex flex-wrap gap-8">
-          <span className="align-self-center text-muted" role="status">
-            {pending ? t('exercizer.subject.navigation.saving') : t('exercizer.subject.saved')}
-          </span>
+          <SaveStatus className="align-self-center" pending={pending} failed={failed} onRetry={retry} />
           <Button color="primary" variant="outline" onClick={leave}>
             {t('exercizer.update.quit')}
           </Button>

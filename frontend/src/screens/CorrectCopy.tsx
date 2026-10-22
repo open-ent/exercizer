@@ -32,6 +32,7 @@ import {
 } from '../correction';
 import { GrainCopyReview } from '../features/copies/GrainCopyReview';
 import { SectionedReview } from '../features/copies/SectionedReview';
+import { SaveStatus } from '../features/SaveStatus';
 import { isQuestion, sanitizeScore } from '../grains';
 import { useDebouncedSave } from '../hooks/useDebouncedSave';
 import { GrainCopy, SubjectCopy } from '../types';
@@ -132,7 +133,7 @@ export function CorrectCopy() {
     [],
   );
 
-  const { schedule, flush, pending } = useDebouncedSave(saveGrain);
+  const { schedule, flush, pending, failed, retry } = useDebouncedSave(saveGrain);
 
   /**
    * À l'ouverture, les questions qui n'ont encore ni score automatique ni note finale reçoivent
@@ -276,6 +277,10 @@ export function CorrectCopy() {
   }
 
   const saving = pending || copySave.pending;
+  const saveFailed = failed || copySave.failed;
+  const retryAll = async () => {
+    await Promise.all([retry(), copySave.retry()]);
+  };
 
   return (
     <div className="mt-16">
@@ -289,9 +294,7 @@ export function CorrectCopy() {
           </small>
         </div>
         <div className="d-flex align-items-center gap-8 flex-wrap">
-          <span className="text-muted" role="status">
-            {saving ? t('exercizer.subject.navigation.saving') : t('exercizer.subject.saved')}
-          </span>
+          <SaveStatus pending={saving} failed={saveFailed} onRetry={retryAll} />
           <Button
             color="tertiary"
             variant="ghost"

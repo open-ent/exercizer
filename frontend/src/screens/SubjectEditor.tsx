@@ -25,6 +25,7 @@ import { GrainCard } from '../features/GrainCard';
 import { GrainOrganizer } from '../features/GrainOrganizer';
 import { SectionHeader } from '../features/SectionHeader';
 import { ExternalResources, ReuseGrains } from '../features/SubjectEditorPanels';
+import { SaveStatus } from '../features/SaveStatus';
 import {
   EditorFocus,
   focusOf,
@@ -158,6 +159,10 @@ export function SubjectEditor() {
   const grainSave = useDebouncedSave(saveGrain);
   const sectionSave = useDebouncedSave(useCallback((section: Section) => updateSection(section), []));
   const pending = grainSave.pending || sectionSave.pending;
+  const failed = grainSave.failed || sectionSave.failed;
+  const retryAll = async () => {
+    await Promise.all([grainSave.retry(), sectionSave.retry()]);
+  };
   const flush = useCallback(
     () => Promise.all([grainSave.flush(), sectionSave.flush()]).then(() => undefined),
     [grainSave, sectionSave],
@@ -412,9 +417,7 @@ export function SubjectEditor() {
         <div className="d-flex flex-wrap gap-8">
           {/* Le témoin d'enregistrement remplace le bouton absent : sans lui, rien ne dirait que
               la frappe est partie — ni qu'elle ne l'est pas encore. */}
-          <span className="align-self-center text-muted" role="status">
-            {pending ? t('exercizer.subject.navigation.saving') : t('exercizer.subject.saved')}
-          </span>
+          <SaveStatus className="align-self-center" pending={pending} failed={failed} onRetry={retryAll} />
           <Button
             color="tertiary"
             variant="ghost"

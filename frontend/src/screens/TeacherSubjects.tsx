@@ -41,6 +41,7 @@ import {
   SubjectPropertiesDialog,
 } from '../components/SubjectDialogs';
 import { FolderTree } from '../features/FolderTree';
+import { LoadError } from '../features/LoadError';
 import { atLeast, lowestRight, subjectRight, WORKFLOW } from '../rights';
 import { ScheduleDialog } from './ScheduleDialog';
 import { Folder, Subject } from '../types';
@@ -255,6 +256,17 @@ export function TeacherSubjects() {
   };
 
   const empty = visibleFolders.length === 0 && visibleSubjects.length === 0;
+
+  if (foldersQuery.isError || subjectsQuery.isError) {
+    return (
+      <LoadError
+        onRetry={() => {
+          void foldersQuery.refetch();
+          void subjectsQuery.refetch();
+        }}
+      />
+    );
+  }
 
   return (
     <div className="grid gap-24 mt-16">

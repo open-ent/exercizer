@@ -26,6 +26,8 @@ import {
 } from '../features/copies/GrainCopyHeader';
 import { LargePerform } from '../features/copies/LargePerform';
 import { PilotageBanner, usePilotage } from '../features/PilotageBanner';
+import { SaveStatus } from '../features/SaveStatus';
+import { LoadError } from '../features/LoadError';
 import { copyQuestionNumber, GRAIN, isQuestion } from '../grains';
 import { useDebouncedSave } from '../hooks/useDebouncedSave';
 import { groupCopiesBySection, sectionProgress } from '../sections';
@@ -134,7 +136,7 @@ export function PerformCopy() {
     [queryClient, subjectCopyId],
   );
 
-  const { schedule, flush, pending } = useDebouncedSave(
+  const { schedule, flush, pending, failed, retry } = useDebouncedSave(
     useCallback((grainCopy: GrainCopy) => updateGrainCopy(grainCopy), []),
     // Plus court que pour l'édition d'un sujet : une réponse d'élève ne doit pas rester en
     // suspens, un onglet fermé entre-temps la perdrait.
@@ -211,6 +213,18 @@ export function PerformCopy() {
     return <LoadingScreen position={false} />;
   }
 
+  // Lecture en échec : une erreur n'est pas « copie corrigée » ni « sujet vide ».
+  if (copiesQuery.isError || scheduledQuery.isError) {
+    return (
+      <LoadError
+        onRetry={() => {
+          void copiesQuery.refetch();
+          void scheduledQuery.refetch();
+        }}
+      />
+    );
+  }
+
   // Une copie qu'on n'a pas le droit d'ouvrir ne doit pas s'afficher à moitié : on renvoie au
   // tableau de bord, comme le faisait l'ancienne IHM.
   if (!copy || !scheduled || !canPerformAsStudent(scheduled, copy)) {
@@ -225,6 +239,16 @@ export function PerformCopy() {
   }
 
   if (grainsQuery.isLoading || sectionsQuery.isLoading) return <LoadingScreen position={false} />;
+  if (grainsQuery.isError || sectionsQuery.isError) {
+    return (
+      <LoadError
+        onRetry={() => {
+          void grainsQuery.refetch();
+          void sectionsQuery.refetch();
+        }}
+      />
+    );
+  }
 
   if (grainCopies.length === 0) {
     return <Alert type="warning">{t('exercizer.subject.empty')}</Alert>;
@@ -357,9 +381,7 @@ export function PerformCopy() {
           </small>
         </div>
         <div className="d-flex align-items-center gap-16">
-          <span className="text-muted" role="status">
-            {pending ? t('exercizer.subject.navigation.saving') : t('exercizer.subject.saved')}
-          </span>
+          <SaveStatus pending={pending} failed={failed} onRetry={retry} />
           <span className="text-muted">
             {answered}/{questions} {t('exercizer.copy.answered')}
           </span>

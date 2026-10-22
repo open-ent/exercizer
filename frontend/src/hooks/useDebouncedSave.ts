@@ -11,6 +11,10 @@ import { useCallback, useEffect, useRef, useState } from 'react';
  *  - un enregistrement par clé : taper dans deux grains n'en fait pas perdre un ;
  *  - rien n'est perdu au démontage, ce que faisait l'ancienne IHM en interrogeant l'usager au
  *    moment de quitter la page. Ici, les minuteries en attente sont déclenchées tout de suite.
+ *
+ * Un enregistrement qui ÉCHOUE (session expirée, 5xx, réseau) n'est jamais présenté comme réussi : la valeur est
+ * gardée, `failed` passe à vrai, `retry` la renvoie, et fermer l'onglet avec des modifications non enregistrées
+ * demande confirmation. `flush` relance l'erreur : « Rendre » ne part pas sur des réponses non enregistrées.
  */
 export function useDebouncedSave<T>(
   save: (value: T) => Promise<unknown>,
@@ -22,10 +26,17 @@ export function useDebouncedSave<T>(
   flush: () => Promise<void>;
   /** Y a-t-il une modification pas encore partie ? */
   pending: boolean;
+  /** Un enregistrement a échoué et n'a pas été rejoué avec succès. */
+  failed: boolean;
+  /** Renvoie ce qui a échoué ; relance l'erreur si ça échoue encore. */
+  retry: () => Promise<void>;
 } {
   const timers = useRef(new Map<string | number, number>());
   const values = useRef(new Map<string | number, T>());
   const [pending, setPending] = useState(false);
+  // Valeurs dont l'enregistrement a échoué, gardées pour `retry`.
+  const failures = useRef(new Map<string | number, T>());
+  const [failed, setFailed] = useState(false);
   // `save` change à chaque rendu (c'est une closure sur l'état) : on le lit via un ref pour que
   // les minuteries déjà programmées appellent toujours la version courante.
   const saveRef = useRef(save);
@@ -37,7 +48,16 @@ export function useDebouncedSave<T>(
     timers.current.delete(key);
     setPending(timers.current.size > 0);
     if (value === undefined) return;
-    await saveRef.current(value);
+    try {
+      await saveRef.current(value);
+      failures.current.delete(key);
+      setFailed(failures.current.size > 0);
+    } catch (error) {
+      // Une saisie plus récente sur la même clé l'emporte : on ne rejoue pas une valeur périmée.
+      if (!values.current.has(key)) failures.current.set(key, value);
+      setFailed(failures.current.size > 0);
+      throw error;
+    }
   }, []);
 
   const schedule = useCallback(
@@ -48,7 +68,8 @@ export function useDebouncedSave<T>(
       timers.current.set(
         key,
         window.setTimeout(() => {
-          void run(key);
+          // L'échec est porté par `failed` ; ici il n'y a personne pour attraper l'erreur.
+          run(key).catch(() => undefined);
         }, delayMs),
       );
       setPending(true);
@@ -65,6 +86,23 @@ export function useDebouncedSave<T>(
     await Promise.all(keys.map((key) => run(key)));
   }, [run]);
 
+  const retry = useCallback(async () => {
+    const entries = [...failures.current.entries()];
+    for (const [key, value] of entries) if (!values.current.has(key)) values.current.set(key, value);
+    await Promise.all(entries.map(([key]) => run(key)));
+  }, [run]);
+
+  // Fermer l'onglet avec des modifications non enregistrées (en attente ou échouées) : le navigateur demande confirmation.
+  useEffect(() => {
+    if (!pending && !failed) return;
+    const warn = (e: BeforeUnloadEvent) => {
+      e.preventDefault();
+      e.returnValue = '';
+    };
+    window.addEventListener('beforeunload', warn);
+    return () => window.removeEventListener('beforeunload', warn);
+  }, [pending, failed]);
+
   // Au démontage, on ne peut plus attendre : ce qui est en vol part immédiatement. Sans cela,
   // quitter l'écran dans les deux secondes qui suivent une frappe la perdrait silencieusement.
   useEffect(() => {
@@ -74,14 +112,14 @@ export function useDebouncedSave<T>(
       for (const [key, timer] of timersAtMount) {
         window.clearTimeout(timer);
         const value = valuesAtMount.get(key);
-        if (value !== undefined) void saveRef.current(value);
+        if (value !== undefined) saveRef.current(value).catch(() => undefined);
       }
       timersAtMount.clear();
       valuesAtMount.clear();
     };
   }, []);
 
-  return { schedule, flush, pending };
+  return { schedule, flush, pending, failed, retry };
 }
 
 export default useDebouncedSave;
