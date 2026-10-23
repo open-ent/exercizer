@@ -13,7 +13,7 @@ import {
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 
 import illuExercizer from '@images/emptyscreen/illu-exercizer.svg';
 import {
@@ -25,6 +25,7 @@ import {
   updateSubject,
 } from '../api';
 import { ConfirmModal } from '../components/ConfirmModal';
+import { parseConversationSubject } from '../conversationSubject';
 import { RichTextEditor } from '../features/RichTextEditor';
 import { SaveStatus } from '../features/SaveStatus';
 import { useDebouncedSave } from '../hooks/useDebouncedSave';
@@ -51,6 +52,11 @@ export function SimpleSubjectEditor({ mode }: { mode: 'create' | 'edit' }) {
   const { appCode } = useEdificeClient();
   const { ref: mediaLibraryRef, ...mediaLibraryHandlers } = useMediaLibrary();
 
+  // Arrivée depuis un message de la Conversation : titre (objet du message) et description (pièces jointes, corps) préremplis.
+  // Lus une seule fois : l'adresse est remplacée par celle du sujet créé, qui n'a plus ces paramètres.
+  const [searchParams] = useSearchParams();
+  const [prefill] = useState(() => (mode === 'create' ? parseConversationSubject(searchParams) : null));
+
   const [subjectId, setSubjectId] = useState<number | null>(
     mode === 'edit' ? Number(params.subjectId) : null,
   );
@@ -76,7 +82,8 @@ export function SimpleSubjectEditor({ mode }: { mode: 'create' | 'edit' }) {
   const create = useMutation({
     mutationFn: () =>
       createSubject({
-        title: '',
+        title: prefill?.title ?? '',
+        ...(prefill ? { description: prefill.description } : {}),
         type: 'simple',
         folder_id: params.folderId ? Number(params.folderId) : null,
       }),

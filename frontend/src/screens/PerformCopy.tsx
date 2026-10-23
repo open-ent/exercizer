@@ -175,7 +175,7 @@ export function PerformCopy() {
   const onAnswerChange = (grainCopy: GrainCopy, next: GrainCustomCopyData) => {
     // Séance en pause ou copie remise d'office : on n'envoie même pas la requête, le serveur la
     // refuserait.
-    if (pilotage.readOnly) return;
+    if (pilotage.readOnly || grainCopy.unreadable) return;
     const updated: GrainCopy = {
       ...grainCopy,
       grain_copy_data: { ...grainCopy.grain_copy_data, custom_copy_data: next },
@@ -510,6 +510,13 @@ export function PerformCopy() {
 
           {page.map((grainCopy) => (
             <article key={grainCopy.id} id={`grain-copy-${grainCopy.id}`} className="card p-16 mb-16">
+              {grainCopy.unreadable && (
+                <div data-unreadable>
+                  <Alert type="danger" className="mb-16">
+                  {t('exercizer.grain.unreadable', { defaultValue: "Cette question est illisible : vos réponses n'y seront pas enregistrées. Prévenez votre enseignant." })}
+                </Alert>
+                </div>
+              )}
               <GrainCopyHeader grainCopy={grainCopy} grainCopies={grainCopies} showHint />
               <GrainCopyStatement grainCopy={grainCopy} />
               <GrainCopyDocuments grainCopy={grainCopy} />
@@ -518,7 +525,7 @@ export function PerformCopy() {
                 grainTypeId={grainCopy.grain_type_id}
                 data={grainCopy.grain_copy_data.custom_copy_data ?? {}}
                 onChange={(next) => onAnswerChange(grainCopy, next)}
-                readOnly={(!canSubmit && !copy.is_training_copy) || pilotage.readOnly}
+                readOnly={(!canSubmit && !copy.is_training_copy) || pilotage.readOnly || !!grainCopy.unreadable}
               />
             </article>
           ))}
