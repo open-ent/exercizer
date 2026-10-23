@@ -277,6 +277,16 @@ export function PerformCopy() {
     !!pageSection?.description && (bySection || firstOfSection?.id === page[0]?.id);
 
   const buttonSize = large ? 'lg' : 'md';
+  /** « Continuer plus tard » : les réponses en attente sont enregistrées avant de quitter ; si l'enregistrement échoue, on reste. */
+  const later = async () => {
+    try {
+      await flush();
+    } catch {
+      setError(t('exercizer.error'));
+      return;
+    }
+    navigate(copy.is_training_copy ? '/dashboard/student?tab=training' : '/dashboard/student');
+  };
   const summary = copySummary(scheduled, copy);
   const showingSummary = onSummary === true;
   const startButton = (
@@ -404,6 +414,12 @@ export function PerformCopy() {
         <div>
           <Heading level="h2" headingStyle="h4" className="m-0">
             {scheduled.title}
+            {typeof scheduled.max_score === 'number' && (
+              <small className="text-muted fw-normal" data-max-score>
+                {' '}
+                — {scheduled.max_score} {t('exercizer.score')}
+              </small>
+            )}
           </Heading>
           <small className="text-muted">
             {t('exercizer.domino.todelivered')}{' '}
@@ -415,6 +431,14 @@ export function PerformCopy() {
           <span className="text-muted">
             {answered}/{questions} {t('exercizer.copy.answered')}
           </span>
+          <Button color="tertiary" variant="outline" onClick={() => void later()} data-later>
+            {t('exercizer.make.later')}
+          </Button>
+          {canSubmit && !copy.is_training_copy && (
+            <Button color="primary" variant="outline" disabled={pilotage.readOnly} onClick={() => setConfirming(true)} data-submit-now>
+              {t('exercizer.make.copy')}
+            </Button>
+          )}
         </div>
       </div>
 

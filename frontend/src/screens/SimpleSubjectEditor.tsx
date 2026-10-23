@@ -27,6 +27,7 @@ import {
 import { ConfirmModal } from '../components/ConfirmModal';
 import { parseConversationSubject } from '../conversationSubject';
 import { RichTextEditor } from '../features/RichTextEditor';
+import { LoadError } from '../features/LoadError';
 import { SaveStatus } from '../features/SaveStatus';
 import { useDebouncedSave } from '../hooks/useDebouncedSave';
 import { Subject, SubjectDocument } from '../types';
@@ -161,6 +162,9 @@ export function SimpleSubjectEditor({ mode }: { mode: 'create' | 'edit' }) {
     navigate('/dashboard/teacher');
   };
 
+  // Lecture ou création en échec : une panne n'est pas « aucun sujet », et on ne reste pas sur un écran de chargement.
+  if (subjectsQuery.isError) return <LoadError onRetry={() => void subjectsQuery.refetch()} />;
+  if (create.isError && subjectId === null) return <LoadError onRetry={() => create.mutate()} />;
   if (subjectsQuery.isLoading || subjectId === null) return <LoadingScreen position={false} />;
   if (!subject) {
     return (
@@ -223,6 +227,9 @@ export function SimpleSubjectEditor({ mode }: { mode: 'create' | 'edit' }) {
           {t('exercizer.file.limit5')}
         </Alert>
 
+        {/* Liste des corrigés illisible : une panne n'est pas « aucun corrigé » (et on n'en ajoute pas à l'aveugle). */}
+        {filesQuery.isError && <LoadError onRetry={() => void filesQuery.refetch()} />}
+
         <ul className="list-unstyled d-flex flex-column gap-8">
           {files.map((file) => (
             <li key={file.doc_id} className="d-flex align-items-center gap-8">
@@ -241,7 +248,7 @@ export function SimpleSubjectEditor({ mode }: { mode: 'create' | 'edit' }) {
           ))}
         </ul>
 
-        {files.length < MAX_FILES && (
+        {!filesQuery.isError && files.length < MAX_FILES && (
           <Button
             className="mt-16"
             color="primary"
