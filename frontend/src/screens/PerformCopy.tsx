@@ -24,6 +24,7 @@ import {
   GrainCopyHeader,
   GrainCopyStatement,
 } from '../features/copies/GrainCopyHeader';
+import { CopySummary } from '../features/copies/CopySummary';
 import { LargePerform } from '../features/copies/LargePerform';
 import { PilotageBanner, usePilotage } from '../features/PilotageBanner';
 import { SaveStatus } from '../features/SaveStatus';
@@ -31,6 +32,7 @@ import { LoadError } from '../features/LoadError';
 import { copyQuestionNumber, GRAIN, isQuestion } from '../grains';
 import { useDebouncedSave } from '../hooks/useDebouncedSave';
 import { groupCopiesBySection, sectionProgress } from '../sections';
+import { copySummary, startsOnSummary } from '../summary';
 import { GrainCopy, GrainCustomCopyData, ScheduledSection, SubjectCopy } from '../types';
 import { formatDateTime } from '../utils';
 
@@ -145,18 +147,25 @@ export function PerformCopy() {
 
   /** Reprend là où l'élève s'était arrêté, une seule fois, quand la liste est connue. */
   const [restored, setRestored] = useState(false);
+  /** Récapitulatif affiché à la place des questions : à l'ouverture d'une copie neuve, ou à la demande (« Résumé »). */
+  const [onSummary, setOnSummary] = useState<boolean | null>(null);
   useEffect(() => {
     // Les sections font partie du découpage en pages : on attend de les connaître.
-    if (restored || pages.length === 0 || sectionsQuery.isLoading || !copy?.current_grain_id) return;
-    const position = pages.findIndex((page) => page.some((item) => item.id === copy.current_grain_id));
-    if (position >= 0) setIndex(position);
+    if (restored || pages.length === 0 || sectionsQuery.isLoading || !copy) return;
+    if (startsOnSummary(copy)) setOnSummary(true);
+    else {
+      const position = pages.findIndex((page) => page.some((item) => item.id === copy.current_grain_id));
+      if (position >= 0) setIndex(position);
+      setOnSummary(false);
+    }
     setRestored(true);
-  }, [restored, pages, sectionsQuery.isLoading, copy?.current_grain_id]);
+  }, [restored, pages, sectionsQuery.isLoading, copy]);
 
   const page = pages[index] ?? [];
 
   /** Mémorise la position courante côté serveur (le 1er grain de la page), sans bloquer. */
   const goTo = (position: number) => {
+    setOnSummary(false);
     setIndex(position);
     const first = pages[position]?.[0];
     if (!first) return;
@@ -268,6 +277,13 @@ export function PerformCopy() {
     !!pageSection?.description && (bySection || firstOfSection?.id === page[0]?.id);
 
   const buttonSize = large ? 'lg' : 'md';
+  const summary = copySummary(scheduled, copy);
+  const showingSummary = onSummary === true;
+  const startButton = (
+    <Button size={buttonSize} color="primary" variant="filled" onClick={() => goTo(0)} data-start-copy>
+      {t('exercizer.summary.start', { defaultValue: 'Commencer' })}
+    </Button>
+  );
   const banners = (
     <>
       <PilotageBanner pilotage={pilotage} />
@@ -348,6 +364,20 @@ export function PerformCopy() {
     </>
   );
 
+  if (large && showingSummary) {
+    return (
+      <div className="mt-16">
+        <Heading level="h2" headingStyle="h4" className="mb-16">
+          {scheduled.title}
+        </Heading>
+        {banners}
+        <CopySummary summary={summary} />
+        <div className="d-flex justify-content-end mt-16">{startButton}</div>
+        {confirmModal}
+      </div>
+    );
+  }
+
   if (large) {
     return (
       <>
@@ -393,6 +423,15 @@ export function PerformCopy() {
       <div className="grid gap-24">
         <aside className="g-col-12 g-col-lg-3">
           <nav aria-label={t('exercizer.rank')} className="d-flex flex-column gap-16">
+            <button
+              type="button"
+              data-nav-summary
+              className={`btn btn-sm w-100 text-start ${showingSummary ? 'btn-filled btn-secondary' : 'btn-ghost btn-tertiary'}`}
+              aria-current={showingSummary ? 'step' : undefined}
+              onClick={() => setOnSummary(true)}
+            >
+              {t('exercizer.summary')}
+            </button>
             {groups.map((group) => {
               const progress = sectionProgress(group.grains, hasAnswer);
               return (
@@ -451,6 +490,13 @@ export function PerformCopy() {
         </aside>
 
         <section className="g-col-12 g-col-lg-9">
+          {showingSummary ? (
+            <>
+              <CopySummary summary={summary} />
+              <div className="d-flex justify-content-end mt-16">{startButton}</div>
+            </>
+          ) : (
+            <>
           {pageSection && (
             <header className="mb-16">
               <Heading level="h3" headingStyle="h5" className="mb-8">
@@ -480,6 +526,8 @@ export function PerformCopy() {
           <div className="d-flex justify-content-end gap-16 mt-16 flex-wrap">
             {actions}
           </div>
+            </>
+          )}
         </section>
       </div>
 

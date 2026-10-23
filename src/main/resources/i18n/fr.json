@@ -653,6 +653,7 @@
   "exercizer.summary.nocomment": "Pas de commentaire",
   "exercizer.summary.nodate": "date à définir",
   "exercizer.summary.nomake": "à définir",
+  "exercizer.summary.start": "Commencer",
   "exercizer.summary.random": "Les questions sont affichées en <b>mode aléatoire</b>.",
   "exercizer.summary.training": "Ce sujet est en mode entraînement. Vous pouvez vous entraîner autant de fois que vous le souhaitez et visualiser votre score, sans qu'il soit communiqué à votre enseignant.",
   "exercizer.switch.instructer": "Vue création",

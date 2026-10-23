@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import { retryCopy, SubjectCopy } from './api';
+import { retryCopy } from './api';
+import type { SubjectCopy } from './types';
 
 afterEach(() => vi.unstubAllGlobals());
 

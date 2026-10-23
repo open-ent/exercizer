@@ -651,6 +651,7 @@
   "exercizer.summary.nocomment": "No comment",
   "exercizer.summary.nodate": "date to be defined",
   "exercizer.summary.nomake": "to be defined",
+  "exercizer.summary.start": "Start",
   "exercizer.summary.random": "Questions are displayed in <b>random order</b>.",
   "exercizer.summary.training": "This subject is in practice mode. You can practice as many times as you wish and view your score, without it being shared with your teacher.",
   "exercizer.switch.instructer": "Creation view",
