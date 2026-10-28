@@ -118,7 +118,7 @@ public class ExercizerController extends ControllerHelper {
         if (forcedUi != null) return Future.succeededFuture(forcedUi);
 
         final Promise<String> promise = Promise.promise();
-        final String query = "MATCH (:User {id:{userId}})-[:PREFERS]->(uac:UserAppConf) " +
+        final String query = "MATCH (:User {id:$userId})-[:PREFERS]->(uac:UserAppConf) " +
                 "RETURN uac." + UI_PREFERENCE + " AS preference";
         neo4j.execute(query, new JsonObject().put("userId", userId), message -> {
             promise.complete(readUi(message.body()));

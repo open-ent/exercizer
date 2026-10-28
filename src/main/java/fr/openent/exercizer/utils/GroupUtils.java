@@ -36,7 +36,7 @@ public final class GroupUtils {
 	public static void findMembers(final EventBus eb, final String userId, final List<String> groupIds, Handler<JsonArray> handler) {
 		final String customReturn =
 				"MATCH (s:Group)<-[:IN]-(visibles) " +
-						"WHERE s.id IN {groupIds} " +
+						"WHERE s.id IN $groupIds " +
 						"RETURN DISTINCT visibles.id as _id, visibles.lastName + ' ' + visibles.firstName as name, visibles.profiles as profiles";
 		final JsonObject params = new JsonObject().put("groupIds", new JsonArray(groupIds));
 		UserUtils.findVisibleUsers(eb, userId, true, false, customReturn, params, handler);
