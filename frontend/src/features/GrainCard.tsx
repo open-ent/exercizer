@@ -73,6 +73,14 @@ export function GrainCard({
 
   return (
     <article className="card p-16 mb-16" id={`grain-edit-${grain.id}`}>
+      {/* Données illisibles : toute modification serait refusée (jamais d'écrasement de l'original) ; on le dit d'emblée. */}
+      {grain.unreadable && (
+        <div data-unreadable>
+          <Alert type="danger" className="mb-16">
+          {t('exercizer.grain.unreadable.teacher', { defaultValue: "Les données de cette question sont illisibles : elle ne peut pas être modifiée, pour ne pas écraser l'original. Supprimez-la ou recréez-la." })}
+        </Alert>
+        </div>
+      )}
       {/* ── En-tête : le type, et le numéro de la question ── */}
       {!isUndecided(grain.grain_type_id) && (
         <header className="d-flex align-items-center gap-8 mb-16">

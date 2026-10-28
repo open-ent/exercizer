@@ -35,6 +35,7 @@ import {
 } from '../api';
 import { ConfirmModal } from '../components/ConfirmModal';
 import { RecipientPicker } from '../features/RecipientPicker';
+import { SaveStatus } from '../features/SaveStatus';
 import { useDebouncedSave } from '../hooks/useDebouncedSave';
 import {
   areDatesValid,
@@ -343,7 +344,7 @@ export function SubjectSequenceEditor() {
 
   const fail = () => setMessage({ type: 'danger', text: t('exercizer.error') });
 
-  const { schedule, flush, pending } = useDebouncedSave(
+  const { schedule, flush, pending, failed, retry } = useDebouncedSave(
     async (next: { title: string; description: string }) => {
       // Un parcours sans titre n'est pas enregistré : on attend qu'il en ait un.
       if (!sequence || !next.title.trim()) return;
@@ -427,9 +428,7 @@ export function SubjectSequenceEditor() {
           {title || t('exercizer.sequence.dashboard.title')}
         </Heading>
         <div className="d-flex flex-wrap align-items-center gap-8">
-          <span className="text-muted" role="status">
-            {pending ? t('exercizer.subject.navigation.saving') : t('exercizer.subject.saved')}
-          </span>
+          <SaveStatus pending={pending} failed={failed} onRetry={retry} />
           <Button color="tertiary" variant="ghost" onClick={leave}>
             {t('exercizer.back.subject')}
           </Button>

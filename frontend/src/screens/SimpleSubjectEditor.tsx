@@ -13,7 +13,7 @@ import {
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 
 import illuExercizer from '@images/emptyscreen/illu-exercizer.svg';
 import {
@@ -25,7 +25,10 @@ import {
   updateSubject,
 } from '../api';
 import { ConfirmModal } from '../components/ConfirmModal';
+import { parseConversationSubject } from '../conversationSubject';
 import { RichTextEditor } from '../features/RichTextEditor';
+import { LoadError } from '../features/LoadError';
+import { SaveStatus } from '../features/SaveStatus';
 import { useDebouncedSave } from '../hooks/useDebouncedSave';
 import { Subject, SubjectDocument } from '../types';
 
@@ -49,6 +52,11 @@ export function SimpleSubjectEditor({ mode }: { mode: 'create' | 'edit' }) {
   const queryClient = useQueryClient();
   const { appCode } = useEdificeClient();
   const { ref: mediaLibraryRef, ...mediaLibraryHandlers } = useMediaLibrary();
+
+  // Arrivée depuis un message de la Conversation : titre (objet du message) et description (pièces jointes, corps) préremplis.
+  // Lus une seule fois : l'adresse est remplacée par celle du sujet créé, qui n'a plus ces paramètres.
+  const [searchParams] = useSearchParams();
+  const [prefill] = useState(() => (mode === 'create' ? parseConversationSubject(searchParams) : null));
 
   const [subjectId, setSubjectId] = useState<number | null>(
     mode === 'edit' ? Number(params.subjectId) : null,
@@ -75,7 +83,8 @@ export function SimpleSubjectEditor({ mode }: { mode: 'create' | 'edit' }) {
   const create = useMutation({
     mutationFn: () =>
       createSubject({
-        title: '',
+        title: prefill?.title ?? '',
+        ...(prefill ? { description: prefill.description } : {}),
         type: 'simple',
         folder_id: params.folderId ? Number(params.folderId) : null,
       }),
@@ -120,7 +129,7 @@ export function SimpleSubjectEditor({ mode }: { mode: 'create' | 'edit' }) {
     void queryClient.invalidateQueries({ queryKey: ['exercizer', 'subjects'] });
   };
 
-  const { schedule, flush, pending } = useDebouncedSave(saveSubject);
+  const { schedule, flush, pending, failed, retry } = useDebouncedSave(saveSubject);
   const scheduleSave = (patch: { title?: string; description?: string }) => {
     const next = { title: patch.title ?? title, description: patch.description ?? description };
     if (patch.title !== undefined) setTitle(patch.title);
@@ -153,6 +162,9 @@ export function SimpleSubjectEditor({ mode }: { mode: 'create' | 'edit' }) {
     navigate('/dashboard/teacher');
   };
 
+  // Lecture ou création en échec : une panne n'est pas « aucun sujet », et on ne reste pas sur un écran de chargement.
+  if (subjectsQuery.isError) return <LoadError onRetry={() => void subjectsQuery.refetch()} />;
+  if (create.isError && subjectId === null) return <LoadError onRetry={() => create.mutate()} />;
   if (subjectsQuery.isLoading || subjectId === null) return <LoadingScreen position={false} />;
   if (!subject) {
     return (
@@ -172,9 +184,7 @@ export function SimpleSubjectEditor({ mode }: { mode: 'create' | 'edit' }) {
           {title || t('exercizer.simple.default.title')}
         </Heading>
         <div className="d-flex flex-wrap gap-8">
-          <span className="align-self-center text-muted" role="status">
-            {pending ? t('exercizer.subject.navigation.saving') : t('exercizer.subject.saved')}
-          </span>
+          <SaveStatus className="align-self-center" pending={pending} failed={failed} onRetry={retry} />
           <Button color="primary" variant="outline" onClick={leave}>
             {t('exercizer.update.quit')}
           </Button>
@@ -217,6 +227,9 @@ export function SimpleSubjectEditor({ mode }: { mode: 'create' | 'edit' }) {
           {t('exercizer.file.limit5')}
         </Alert>
 
+        {/* Liste des corrigés illisible : une panne n'est pas « aucun corrigé » (et on n'en ajoute pas à l'aveugle). */}
+        {filesQuery.isError && <LoadError onRetry={() => void filesQuery.refetch()} />}
+
         <ul className="list-unstyled d-flex flex-column gap-8">
           {files.map((file) => (
             <li key={file.doc_id} className="d-flex align-items-center gap-8">
@@ -235,7 +248,7 @@ export function SimpleSubjectEditor({ mode }: { mode: 'create' | 'edit' }) {
           ))}
         </ul>
 
-        {files.length < MAX_FILES && (
+        {!filesQuery.isError && files.length < MAX_FILES && (
           <Button
             className="mt-16"
             color="primary"

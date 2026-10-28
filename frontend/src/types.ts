@@ -413,6 +413,8 @@ export interface Grain {
   created?: string;
   modified?: string;
   grain_data: GrainData;
+  /** Les données du grain n'ont pas pu être lues : on n'écrit rien par-dessus (cf. `api.parseGrains`). */
+  unreadable?: boolean;
 }
 
 /**
@@ -584,4 +586,6 @@ export interface GrainCopy {
   calculated_score?: number | null;
   comment?: string;
   grain_copy_data: GrainCopyData;
+  /** Les données de la copie n'ont pas pu être lues : aucune réponse n'est enregistrée par-dessus. */
+  unreadable?: boolean;
 }

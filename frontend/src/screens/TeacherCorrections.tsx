@@ -19,6 +19,7 @@ import { getCopiesAsTeacher, getSubjectsScheduledAsTeacher } from '../api';
 import { RecipientsDialog } from '../components/RecipientsDialog';
 import { matchesDueDateRange, matchesTitle } from '../copies';
 import { DateRange, DateRangeFilter } from '../features/DateRangeFilter';
+import { LoadError } from '../features/LoadError';
 import {
   groupCopiesByScheduled,
   isFullyCorrected,
@@ -135,6 +136,16 @@ function ScheduledList() {
     );
 
   if (scheduledQuery.isLoading || copiesQuery.isLoading) return null;
+  if (scheduledQuery.isError || copiesQuery.isError) {
+    return (
+      <LoadError
+        onRetry={() => {
+          void scheduledQuery.refetch();
+          void copiesQuery.refetch();
+        }}
+      />
+    );
+  }
 
   return (
     <div className="grid gap-24 mt-16">

@@ -516,14 +516,15 @@ export const getGrains = async (subject: Subject): Promise<Grain[]> => {
  * contenu vide plutôt qu'écarté — il garde ainsi son rang et son identifiant, et reste
  * supprimable.
  */
-function parseGrains(grains: Grain[]): Grain[] {
+export function parseGrains(grains: Grain[]): Grain[] {
   return (grains ?? []).map((grain) => {
     const raw = grain.grain_data as unknown;
     if (typeof raw !== 'string') return grain;
     try {
       return { ...grain, grain_data: JSON.parse(raw) as GrainData };
     } catch {
-      return { ...grain, grain_data: {} };
+      // Données illisibles : le grain reste affiché (vide) mais marqué, pour qu'aucune écriture ne l'écrase.
+      return { ...grain, grain_data: {}, unreadable: true };
     }
   });
 }
@@ -567,8 +568,11 @@ export const createGrain = (grain: Omit<Grain, 'id'>) =>
     ...(grain.section_id ? { sectionId: grain.section_id } : {}),
   });
 
-export const updateGrain = (grain: Grain) =>
-  sendVoid('PUT', `/exercizer/subject/${grain.subject_id}/grain/${grain.id}`, grainPayload(grain));
+export const updateGrain = (grain: Grain) => {
+  // Jamais d'écriture par-dessus des données que l'on n'a pas su lire : on perdrait l'original.
+  if (grain.unreadable) return Promise.reject(new Error('unreadable'));
+  return sendVoid('PUT', `/exercizer/subject/${grain.subject_id}/grain/${grain.id}`, grainPayload(grain));
+};
 
 /**
  * Supprime des grains. L'identifiant de chacun passe en paramètre de requête RÉPÉTÉ
@@ -685,17 +689,20 @@ export const getGrainCopiesByCopies = async (
  * recopiait les deux à la lecture. On fait de même, pour que les écrans n'aient qu'un endroit à
  * regarder.
  */
-function parseGrainCopies(grainCopies: GrainCopy[]): GrainCopy[] {
+export function parseGrainCopies(grainCopies: GrainCopy[]): GrainCopy[] {
   return (grainCopies ?? []).map((grainCopy) => {
     const raw = grainCopy.grain_copy_data as unknown;
     let data: GrainCopyData;
+    let unreadable = false;
     if (typeof raw !== 'string') {
       data = (raw as GrainCopyData) ?? {};
     } else {
       try {
         data = JSON.parse(raw) as GrainCopyData;
       } catch {
+        // Données illisibles : la copie reste affichée (vide) mais marquée, pour qu'aucune réponse ne l'écrase.
         data = {};
+        unreadable = true;
       }
     }
     if (data.custom_data) {
@@ -708,7 +715,7 @@ function parseGrainCopies(grainCopies: GrainCopy[]): GrainCopy[] {
         },
       };
     }
-    return { ...grainCopy, grain_copy_data: data };
+    return unreadable ? { ...grainCopy, grain_copy_data: data, unreadable } : { ...grainCopy, grain_copy_data: data };
   });
 }
 
@@ -724,8 +731,11 @@ const grainCopyBody = (grainCopy: GrainCopy) => ({
 });
 
 /** Enregistre la réponse de l'élève. */
-export const updateGrainCopy = (grainCopy: GrainCopy) =>
-  send<GrainCopy>('PUT', '/exercizer/grain-copy', grainCopyBody(grainCopy));
+export const updateGrainCopy = (grainCopy: GrainCopy) => {
+  // Jamais d'écriture par-dessus des données que l'on n'a pas su lire : on perdrait l'original.
+  if (grainCopy.unreadable) return Promise.reject(new Error('unreadable'));
+  return send<GrainCopy>('PUT', '/exercizer/grain-copy', grainCopyBody(grainCopy));
+};
 
 /**
  * Enregistre la correction d'une question par l'enseignant : note finale, commentaire, et le

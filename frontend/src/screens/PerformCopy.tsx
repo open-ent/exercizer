@@ -24,11 +24,15 @@ import {
   GrainCopyHeader,
   GrainCopyStatement,
 } from '../features/copies/GrainCopyHeader';
+import { CopySummary } from '../features/copies/CopySummary';
 import { LargePerform } from '../features/copies/LargePerform';
 import { PilotageBanner, usePilotage } from '../features/PilotageBanner';
+import { SaveStatus } from '../features/SaveStatus';
+import { LoadError } from '../features/LoadError';
 import { copyQuestionNumber, GRAIN, isQuestion } from '../grains';
 import { useDebouncedSave } from '../hooks/useDebouncedSave';
 import { groupCopiesBySection, sectionProgress } from '../sections';
+import { copySummary, startsOnSummary } from '../summary';
 import { GrainCopy, GrainCustomCopyData, ScheduledSection, SubjectCopy } from '../types';
 import { formatDateTime } from '../utils';
 
@@ -134,7 +138,7 @@ export function PerformCopy() {
     [queryClient, subjectCopyId],
   );
 
-  const { schedule, flush, pending } = useDebouncedSave(
+  const { schedule, flush, pending, failed, retry } = useDebouncedSave(
     useCallback((grainCopy: GrainCopy) => updateGrainCopy(grainCopy), []),
     // Plus court que pour l'édition d'un sujet : une réponse d'élève ne doit pas rester en
     // suspens, un onglet fermé entre-temps la perdrait.
@@ -143,18 +147,25 @@ export function PerformCopy() {
 
   /** Reprend là où l'élève s'était arrêté, une seule fois, quand la liste est connue. */
   const [restored, setRestored] = useState(false);
+  /** Récapitulatif affiché à la place des questions : à l'ouverture d'une copie neuve, ou à la demande (« Résumé »). */
+  const [onSummary, setOnSummary] = useState<boolean | null>(null);
   useEffect(() => {
     // Les sections font partie du découpage en pages : on attend de les connaître.
-    if (restored || pages.length === 0 || sectionsQuery.isLoading || !copy?.current_grain_id) return;
-    const position = pages.findIndex((page) => page.some((item) => item.id === copy.current_grain_id));
-    if (position >= 0) setIndex(position);
+    if (restored || pages.length === 0 || sectionsQuery.isLoading || !copy) return;
+    if (startsOnSummary(copy)) setOnSummary(true);
+    else {
+      const position = pages.findIndex((page) => page.some((item) => item.id === copy.current_grain_id));
+      if (position >= 0) setIndex(position);
+      setOnSummary(false);
+    }
     setRestored(true);
-  }, [restored, pages, sectionsQuery.isLoading, copy?.current_grain_id]);
+  }, [restored, pages, sectionsQuery.isLoading, copy]);
 
   const page = pages[index] ?? [];
 
   /** Mémorise la position courante côté serveur (le 1er grain de la page), sans bloquer. */
   const goTo = (position: number) => {
+    setOnSummary(false);
     setIndex(position);
     const first = pages[position]?.[0];
     if (!first) return;
@@ -164,7 +175,7 @@ export function PerformCopy() {
   const onAnswerChange = (grainCopy: GrainCopy, next: GrainCustomCopyData) => {
     // Séance en pause ou copie remise d'office : on n'envoie même pas la requête, le serveur la
     // refuserait.
-    if (pilotage.readOnly) return;
+    if (pilotage.readOnly || grainCopy.unreadable) return;
     const updated: GrainCopy = {
       ...grainCopy,
       grain_copy_data: { ...grainCopy.grain_copy_data, custom_copy_data: next },
@@ -211,6 +222,18 @@ export function PerformCopy() {
     return <LoadingScreen position={false} />;
   }
 
+  // Lecture en échec : une erreur n'est pas « copie corrigée » ni « sujet vide ».
+  if (copiesQuery.isError || scheduledQuery.isError) {
+    return (
+      <LoadError
+        onRetry={() => {
+          void copiesQuery.refetch();
+          void scheduledQuery.refetch();
+        }}
+      />
+    );
+  }
+
   // Une copie qu'on n'a pas le droit d'ouvrir ne doit pas s'afficher à moitié : on renvoie au
   // tableau de bord, comme le faisait l'ancienne IHM.
   if (!copy || !scheduled || !canPerformAsStudent(scheduled, copy)) {
@@ -225,6 +248,16 @@ export function PerformCopy() {
   }
 
   if (grainsQuery.isLoading || sectionsQuery.isLoading) return <LoadingScreen position={false} />;
+  if (grainsQuery.isError || sectionsQuery.isError) {
+    return (
+      <LoadError
+        onRetry={() => {
+          void grainsQuery.refetch();
+          void sectionsQuery.refetch();
+        }}
+      />
+    );
+  }
 
   if (grainCopies.length === 0) {
     return <Alert type="warning">{t('exercizer.subject.empty')}</Alert>;
@@ -244,6 +277,23 @@ export function PerformCopy() {
     !!pageSection?.description && (bySection || firstOfSection?.id === page[0]?.id);
 
   const buttonSize = large ? 'lg' : 'md';
+  /** « Continuer plus tard » : les réponses en attente sont enregistrées avant de quitter ; si l'enregistrement échoue, on reste. */
+  const later = async () => {
+    try {
+      await flush();
+    } catch {
+      setError(t('exercizer.error'));
+      return;
+    }
+    navigate(copy.is_training_copy ? '/dashboard/student?tab=training' : '/dashboard/student');
+  };
+  const summary = copySummary(scheduled, copy);
+  const showingSummary = onSummary === true;
+  const startButton = (
+    <Button size={buttonSize} color="primary" variant="filled" onClick={() => goTo(0)} data-start-copy>
+      {t('exercizer.summary.start', { defaultValue: 'Commencer' })}
+    </Button>
+  );
   const banners = (
     <>
       <PilotageBanner pilotage={pilotage} />
@@ -324,6 +374,20 @@ export function PerformCopy() {
     </>
   );
 
+  if (large && showingSummary) {
+    return (
+      <div className="mt-16">
+        <Heading level="h2" headingStyle="h4" className="mb-16">
+          {scheduled.title}
+        </Heading>
+        {banners}
+        <CopySummary summary={summary} />
+        <div className="d-flex justify-content-end mt-16">{startButton}</div>
+        {confirmModal}
+      </div>
+    );
+  }
+
   if (large) {
     return (
       <>
@@ -350,6 +414,12 @@ export function PerformCopy() {
         <div>
           <Heading level="h2" headingStyle="h4" className="m-0">
             {scheduled.title}
+            {typeof scheduled.max_score === 'number' && (
+              <small className="text-muted fw-normal" data-max-score>
+                {' '}
+                — {scheduled.max_score} {t('exercizer.score')}
+              </small>
+            )}
           </Heading>
           <small className="text-muted">
             {t('exercizer.domino.todelivered')}{' '}
@@ -357,12 +427,18 @@ export function PerformCopy() {
           </small>
         </div>
         <div className="d-flex align-items-center gap-16">
-          <span className="text-muted" role="status">
-            {pending ? t('exercizer.subject.navigation.saving') : t('exercizer.subject.saved')}
-          </span>
+          <SaveStatus pending={pending} failed={failed} onRetry={retry} />
           <span className="text-muted">
             {answered}/{questions} {t('exercizer.copy.answered')}
           </span>
+          <Button color="tertiary" variant="outline" onClick={() => void later()} data-later>
+            {t('exercizer.make.later')}
+          </Button>
+          {canSubmit && !copy.is_training_copy && (
+            <Button color="primary" variant="outline" disabled={pilotage.readOnly} onClick={() => setConfirming(true)} data-submit-now>
+              {t('exercizer.make.copy')}
+            </Button>
+          )}
         </div>
       </div>
 
@@ -371,6 +447,15 @@ export function PerformCopy() {
       <div className="grid gap-24">
         <aside className="g-col-12 g-col-lg-3">
           <nav aria-label={t('exercizer.rank')} className="d-flex flex-column gap-16">
+            <button
+              type="button"
+              data-nav-summary
+              className={`btn btn-sm w-100 text-start ${showingSummary ? 'btn-filled btn-secondary' : 'btn-ghost btn-tertiary'}`}
+              aria-current={showingSummary ? 'step' : undefined}
+              onClick={() => setOnSummary(true)}
+            >
+              {t('exercizer.summary')}
+            </button>
             {groups.map((group) => {
               const progress = sectionProgress(group.grains, hasAnswer);
               return (
@@ -429,6 +514,13 @@ export function PerformCopy() {
         </aside>
 
         <section className="g-col-12 g-col-lg-9">
+          {showingSummary ? (
+            <>
+              <CopySummary summary={summary} />
+              <div className="d-flex justify-content-end mt-16">{startButton}</div>
+            </>
+          ) : (
+            <>
           {pageSection && (
             <header className="mb-16">
               <Heading level="h3" headingStyle="h5" className="mb-8">
@@ -442,6 +534,13 @@ export function PerformCopy() {
 
           {page.map((grainCopy) => (
             <article key={grainCopy.id} id={`grain-copy-${grainCopy.id}`} className="card p-16 mb-16">
+              {grainCopy.unreadable && (
+                <div data-unreadable>
+                  <Alert type="danger" className="mb-16">
+                  {t('exercizer.grain.unreadable', { defaultValue: "Cette question est illisible : vos réponses n'y seront pas enregistrées. Prévenez votre enseignant." })}
+                </Alert>
+                </div>
+              )}
               <GrainCopyHeader grainCopy={grainCopy} grainCopies={grainCopies} showHint />
               <GrainCopyStatement grainCopy={grainCopy} />
               <GrainCopyDocuments grainCopy={grainCopy} />
@@ -450,7 +549,7 @@ export function PerformCopy() {
                 grainTypeId={grainCopy.grain_type_id}
                 data={grainCopy.grain_copy_data.custom_copy_data ?? {}}
                 onChange={(next) => onAnswerChange(grainCopy, next)}
-                readOnly={(!canSubmit && !copy.is_training_copy) || pilotage.readOnly}
+                readOnly={(!canSubmit && !copy.is_training_copy) || pilotage.readOnly || !!grainCopy.unreadable}
               />
             </article>
           ))}
@@ -458,6 +557,8 @@ export function PerformCopy() {
           <div className="d-flex justify-content-end gap-16 mt-16 flex-wrap">
             {actions}
           </div>
+            </>
+          )}
         </section>
       </div>
 

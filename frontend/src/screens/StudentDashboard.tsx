@@ -18,6 +18,7 @@ import {
 } from '../copies';
 import { CopyCard } from '../features/CopyCard';
 import { DateRangeFilter, DateRange } from '../features/DateRangeFilter';
+import { LoadError } from '../features/LoadError';
 import { SubjectCopy, SubjectScheduled } from '../types';
 import { SubjectSequenceBanner } from './SubjectSequenceScheduled';
 
@@ -123,6 +124,7 @@ export function StudentDashboard() {
   };
 
   const loading = copiesQuery.isLoading || scheduledQuery.isLoading;
+  const failed = copiesQuery.isError || scheduledQuery.isError;
 
   // Le contenu de chaque onglet est porté par l'élément lui-même (`content`) : le composant
   // `Tabs` du socle rend la barre ET le panneau de l'onglet actif, sans état à tenir ici.
@@ -157,6 +159,17 @@ export function StudentDashboard() {
     // vide plutôt que rien évite que l'écran saute quand les données arrivent.
     content: loading ? null : panels[id],
   }));
+
+  if (failed) {
+    return (
+      <LoadError
+        onRetry={() => {
+          void copiesQuery.refetch();
+          void scheduledQuery.refetch();
+        }}
+      />
+    );
+  }
 
   return (
     <>

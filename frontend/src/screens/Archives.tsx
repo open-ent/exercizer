@@ -39,6 +39,7 @@ import { GrainCopyReview } from '../features/copies/GrainCopyReview';
 import { DateRange, DateRangeFilter } from '../features/DateRangeFilter';
 import { SortHeader } from '../features/SortHeader';
 import { ExportStatsDialog, StatsTable } from '../features/StatsTable';
+import { LoadError } from '../features/LoadError';
 import { displayScore } from '../stats';
 import { SubjectCopy, SubjectScheduled } from '../types';
 import { formatDate, formatDateTime } from '../utils';
@@ -185,6 +186,7 @@ function ArchivedList() {
   );
 
   if (scheduledQuery.isLoading) return <LoadingScreen position={false} />;
+  if (scheduledQuery.isError) return <LoadError onRetry={() => void scheduledQuery.refetch()} />;
 
   const toggle = (id: number) =>
     setSelected((current) =>
@@ -358,6 +360,16 @@ function ArchivedCopies({ subjectScheduledId }: { subjectScheduledId: number }) 
   );
 
   if (scheduledQuery.isLoading || copiesQuery.isLoading) return <LoadingScreen position={false} />;
+  if (scheduledQuery.isError || copiesQuery.isError) {
+    return (
+      <LoadError
+        onRetry={() => {
+          void scheduledQuery.refetch();
+          void copiesQuery.refetch();
+        }}
+      />
+    );
+  }
   if (!scheduled) {
     return (
       <div className="mt-16">
@@ -619,6 +631,16 @@ function ArchivedCopy({
   }, [grainCopies, reference]);
 
   if (scheduledQuery.isLoading || copiesQuery.isLoading) return <LoadingScreen position={false} />;
+  if (scheduledQuery.isError || copiesQuery.isError) {
+    return (
+      <LoadError
+        onRetry={() => {
+          void scheduledQuery.refetch();
+          void copiesQuery.refetch();
+        }}
+      />
+    );
+  }
   if (!scheduled || !copy) {
     return (
       <div className="mt-16">
@@ -628,6 +650,16 @@ function ArchivedCopy({
     );
   }
   if (grainsQuery.isLoading || referenceQuery.isLoading) return <LoadingScreen position={false} />;
+  if (grainsQuery.isError || referenceQuery.isError) {
+    return (
+      <LoadError
+        onRetry={() => {
+          void grainsQuery.refetch();
+          void referenceQuery.refetch();
+        }}
+      />
+    );
+  }
 
   return (
     <div className="mt-16">

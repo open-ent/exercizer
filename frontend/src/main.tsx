@@ -18,7 +18,8 @@ import './index.css';
 
 const queryClient = new QueryClient({
   defaultOptions: {
-    queries: { retry: false, refetchOnWindowFocus: false, staleTime: 30_000 },
+    // Une seule nouvelle tentative : une erreur transitoire (réseau, redémarrage) ne doit pas suffire à vider un écran.
+    queries: { retry: 1, retryDelay: 800, refetchOnWindowFocus: false, staleTime: 30_000 },
   },
 });
 
