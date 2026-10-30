@@ -1,0 +1,100 @@
+<dashboard-teacher-tab current-tab="'catalog'"></dashboard-teacher-tab>
+
+<div data-ng-controller="TeacherDashboardCatalogTabController" data-catalog-tab>
+
+    <h2><i18n>exercizer.catalog.title</i18n></h2>
+    <p class="info"><i18n>exercizer.catalog.intro</i18n></p>
+
+    <!-- RECHERCHE ET FILTRES -->
+    <div class="row" style="margin: 12px 0; display: flex; gap: 12px; flex-wrap: wrap; align-items: center">
+        <input type="search" style="flex: 1 1 240px" data-catalog-search
+               data-ng-model="search.q" data-ng-change="criteriaChanged()"
+               placeholder="[[t('exercizer.catalog.search')]]" />
+        <select data-catalog-level data-ng-model="search.levelId" data-ng-change="criteriaChanged(true)"
+                data-ng-options="level.id as t(level.label) group by levelGroup(level) for level in levels">
+            <option value="">[[t('exercizer.catalog.levels.all')]]</option>
+        </select>
+        <select data-catalog-discipline data-ng-model="search.disciplineId" data-ng-change="criteriaChanged(true)"
+                data-ng-options="discipline.id as t(discipline.label) for discipline in disciplines">
+            <option value="">[[t('exercizer.catalog.disciplines.all')]]</option>
+        </select>
+    </div>
+
+    <div class="warning" data-ng-if="failed" data-catalog-error><i18n>exercizer.error</i18n></div>
+    <div class="info" data-ng-if="loading && !failed"><i18n>exercizer.loading</i18n></div>
+    <p data-ng-if="!loading && !failed && subjects.length === 0" data-catalog-empty><i18n>exercizer.catalog.empty</i18n></p>
+
+    <p class="small" data-ng-if="!loading && !failed && subjects.length > 0" aria-live="polite" data-catalog-count>
+        <span translate content="exercizer.catalog.count" params="{ count: total }"></span>
+    </p>
+
+    <!-- RÉSULTATS -->
+    <div class="row" style="display: flex; flex-wrap: wrap; gap: 16px" data-ng-if="!failed">
+        <article class="card" data-catalog-subject="[[subject.id]]" style="width: 260px; padding: 12px; box-sizing: border-box"
+                 data-ng-repeat="subject in subjects">
+            <h3 style="margin-top: 0">[[subject.title]]</h3>
+            <p class="small" data-ng-if="plain(subject.description)">[[plain(subject.description) | limitTo: 140]]</p>
+            <p class="small">
+                <span data-ng-repeat="label in labels(subject.level_ids, levels)" class="tag" style="margin-right: 4px">[[label]]</span>
+                <span data-ng-repeat="label in labels(subject.discipline_ids, disciplines)" class="tag" style="margin-right: 4px">[[label]]</span>
+            </p>
+            <p class="small">
+                <span translate content="exercizer.catalog.questions" params="{ count: subject.question_count }"></span><br/>
+                <i18n>exercizer.catalog.by</i18n> [[subject.authors_contributors || subject.owner_username]]
+            </p>
+            <div style="display: flex; gap: 8px; flex-wrap: wrap">
+                <button type="button" class="cancel" data-ng-click="openPreview(subject)" data-catalog-preview><i18n>exercizer.preview</i18n></button>
+                <button type="button" data-ng-click="copy(subject)" data-ng-disabled="copying === subject.id" data-catalog-copy><i18n>exercizer.catalog.copy</i18n></button>
+                <button type="button" class="cancel" data-ng-if="canManage(subject)" data-ng-click="askRemove(subject)" data-catalog-remove><i18n>exercizer.catalog.remove</i18n></button>
+            </div>
+        </article>
+    </div>
+
+    <!-- PAGES -->
+    <div class="row centered" style="margin: 16px 0" data-ng-if="pageCount() > 1" data-catalog-pages>
+        <button type="button" class="cancel" data-ng-disabled="page <= 1" data-ng-click="goTo(page - 1)" aria-label="[[t('exercizer.previous')]]">‹</button>
+        <span style="margin: 0 12px">[[page]] / [[pageCount()]]</span>
+        <button type="button" class="cancel" data-ng-disabled="page >= pageCount()" data-ng-click="goTo(page + 1)" aria-label="[[t('exercizer.next')]]">›</button>
+    </div>
+
+    <!-- APERÇU : le sujet avec ses réponses attendues -->
+    <lightbox show="preview" on-close="closePreview()">
+        <div data-catalog-preview-box data-ng-if="preview">
+            <h2>[[preview.subject.title]]</h2>
+            <p class="info"><i18n>exercizer.catalog.preview.help</i18n></p>
+            <div data-ng-if="preview.subject.description" bind-html="preview.subject.description"></div>
+            <p class="small">
+                <span data-ng-repeat="label in labels(preview.subject.level_ids, levels)" class="tag" style="margin-right: 4px">[[label]]</span>
+                <span data-ng-repeat="label in labels(preview.subject.discipline_ids, disciplines)" class="tag" style="margin-right: 4px">[[label]]</span>
+            </p>
+            <div class="info" data-ng-if="preview.loading"><i18n>exercizer.loading</i18n></div>
+            <ol data-ng-if="!preview.loading">
+                <li data-ng-repeat="grain in preview.grains" style="margin-bottom: 12px" data-catalog-grain>
+                    <strong data-ng-if="grain.grain_data.title">[[grain.grain_data.title]]</strong>
+                    <div data-ng-if="grain.grain_data.statement" bind-html="grain.grain_data.statement"></div>
+                    <div data-ng-if="grain.grain_data.custom_data.correct_answer_list">
+                        <em><i18n>exercizer.catalog.preview.answers</i18n></em>
+                        <span data-ng-repeat="answer in grain.grain_data.custom_data.correct_answer_list">[[answer.text || answer.answer || answer]]<span data-ng-if="!$last">, </span></span>
+                    </div>
+                </li>
+            </ol>
+            <div class="row" style="display: flex; gap: 8px; justify-content: flex-end">
+                <button type="button" class="cancel" data-ng-click="closePreview()"><i18n>exercizer.close</i18n></button>
+                <button type="button" data-ng-click="copy(preview.subject)" data-ng-disabled="copying === preview.subject.id" data-catalog-copy-preview><i18n>exercizer.catalog.copy</i18n></button>
+            </div>
+        </div>
+    </lightbox>
+
+    <!-- RETRAIT DU CATALOGUE -->
+    <lightbox show="toRemove" on-close="cancelRemove()">
+        <div data-ng-if="toRemove" data-catalog-remove-box>
+            <h2><i18n>exercizer.catalog.remove</i18n></h2>
+            <p>[[toRemove.title]]</p>
+            <p class="warning"><i18n>exercizer.catalog.remove.confirm</i18n></p>
+            <div class="row" style="display: flex; gap: 8px; justify-content: flex-end">
+                <button type="button" class="cancel" data-ng-click="cancelRemove()"><i18n>exercizer.cancel</i18n></button>
+                <button type="button" data-ng-click="remove()" data-catalog-remove-confirm><i18n>exercizer.catalog.remove</i18n></button>
+            </div>
+        </div>
+    </lightbox>
+</div>

@@ -89,6 +89,17 @@ export const exercizerController = ng.controller('ExercizerController', ['$scope
                 template.open('main', '400-date-exercizer');
             }
         },
+        dashboardTeacherCatalog: async function () {
+            if (await checkSystemDate()) {
+                if (_userProfile === teacherProfile) {
+                    template.open('main', 'teacher-dashboard-catalog-tab');
+                } else {
+                    template.open('main', '401-exercizer');
+                }
+            } else {
+                template.open('main', '400-date-exercizer');
+            }
+        },
         dashboardTeacherLibrary: async function () {
             if (await checkSystemDate()) {
                 if (_userProfile === teacherProfile) {

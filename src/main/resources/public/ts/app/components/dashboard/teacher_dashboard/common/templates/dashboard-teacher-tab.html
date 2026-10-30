@@ -35,6 +35,12 @@
         >
             <i18n>exercizer.dashboard.instructer.tab2</i18n>
         </header>
+        <header class="horizontal-spacing" data-catalog-tab-header
+                data-ng-click="switchTab('catalog')"
+                data-ng-class="{ selected: currentTab === 'catalog' }"
+        >
+            <i18n>exercizer.catalog.title</i18n>
+        </header>
         <header class="horizontal-spacing"
                 data-ng-if="showLibraryTag()"
                 data-ng-click="switchTab('library')"

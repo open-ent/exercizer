@@ -251,6 +251,9 @@ routes.define(function ($routeProvider) {
         .when('/dashboard/teacher/correction/:subjectScheduledId?', {
             action: 'dashboardTeacherCorrection'
         })
+        .when('/dashboard/teacher/catalog', {
+            action: 'dashboardTeacherCatalog'
+        })
         .when('/dashboard/teacher/pilotage/:subjectScheduledId', {
             action: 'dashboardTeacherPilotage'
         })

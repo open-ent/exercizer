@@ -29,6 +29,10 @@ export const dashboardTeacherTab = ng.directive('dashboardTeacherTab',  [ '$loca
                         scope.selectedSubjectScheduled = null;
                         $location.path('/dashboard/teacher/correction/');
                         break;
+                    case 'catalog':
+                        scope.selectedSubjectScheduled = null;
+                        $location.path('/dashboard/teacher/catalog');
+                        break;
                     case 'library':
                         scope.rediectToExternalLibrary();
                         break;
@@ -54,6 +58,7 @@ export const dashboardTeacherTab = ng.directive('dashboardTeacherTab',  [ '$loca
                         scope.selectedSubjectScheduled = null;
                         $location.path('/dashboard');
                         break;
+                    case 'catalog':
                     case 'library':
                         scope.selectedSubjectScheduled = null;
                         $location.path('/dashboard');
@@ -72,6 +77,7 @@ export const dashboardTeacherTab = ng.directive('dashboardTeacherTab',  [ '$loca
                         scope.selectedSubjectScheduled = null;
                         $location.path('/dashboard/teacher/correction');
                         break;
+                    case 'catalog':
                     case 'library':
                         break;
                     default :
@@ -109,6 +115,8 @@ export const dashboardTeacherTab = ng.directive('dashboardTeacherTab',  [ '$loca
                         return idiom.translate("exercizer.dashboard.instructer.tab1");
                     case 'correction':
                         return idiom.translate("exercizer.dashboard.instructer.tab2");
+                    case 'catalog':
+                        return idiom.translate("exercizer.catalog.title");
                     case 'library':
                         return idiom.translate("exercizer.dashboard.instructer.tab3");
                     default :

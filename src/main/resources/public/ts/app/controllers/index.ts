@@ -14,6 +14,7 @@ export * from './SubjectSequenceScheduledController';
 export * from './TeacherDasboardCorrectionTabController';
 export * from './TeacherDasboardSubjectTabController';
 export * from './TeacherDashboardLibraryTabController';
+export * from './TeacherDashboardCatalogTabController';
 export * from './TeacherDashboardPilotageController';
 export * from './TeacherDashboardArchiveController'
 export * from './ViewSubjectCopyController';
