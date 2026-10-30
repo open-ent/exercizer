@@ -20,6 +20,8 @@ export const teacherDashboardCatalogTabController = ng.controller('TeacherDashbo
 
     const t = (key: string, params?: any) => lang.translate(key);
     $scope.t = t;
+    /** Libellé contenant [[count]] : le nombre est inséré à la main, la directive translate l'ignorait. */
+    $scope.countLabel = (key: string, count: number) => t(key).replace('[[count]]', String(count));
     $scope.search = { q: '', levelId: null, disciplineId: null };
     $scope.page = 1;
     $scope.total = 0;

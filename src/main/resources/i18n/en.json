@@ -817,6 +817,7 @@
   "exercizer.catalog.by": "Shared by",
   "exercizer.catalog.preview.help": "Preview with the expected answers. Copy the subject into your subjects to edit it and assign it to your students.",
   "exercizer.catalog.copied": "The subject has been copied to “My subjects”.",
+  "exercizer.catalog.preview.answers": "Expected answer(s)",
   "exercizer.catalog.copy": "Copy to my subjects",
   "exercizer.catalog.remove": "Remove from the catalogue",
   "exercizer.catalog.remove.confirm": "This subject will no longer be offered in the catalogue. Copies already made by teachers are not affected.",

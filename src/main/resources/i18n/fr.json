@@ -817,6 +817,7 @@
   "exercizer.catalog.by": "Proposé par",
   "exercizer.catalog.preview.help": "Aperçu avec les réponses attendues. Copiez le sujet dans vos sujets pour le modifier et le distribuer à vos élèves.",
   "exercizer.catalog.copied": "Le sujet a été copié dans « Mes sujets ».",
+  "exercizer.catalog.preview.answers": "Réponse(s) attendue(s)",
   "exercizer.catalog.copy": "Copier dans mes sujets",
   "exercizer.catalog.remove": "Retirer du catalogue",
   "exercizer.catalog.remove.confirm": "Ce sujet ne sera plus proposé dans le catalogue. Les copies déjà faites par les enseignants ne sont pas touchées.",

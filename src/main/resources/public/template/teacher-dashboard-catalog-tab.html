@@ -25,7 +25,7 @@
     <p data-ng-if="!loading && !failed && subjects.length === 0" data-catalog-empty><i18n>exercizer.catalog.empty</i18n></p>
 
     <p class="small" data-ng-if="!loading && !failed && subjects.length > 0" aria-live="polite" data-catalog-count>
-        <span translate content="exercizer.catalog.count" params="{ count: total }"></span>
+        [[countLabel('exercizer.catalog.count', total)]]
     </p>
 
     <!-- RÉSULTATS -->
@@ -39,7 +39,7 @@
                 <span data-ng-repeat="label in labels(subject.discipline_ids, disciplines)" class="tag" style="margin-right: 4px">[[label]]</span>
             </p>
             <p class="small">
-                <span translate content="exercizer.catalog.questions" params="{ count: subject.question_count }"></span><br/>
+                [[countLabel('exercizer.catalog.questions', subject.question_count)]]<br/>
                 <i18n>exercizer.catalog.by</i18n> [[subject.authors_contributors || subject.owner_username]]
             </p>
             <div style="display: flex; gap: 8px; flex-wrap: wrap">
@@ -69,12 +69,38 @@
             </p>
             <div class="info" data-ng-if="preview.loading"><i18n>exercizer.loading</i18n></div>
             <ol data-ng-if="!preview.loading">
-                <li data-ng-repeat="grain in preview.grains" style="margin-bottom: 12px" data-catalog-grain>
+                <li data-ng-repeat="grain in preview.grains" style="margin-bottom: 16px" data-catalog-grain data-ng-switch="grain.grain_type_id">
                     <strong data-ng-if="grain.grain_data.title">[[grain.grain_data.title]]</strong>
-                    <div data-ng-if="grain.grain_data.statement" bind-html="grain.grain_data.statement"></div>
-                    <div data-ng-if="grain.grain_data.custom_data.correct_answer_list">
-                        <em><i18n>exercizer.catalog.preview.answers</i18n></em>
-                        <span data-ng-repeat="answer in grain.grain_data.custom_data.correct_answer_list">[[answer.text || answer.answer || answer]]<span data-ng-if="!$last">, </span></span>
+                    <div data-ng-if="grain.grain_data.statement || grain.grain_data.custom_data.statement" bind-html="grain.grain_data.statement || grain.grain_data.custom_data.statement"></div>
+
+                    <!-- Réponse courte -->
+                    <div data-ng-switch-when="4" class="small"><em><i18n>exercizer.catalog.preview.answers</i18n> :</em> [[grain.grain_data.custom_data.correct_answer]]</div>
+
+                    <!-- Réponses multiples -->
+                    <div data-ng-switch-when="6" class="small"><em><i18n>exercizer.catalog.preview.answers</i18n> :</em>
+                        <span data-ng-repeat="answer in grain.grain_data.custom_data.correct_answer_list">[[answer.text]]<span data-ng-if="!$last"> ; </span></span>
+                    </div>
+
+                    <!-- QCM : toutes les propositions, les bonnes réponses cochées -->
+                    <ul data-ng-switch-when="7" class="small" style="list-style: none; padding-left: 0">
+                        <li data-ng-repeat="answer in grain.grain_data.custom_data.correct_answer_list">
+                            <input type="checkbox" disabled data-ng-checked="answer.isChecked === true" /> [[answer.text]]
+                        </li>
+                    </ul>
+
+                    <!-- Association : couples gauche → droite -->
+                    <ul data-ng-switch-when="8" class="small" style="list-style: none; padding-left: 0">
+                        <li data-ng-repeat="answer in grain.grain_data.custom_data.correct_answer_list">[[answer.text_left]] → [[answer.text_right]]</li>
+                    </ul>
+
+                    <!-- Remise en ordre : dans l'ordre attendu -->
+                    <ol data-ng-switch-when="9" class="small">
+                        <li data-ng-repeat="answer in grain.grain_data.custom_data.correct_answer_list | orderBy:'order_by'">[[answer.text]]</li>
+                    </ol>
+
+                    <!-- Texte à compléter -->
+                    <div data-ng-switch-when="10" class="small"><em><i18n>exercizer.catalog.preview.answers</i18n> :</em>
+                        <span data-ng-repeat="zone in grain.grain_data.custom_data.zones">[[zone.answer]]<span data-ng-if="!$last"> ; </span></span>
                     </div>
                 </li>
             </ol>
