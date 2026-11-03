@@ -57,9 +57,41 @@ public class PackBusHandler implements Handler<Message<JsonObject>> {
             case "access":
                 access(body.getJsonArray("ids", new JsonArray()), body.getJsonObject("access", new JsonObject()), reply);
                 break;
+            case "alignedResults":
+                alignedResults(body.getJsonArray("students", new JsonArray()), reply);
+                break;
             default:
                 reply.handle(new Either.Left<>("action inconnue : " + action));
         }
+    }
+
+    // ------------------------------------------------------------------ résultats alignés
+
+    /**
+     * Copies rendues par ces élèves sur des sujets alignés sur le référentiel, une ligne par énoncé
+     * travaillé : de quoi suggérer un badge à l'enseignant (module openbadges), preuves à l'appui.
+     */
+    private void alignedResults(JsonArray students, Handler<Either<String, JsonObject>> handler) {
+        if (students.isEmpty()) {
+            handler.handle(new Either.Right<>(new JsonObject().put("results", new JsonArray())));
+            return;
+        }
+        final StringBuilder in = new StringBuilder("?");
+        for (int i = 1; i < students.size(); i++) {
+            in.append(",?");
+        }
+        sql.prepared("SELECT c.id AS \"copyId\", c.owner AS student, a.cfitem_id AS cfitem, s.title, "
+                + "COALESCE(c.final_score, c.calculated_score) AS score, "
+                + "COALESCE(ss.max_score, s.max_score) AS \"maxScore\", c.submitted_date AS date "
+                + "FROM " + S + "subject_copy c "
+                + "JOIN " + S + "subject_scheduled ss ON ss.id = c.subject_scheduled_id "
+                + "JOIN " + S + "subject s ON s.id = ss.subject_id "
+                + "JOIN " + S + "subject_alignment a ON a.subject_id = ss.subject_id "
+                + "WHERE c.submitted_date IS NOT NULL AND c.owner IN (" + in + ") "
+                + "ORDER BY c.submitted_date DESC", students, SqlResult.validResultHandler(result ->
+                handler.handle(result.isRight()
+                        ? new Either.Right<>(new JsonObject().put("results", result.right().getValue()))
+                        : new Either.Left<>(result.left().getValue()))));
     }
 
     // ------------------------------------------------------------------ installation

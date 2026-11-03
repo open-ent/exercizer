@@ -505,6 +505,11 @@ public class SubjectServiceSqlImpl extends AbstractExercizerServiceSqlImpl imple
 				.add(user.getUsername()).add(titleSuffix).add(isLibrary).add(authorsContributors).add(fromSubjectId);
 
 		s.prepared(subjectCopy, values);
+		// L'alignement sur les programmes suit le sujet : c'est la copie de l'enseignant que les
+		// élèves font, et c'est elle qui doit pouvoir appuyer une suggestion de badge.
+		s.prepared("INSERT INTO exercizer.subject_alignment (subject_id, cfitem_id) "
+				+ "SELECT ?, cfitem_id FROM exercizer.subject_alignment WHERE subject_id = ? ON CONFLICT DO NOTHING",
+				new JsonArray().add(newSubjectId).add(fromSubjectId));
 	}
 
 	private void duplicateSubjectDocuments(
