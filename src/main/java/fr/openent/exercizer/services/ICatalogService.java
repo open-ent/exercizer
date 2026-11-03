@@ -18,12 +18,19 @@ public interface ICatalogService {
     /**
      * Une page du catalogue : {@code {total, subjects: [...]}}. Critères facultatifs : {@code q} (titre ou
      * description), {@code levels} et {@code disciplines} (id ; « l'un de » dans une même famille, « et »
-     * entre les deux), {@code limit}, {@code offset}.
+     * entre les deux), {@code limit}, {@code offset}, {@code structures} (établissements de l'usager :
+     * les sujets venus d'un pack n'y apparaissent que s'il y a accès).
      */
     void list(JsonObject criteria, Handler<Either<String, JsonObject>> handler);
 
     /** Un sujet du catalogue, avec ses grains et ses sections : {@code {subject, grains, sections}}. */
     void get(Long catalogSubjectId, Handler<Either<String, JsonObject>> handler);
+
+    /**
+     * Le même, vu d'un enseignant de ces établissements : un sujet venu d'un pack auquel aucun d'eux
+     * n'a accès est « not.found ».
+     */
+    void get(Long catalogSubjectId, java.util.List<String> structures, Handler<Either<String, JsonObject>> handler);
 
     /** Le classement d'un sujet : {@code {level_ids: [...], discipline_ids: [...]}}. */
     void classification(Long subjectId, Handler<Either<String, JsonObject>> handler);

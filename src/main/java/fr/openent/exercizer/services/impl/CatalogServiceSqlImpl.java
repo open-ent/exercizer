@@ -54,6 +54,7 @@ public class CatalogServiceSqlImpl extends AbstractExercizerServiceSqlImpl imple
     public void list(final JsonObject criteria, final Handler<Either<String, JsonObject>> handler) {
         final StringBuilder where = new StringBuilder(" WHERE ").append(CATALOG_GUARD);
         final JsonArray values = new JsonArray();
+        where.append(CatalogSql.packAccessGuard(criteria.getJsonArray("structures", new JsonArray()).getList(), values));
 
         final String q = criteria.getString("q");
         if (q != null && !q.trim().isEmpty()) {
@@ -101,9 +102,17 @@ public class CatalogServiceSqlImpl extends AbstractExercizerServiceSqlImpl imple
 
     @Override
     public void get(final Long catalogSubjectId, final Handler<Either<String, JsonObject>> handler) {
+        get(catalogSubjectId, null, handler);
+    }
+
+    @Override
+    public void get(final Long catalogSubjectId, final java.util.List<String> structures,
+                    final Handler<Either<String, JsonObject>> handler) {
+        final JsonArray values = new JsonArray().add(catalogSubjectId);
         final String subjectQuery = "SELECT s.*, " + classificationColumns() + " FROM " + S + "subject AS s " +
-                "WHERE s.id = ? AND " + CATALOG_GUARD;
-        sql.prepared(subjectQuery, new JsonArray().add(catalogSubjectId), SqlResult.validUniqueResultHandler(subject -> {
+                "WHERE s.id = ? AND " + CATALOG_GUARD
+                + (structures == null ? "" : CatalogSql.packAccessGuard(structures, values));
+        sql.prepared(subjectQuery, values, SqlResult.validUniqueResultHandler(subject -> {
             if (subject.isLeft()) {
                 handler.handle(new Either.Left<>(subject.left().getValue()));
                 return;
@@ -154,14 +163,16 @@ public class CatalogServiceSqlImpl extends AbstractExercizerServiceSqlImpl imple
         withNewSubjectId(handler, newId -> {
             final SqlStatementsBuilder s = new SqlStatementsBuilder();
             s.prepared("SELECT " + S + "merge_users(?,?)", new JsonArray().add(user.getUserId()).add(user.getUsername()));
+            final JsonArray copyValues = new JsonArray().add(newId).add(folderId).add(user.getUserId())
+                    .add(user.getUserId()).add(user.getUsername()).add(catalogSubjectId);
             // Le dossier n'est retenu que s'il appartient à l'usager ; sinon le sujet arrive à la racine.
             s.prepared("INSERT INTO " + S + "subject (id, folder_id, owner, owner_username, title, description, picture, " +
                             "max_score, is_library_subject, is_deleted, authors_contributors, type, large_display) " +
                             "SELECT ?, (SELECT f.id FROM " + S + "folder AS f WHERE f.id = ? AND f.owner = ?), ?, ?, " +
                             "s.title, s.description, s.picture, s.max_score, false, false, s.authors_contributors, s.type, s.large_display " +
-                            "FROM " + S + "subject AS s WHERE s.id = ? AND " + CATALOG_GUARD,
-                    new JsonArray().add(newId).add(folderId).add(user.getUserId()).add(user.getUserId())
-                            .add(user.getUsername()).add(catalogSubjectId));
+                            "FROM " + S + "subject AS s WHERE s.id = ? AND " + CATALOG_GUARD
+                            + CatalogSql.packAccessGuard(user.getStructures(), copyValues),
+                    copyValues);
             copyContent(s, newId, catalogSubjectId);
             sql.transaction(s.build(), SqlResult.validRowsResultHandler(1, inserted -> {
                 if (inserted.isLeft()) {

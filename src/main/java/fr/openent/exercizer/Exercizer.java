@@ -151,6 +151,9 @@ public class Exercizer extends BaseServer {
             addController(new GrainTypeController());
             addController(new SectionController());
             addController(new CatalogController());
+            // Packs pédagogiques : sujets communs installés et ouverts par le module d'interopérabilité.
+            vertx.eventBus().consumer(fr.openent.exercizer.packs.PackBusHandler.ADDRESS,
+                    new fr.openent.exercizer.packs.PackBusHandler());
             final SubjectScheduledController subjectScheduledController = new SubjectScheduledController(storage);
             addController(subjectScheduledController);
             addController(new GrainScheduledController());

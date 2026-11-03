@@ -10,9 +10,19 @@ Régénérer la migration :
 
 ⚠ Une migration ne se rejoue pas : une fois 042 passée en production, toute correction ou tout ajout
 part dans une NOUVELLE migration (043…), sans modifier 042.
+
+Le même jeu forme le pack « Catalogue d'exercices Open ENT » (OEIP 1.1), offert à tous les
+établissements et rattaché aux programmes par le référentiel CASE du module case :
+    python3 deployment/catalog-seed/catalog_seed.py --pack <dossier source>
+    python3 <entcore>/interoperability/tools/oeip_pack.py <dossier source> catalogue.oeip
+Installé sur une plateforme où la migration 042 est passée, le pack REPREND ses sujets (même titre,
+même compte technique) au lieu de les dupliquer.
 """
 import json
+import os
+import re
 import sys
+import unicodedata
 
 OWNER_ID = "open-ent-catalogue"
 OWNER_NAME = "Open ENT"
@@ -436,6 +446,72 @@ def codes(values):
     return "ARRAY[" + ", ".join(lit(v) for v in values) + "]::varchar[]"
 
 
+# ── Rattachement aux programmes (codes du référentiel CASE, module case) ──────────────────────────
+# Les codes humains (humanCodingScheme) sont résolus en identifiants CFItem au moment d'écrire le
+# pack : un code absent du référentiel fait échouer la génération plutôt que d'aligner à vide.
+
+PACK_ID = "urn:openent:pack:catalogue-exercices"
+PACK_VERSION = "1.0.0"
+REFERENTIAL = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "..", "case", "src", "main",
+                           "resources", "referentiels", "programmes-1d.json")
+ALIGNMENTS = {
+    "Les couleurs et les formes": ["C1.OUM.3.4", "C1.AAR.1.3.5"],
+    "Les sons du début des mots": ["C1.LAN.2.1.18", "C1.LAN.3.2.11", "C2.FRA.1.1.1"],
+    "Additions jusqu'à 10": ["C2.MAT.1.2.1", "C2.MAT.1.3.1.1"],
+    "Lire des mots simples": ["C2.FRA.1.1.2", "C2.FRA.1.1.5"],
+    "Le jour et la nuit, les saisons": ["C2.HGE.1.1.1", "C2.HGE.1.2.1"],
+    "Additions et soustractions jusqu'à 100": ["C2.MAT.1.2.5"],
+    "Le nom et le verbe": ["C2.FRA.5.1.4", "C2.FRA.5.1.8"],
+    "Les animaux et leur milieu": ["C2.QLM.1.10", "C2.SCT.2.2.5"],
+    "Les nombres en anglais": ["C2.LVE.1.2.4"],
+    "Les tables de multiplication": ["C2.MAT.1.3.1.7"],
+    "Le présent de l'indicatif": ["C2.FRA.5.2.3", "C3.FRA.5.2.20"],
+    "Le cycle de l'eau": ["C2.QLM.1.8", "C2.QLM.1.9"],
+    "Les fractions simples": ["C3.MAT.1.2.1"],
+    "Les accords dans le groupe nominal": ["C3.FRA.5.2.4", "C3.FRA.5.2.9"],
+    "Daily routine": ["C3.LVE.2.2.3"],
+    "Les nombres décimaux": ["C3.MAT.1.3.21", "C3.MAT.1.3.24"],
+    "Les grands repères de la géographie de la France": ["C3.HGE.3.1.2", "C3.HGE.3.1.3"],
+    "L'énergie et ses sources": ["C3.SCT.5.11"],
+    "Citoyenneté et institutions": ["C3.EMC.2.1.2", "C3.EMC.2.1.3"],
+}
+
+
+def write_pack(subjects, target):
+    """Dossier source du pack, à passer à oeip_pack.py."""
+    referential = json.load(open(REFERENTIAL, encoding="utf-8"))
+    framework = referential["CFDocument"]["identifier"]
+    by_code = {i["humanCodingScheme"]: i["identifier"] for i in referential["CFItems"] if i.get("humanCodingScheme")}
+    os.makedirs(os.path.join(target, "resources"), exist_ok=True)
+    json.dump({"id": PACK_ID, "version": PACK_VERSION, "title": "Catalogue d'exercices Open ENT",
+               "description": "Exercices originaux de la maternelle au lycée, classés par niveau et matière, "
+                              "rattachés aux programmes de l'école primaire.",
+               "language": "fr", "framework": framework, "license": "Licence Ouverte 2.0",
+               "offer": {"audience": "teachers"}},
+              open(os.path.join(target, "pack.json"), "w", encoding="utf-8"), ensure_ascii=False, indent=1)
+    for s in subjects:
+        codes = ALIGNMENTS.get(s["title"], [])
+        missing = [c for c in codes if c not in by_code]
+        if missing:
+            sys.exit(f"« {s['title']} » : codes absents du référentiel {missing}")
+        key = re.sub(r"[^a-z0-9]+", "-", unicodedata.normalize("NFKD", s["title"].lower())
+                     .encode("ascii", "ignore").decode()).strip("-")
+        json.dump({
+            "key": key, "service": "exercizer", "type": "subject", "title": s["title"],
+            "alignments": [{"framework": framework, "item": by_code[c], "code": c} for c in codes],
+            "document": {
+                "subject": {"title": s["title"], "description": s["description"], "type": "interactive",
+                            "authors_contributors": AUTHORS},
+                "levels": s["levels"], "disciplines": s["disciplines"],
+                "grains": [{"grain_type_id": t, "order_by": n, "grain_data": d}
+                           for n, (t, d) in enumerate(s["grains"], start=1)],
+            },
+        }, open(os.path.join(target, "resources", key + ".json"), "w", encoding="utf-8"), ensure_ascii=False, indent=1)
+    unaligned = [x["title"] for x in subjects if x["title"] not in ALIGNMENTS]
+    print(f"{len(subjects)} sujets écrits dans {target} ; {len(subjects) - len(unaligned)} rattachés aux programmes",
+          file=sys.stderr)
+
+
 def render(subjects):
     out = [
         "-- Jeu d'exercices du catalogue Open ENT : exercices ORIGINAUX, classés par niveau et matière.",
@@ -488,4 +564,7 @@ if __name__ == "__main__":
     titles = [s["title"] for s in SUBJECTS]
     if len(titles) != len(set(titles)):
         sys.exit("Deux sujets portent le même titre.")
-    sys.stdout.write(render(SUBJECTS))
+    if len(sys.argv) == 3 and sys.argv[1] == "--pack":
+        write_pack(SUBJECTS, sys.argv[2])
+    else:
+        sys.stdout.write(render(SUBJECTS))

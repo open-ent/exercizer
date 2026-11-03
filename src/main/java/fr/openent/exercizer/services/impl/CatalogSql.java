@@ -1,6 +1,7 @@
 package fr.openent.exercizer.services.impl;
 
 import io.vertx.core.json.JsonArray;
+import org.entcore.common.sql.Sql;
 import org.entcore.common.sql.SqlStatementsBuilder;
 
 /**
@@ -10,6 +11,24 @@ import org.entcore.common.sql.SqlStatementsBuilder;
  * copie depuis le catalogue.
  */
 final class CatalogSql {
+
+    /**
+     * Accès d'un enseignant aux sujets venus d'un pack (colonne {@code pack_global_id}) : seulement si
+     * son établissement y est abonné, ou si le pack est offert à tous ({@code structure_id = '*'}).
+     * Les autres sujets du catalogue — publiés par des enseignants — restent ouverts à tous.
+     * Ajoute ses paramètres à {@code values}.
+     */
+    static String packAccessGuard(final java.util.List<String> structures, final JsonArray values) {
+        final StringBuilder guard = new StringBuilder(" AND (s.pack_global_id IS NULL OR EXISTS (SELECT 1 FROM ")
+                .append("exercizer.subject_access AS a WHERE a.subject_id = s.id ")
+                .append("AND (a.structure_id = '*'");
+        if (structures != null && !structures.isEmpty()) {
+            guard.append(" OR a.structure_id IN ").append(Sql.listPrepared(structures));
+            structures.forEach(values::add);
+        }
+        return guard.append(")))").toString();
+    }
+
 
     private static final String SCHEMA = "exercizer.";
 

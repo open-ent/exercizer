@@ -68,7 +68,8 @@ public class CatalogController extends ControllerHelper {
 			final JsonObject criteria = new JsonObject()
 					.put("q", request.params().get("q"))
 					.put("levels", idList(request.params().get("levels")))
-					.put("disciplines", idList(request.params().get("disciplines")));
+					.put("disciplines", idList(request.params().get("disciplines")))
+					.put("structures", new JsonArray(user.getStructures()));
 			final Integer limit = intParam(request.params().get("limit"));
 			final Integer offset = intParam(request.params().get("offset"));
 			if (limit != null) criteria.put("limit", limit);
@@ -83,7 +84,7 @@ public class CatalogController extends ControllerHelper {
 	public void get(final HttpServerRequest request) {
 		final Long id = idParam(request, "id");
 		if (id == null) return;
-		withAction(request, CREATE_ACTION, user -> catalogService.get(id, notFoundOr(request)));
+		withAction(request, CREATE_ACTION, user -> catalogService.get(id, user.getStructures(), notFoundOr(request)));
 	}
 
 	@Post("/catalog/subject/:id/copy")
