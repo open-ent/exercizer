@@ -383,8 +383,8 @@ export interface CatalogFacet {
 /** Le rangement du catalogue : par niveau, par matière, ou selon un programme (`programme:<id>`). */
 export type CatalogOrg = 'level' | 'discipline' | `programme:${string}`;
 
-/** Arbre à côté des résultats, ou sommaire dont les exercices sont les feuilles. */
-export type CatalogView = 'tree' | 'outline';
+/** Arbre à côté des résultats, sommaire dont les exercices sont les feuilles, ou couverture du programme. */
+export type CatalogView = 'tree' | 'outline' | 'coverage';
 
 /** Un sujet du catalogue, tel que la recherche le renvoie. */
 export interface CatalogSubject extends Classification {

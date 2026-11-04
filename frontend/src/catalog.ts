@@ -120,7 +120,7 @@ export function parseOrg(value: string | null | undefined): CatalogOrg | null {
 }
 
 export const parseView = (value: string | null | undefined): CatalogView | null =>
-  value === 'tree' || value === 'outline' ? value : null;
+  value === 'tree' || value === 'outline' || value === 'coverage' ? value : null;
 
 /**
  * Le rangement à afficher : celui de l'URL, sinon celui de la préférence s'il existe encore, sinon
@@ -152,6 +152,10 @@ export interface CatalogTreeItem {
   code?: string | null;
   count: number;
   children: CatalogTreeItem[];
+  /** Le type d'énoncé d'un nœud de programme (Domaine, Objectif d'apprentissage…). */
+  type?: string | null;
+  /** Les codes des niveaux d'un nœud de programme (CP, CE1…). */
+  levels?: string[];
   /** L'exercice d'une feuille `subject`. */
   subjectId?: number;
   /** Le nœud qui porte une feuille `subject`, `more` ou `loading`. */
@@ -175,9 +179,100 @@ export function buildProgrammeTree(nodes: ProgrammeNode[]): CatalogTreeItem[] {
       code: node.code,
       count: node.count,
       children: build(node.id),
+      type: node.type,
+      levels: node.levels,
     }));
   return build(null);
 }
+
+// ── Couverture d'un programme ─────────────────────────────────────────────────
+
+/**
+ * Types d'énoncés qui structurent un programme sans décrire un apprentissage (même liste que
+ * `ProgrammeSql.STRUCTURAL_TYPES` côté serveur) : tous les autres sont des objectifs.
+ */
+const STRUCTURAL_TYPES = ['Cycle', 'Enseignement', 'Domaine', 'Sous-domaine', 'Thème'];
+
+/** Un énoncé à qui l'on peut rattacher un exercice : attendu, objectif, compétence… */
+export const isObjective = (type: string | null | undefined) => !!type && !STRUCTURAL_TYPES.includes(type);
+
+/** Une ligne du tableau de couverture : un domaine du programme. */
+export interface CoverageRow {
+  id: string;
+  code: string | null;
+  label: string;
+  /** Les énoncés au-dessus du domaine (cycle, enseignement), du plus haut au plus proche. */
+  path: string[];
+  objectives: number;
+  /** Objectifs qui ont au moins un exercice. */
+  covered: number;
+  /** Exercices distincts rattachés au domaine. */
+  exercises: number;
+}
+
+/**
+ * La couverture d'un programme, domaine par domaine, à partir de son arbre COMPLET (« Afficher tout
+ * le programme ») : la part des objectifs qui ont au moins un exercice. Un objectif est rangé sous
+ * son domaine le plus haut ; hors de tout domaine, sous son parent (un enseignement). `levelCodes`
+ * ne garde que les objectifs de ces niveaux (null : tous) ; un domaine sans objectif est omis.
+ * Les lignes suivent l'ordre du programme.
+ */
+export function programmeCoverage(nodes: ProgrammeNode[], levelCodes: readonly string[] | null): CoverageRow[] {
+  const byId = new Map(nodes.map((node) => [node.id, node]));
+  const ancestors = (node: ProgrammeNode) => {
+    const chain: ProgrammeNode[] = [];
+    for (let current = node.parent ? byId.get(node.parent) : undefined; current; ) {
+      chain.unshift(current);
+      current = current.parent ? byId.get(current.parent) : undefined;
+    }
+    return chain;
+  };
+  // L'ordre du programme (parcours en profondeur) : les nœuds arrivent triés frère par frère.
+  const children = new Map<string | null, ProgrammeNode[]>();
+  for (const node of nodes) {
+    const parent = node.parent && byId.has(node.parent) ? node.parent : null;
+    children.set(parent, [...(children.get(parent) ?? []), node]);
+  }
+  const order = new Map<string, number>();
+  const visit = (parent: string | null) =>
+    (children.get(parent) ?? []).forEach((node) => {
+      order.set(node.id, order.size);
+      visit(node.id);
+    });
+  visit(null);
+
+  // Une ligne prend la place de son premier objectif : les objectifs hors domaine d'un
+  // enseignement viennent après ses domaines qui les précèdent, pas avant.
+  const rows = new Map<string, CoverageRow & { first: number }>();
+  for (const node of nodes) {
+    if (!isObjective(node.type)) continue;
+    if (levelCodes && node.levels.length > 0 && !node.levels.some((code) => levelCodes.includes(code))) continue;
+    const chain = ancestors(node);
+    const index = chain.findIndex((ancestor) => ancestor.type === 'Domaine');
+    const at = index >= 0 ? index : chain.length - 1;
+    if (at < 0) continue;
+    const domain = chain[at];
+    const row = rows.get(domain.id) ?? {
+      id: domain.id,
+      code: domain.code,
+      label: domain.label,
+      path: chain.slice(0, at).map((ancestor) => ancestor.label),
+      objectives: 0,
+      covered: 0,
+      exercises: domain.count,
+      first: Number.MAX_SAFE_INTEGER,
+    };
+    row.objectives += 1;
+    if (node.count > 0) row.covered += 1;
+    row.first = Math.min(row.first, order.get(node.id) ?? Number.MAX_SAFE_INTEGER);
+    rows.set(domain.id, row);
+  }
+  return [...rows.values()].sort((a, b) => a.first - b.first).map(({ first: _first, ...row }) => row);
+}
+
+/** Part couverte, de 0 à 1 (0 sans objectif). */
+export const coverageRatio = (row: Pick<CoverageRow, 'objectives' | 'covered'>) =>
+  row.objectives > 0 ? row.covered / row.objectives : 0;
 
 // Identifiants des nœuds des rangements par niveau et par matière : « g:<groupe> », « l:<id> »,
 // « d:<id> », et un couple « l:<id>|d:<id> » ou « d:<id>|l:<id> ».

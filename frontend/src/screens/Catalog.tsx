@@ -10,7 +10,9 @@ import {
   Modal,
   Pagination,
   SearchBar,
+  Table,
   useEdificeClient,
+  useEdificeTheme,
   useHasWorkflow,
 } from '@open-ent/react';
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -22,6 +24,7 @@ import illuExercizer from '@images/emptyscreen/illu-exercizer.svg';
 import {
   CatalogSearch,
   copyCatalogSubject,
+  createSubject,
   getCatalogFacets,
   getCatalogSubject,
   getProgrammeTree,
@@ -29,6 +32,7 @@ import {
   reclassifyCatalogSubject,
   removeCatalogSubject,
   searchCatalog,
+  setClassification,
   setUiPreference,
   UiPreference,
 } from '../api';
@@ -38,14 +42,18 @@ import {
   buildProgrammeTree,
   canManageCatalogSubject,
   CatalogTreeItem,
+  CoverageRow,
+  coverageRatio,
   findTreeItem,
   groupLevels,
+  isObjective,
   labelsOf,
   nodeCriteria,
   OutlineEntry,
   parseOrg,
   parseView,
   programmeOf,
+  programmeCoverage,
   programmeOrg,
   programmesInContext,
   referentialInContext,
@@ -138,9 +146,11 @@ export function Catalog() {
     parseOrg(preference.data?.catalog?.org),
     visibleProgrammes,
   );
-  const view: CatalogView = parseView(params.get('view')) ?? parseView(preference.data?.catalog?.view) ?? 'tree';
-  const node = params.get('node');
   const programme = programmeOf(org);
+  const wantedView = parseView(params.get('view')) ?? parseView(preference.data?.catalog?.view) ?? 'tree';
+  // La couverture ne se calcule que sur un programme.
+  const view: CatalogView = wantedView === 'coverage' && !programme ? 'tree' : wantedView;
+  const node = params.get('node');
 
   const savePreference = useMutation({
     mutationFn: (next: UiPreference) => setUiPreference(next),
@@ -189,9 +199,11 @@ export function Catalog() {
     disciplines: filterDiscipline ? [filterDiscipline] : [],
   };
 
+  // La couverture compte aussi les objectifs vides : elle lit tout le programme.
+  const fullTree = full || view === 'coverage';
   const programmeTree = useQuery({
-    queryKey: ['exercizer', 'catalog', 'programme-tree', programme, q, filterLevel, filterDiscipline, contextKey, full],
-    queryFn: () => getProgrammeTree(programme as string, criteria, full),
+    queryKey: ['exercizer', 'catalog', 'programme-tree', programme, q, filterLevel, filterDiscipline, contextKey, fullTree],
+    queryFn: () => getProgrammeTree(programme as string, criteria, fullTree),
     enabled: ready && !!programme,
     placeholderData: keepPreviousData,
   });
@@ -296,6 +308,17 @@ export function Catalog() {
   const treeQuery = programme ? programmeTree : facets;
   const selected = node ? findTreeItem(items, node) : undefined;
 
+  // Couverture : les objectifs du niveau choisi, sinon ceux des niveaux du contexte (tous sans contexte).
+  const coverageLevels = useMemo(() => {
+    const levels = referential.data?.levels ?? [];
+    if (filterLevel) return levels.filter((level) => level.id === filterLevel).map((level) => level.code ?? '');
+    return context.levels ? (visibleReferential?.levels ?? []).map((level) => level.code ?? '') : null;
+  }, [referential.data, filterLevel, context.levels, visibleReferential]);
+  const coverage = useMemo(
+    () => (view === 'coverage' && programmeTree.data ? programmeCoverage(programmeTree.data.nodes, coverageLevels) : []),
+    [view, programmeTree.data, coverageLevels],
+  );
+
   return (
     <section className="py-16">
       <Heading level="h1" headingStyle="h3" className="mb-8">
@@ -328,7 +351,11 @@ export function Catalog() {
             onDiscipline={setDisciplineId}
           />
         )}
-        <ViewSwitch view={view} onChange={(next) => go({ view: next })} />
+        <ViewSwitch
+          view={view}
+          views={programme ? ['tree', 'outline', 'coverage'] : ['tree', 'outline']}
+          onChange={(next) => go({ view: next })}
+        />
         {(context.levels || allLevels) && (
           <Checkbox
             checked={allLevels}
@@ -343,6 +370,17 @@ export function Catalog() {
 
       {!ready || referential.isPending ? (
         <LoadingScreen position={false} />
+      ) : view === 'coverage' ? (
+        <TreeState query={programmeTree} empty={coverage.length === 0}>
+          <CoverageTable
+            rows={coverage}
+            onOpen={(row) => {
+              // Les objectifs vides doivent paraître dans l'arbre : c'est là qu'on y contribue.
+              setFull(true);
+              go({ view: 'tree', node: row.id });
+            }}
+          />
+        </TreeState>
       ) : view === 'outline' ? (
         <div>
           {programme && <FullProgrammeToggle full={full} onChange={setFull} />}
@@ -406,7 +444,11 @@ export function Catalog() {
             ) : results.isPending ? (
               <LoadingScreen position={false} />
             ) : subjects.length === 0 ? (
-              <EmptyScreen imageSrc={illuExercizer} text={t('exercizer.catalog.empty')} size={200} />
+              programme && selected && selected.count === 0 && isObjective(selected.type) && !q ? (
+                <ContributeCall objective={selected} referential={referential.data} />
+              ) : (
+                <EmptyScreen imageSrc={illuExercizer} text={t('exercizer.catalog.empty')} size={200} />
+              )
             ) : (
               <>
                 <p className="small text-muted mb-8" aria-live="polite">
@@ -496,12 +538,20 @@ function OrgSelect({
   );
 }
 
-/** Arbre et résultats, ou sommaire. */
-function ViewSwitch({ view, onChange }: { view: CatalogView; onChange: (view: CatalogView) => void }) {
+/** Arbre et résultats, sommaire, ou couverture du programme. */
+function ViewSwitch({
+  view,
+  views,
+  onChange,
+}: {
+  view: CatalogView;
+  views: CatalogView[];
+  onChange: (view: CatalogView) => void;
+}) {
   const { t } = useTranslation(['exercizer', 'common']);
   return (
     <div className="btn-group" role="group" aria-label={t('exercizer.catalog.view')}>
-      {(['tree', 'outline'] as const).map((entry) => (
+      {views.map((entry) => (
         <Button
           key={entry}
           size="sm"
@@ -513,6 +563,155 @@ function ViewSwitch({ view, onChange }: { view: CatalogView; onChange: (view: Ca
           {t(`exercizer.catalog.view.${entry}`)}
         </Button>
       ))}
+    </div>
+  );
+}
+
+/**
+ * La couverture du programme, domaine par domaine : la part des objectifs qui ont au moins un
+ * exercice, pour voir où produire du contenu. Triable, les moins couverts d'abord sur demande ; un
+ * domaine s'ouvre dans l'arbre, objectifs vides compris.
+ */
+function CoverageTable({ rows, onOpen }: { rows: CoverageRow[]; onOpen: (row: CoverageRow) => void }) {
+  const { t } = useTranslation(['exercizer', 'common']);
+  const [leastFirst, setLeastFirst] = useState(false);
+  const sorted = leastFirst
+    ? [...rows].sort((a, b) => coverageRatio(a) - coverageRatio(b) || b.objectives - a.objectives)
+    : rows;
+  const objectives = rows.reduce((sum, row) => sum + row.objectives, 0);
+  const covered = rows.reduce((sum, row) => sum + row.covered, 0);
+  const percent = (part: number, whole: number) => (whole > 0 ? Math.round((part / whole) * 100) : 0);
+  return (
+    <div data-testid="catalog-coverage">
+      <div className="d-flex flex-wrap align-items-center justify-content-between gap-12 mb-12">
+        <p className="m-0" aria-live="polite">
+          {t('exercizer.catalog.coverage.summary', {
+            covered,
+            objectives,
+            percent: percent(covered, objectives),
+          })}
+        </p>
+        <Checkbox
+          checked={leastFirst}
+          onChange={(event) => setLeastFirst(event.target.checked)}
+          label={t('exercizer.catalog.coverage.leastFirst')}
+        />
+      </div>
+      <p className="small text-muted mb-12">{t('exercizer.catalog.coverage.help')}</p>
+      <Table>
+        <Table.Thead>
+          <Table.Tr>
+            <Table.Th>{t('exercizer.catalog.coverage.domain')}</Table.Th>
+            <Table.Th>{t('exercizer.catalog.coverage.objectives')}</Table.Th>
+            <Table.Th style={{ minWidth: 160 }}>{t('exercizer.catalog.coverage.rate')}</Table.Th>
+            <Table.Th>{t('exercizer.catalog.coverage.exercises')}</Table.Th>
+          </Table.Tr>
+        </Table.Thead>
+        <Table.Tbody>
+          {sorted.map((row) => {
+            const rate = percent(row.covered, row.objectives);
+            return (
+              <Table.Tr key={row.id}>
+                <Table.Td>
+                  {row.path.length > 0 && <div className="small text-muted">{row.path.join(' › ')}</div>}
+                  <button
+                    type="button"
+                    // Sans la classe `btn`, dont certains thèmes changent la police et la casse.
+                    className="p-0 border-0 bg-transparent text-start text-primary text-decoration-underline"
+                    onClick={() => onOpen(row)}
+                  >
+                    {row.code && <strong className="me-8">{row.code}</strong>}
+                    {row.label}
+                  </button>
+                </Table.Td>
+                <Table.Td className="text-nowrap">
+                  {row.covered} / {row.objectives}
+                </Table.Td>
+                <Table.Td>
+                  {/* Le socle n'a pas de barre de progression : deux blocs aux couleurs du thème. */}
+                  <div className="d-flex align-items-center gap-8">
+                    <div
+                      className="flex-fill rounded-pill overflow-hidden bg-gray-300"
+                      style={{ height: 8 }}
+                      role="progressbar"
+                      aria-label={row.label}
+                      aria-valuemin={0}
+                      aria-valuemax={100}
+                      aria-valuenow={rate}
+                    >
+                      <div
+                        className={`h-100 ${rate === 0 ? '' : rate < 50 ? 'bg-warning' : 'bg-success'}`}
+                        style={{ width: `${rate}%` }}
+                      />
+                    </div>
+                    <span className="small text-nowrap">{rate} %</span>
+                  </div>
+                </Table.Td>
+                <Table.Td>{row.exercises}</Table.Td>
+              </Table.Tr>
+            );
+          })}
+        </Table.Tbody>
+      </Table>
+    </div>
+  );
+}
+
+/**
+ * Un objectif du programme sans exercice : on invite l'enseignant à proposer le sien. Le sujet est
+ * créé dans « Mes sujets », titré de l'objectif, rattaché à lui et classé à ses niveaux, puis
+ * l'éditeur s'ouvre ; il le publiera au catalogue une fois prêt.
+ */
+function ContributeCall({
+  objective,
+  referential,
+}: {
+  objective: CatalogTreeItem;
+  referential: CatalogReferential | undefined;
+}) {
+  const { t } = useTranslation(['exercizer', 'common']);
+  const navigate = useNavigate();
+  const queryClient = useQueryClient();
+  const { theme } = useEdificeTheme();
+
+  const contribute = useMutation({
+    mutationFn: async () => {
+      const subject = await createSubject({
+        title: objective.name.slice(0, 255),
+        type: 'interactive',
+        folder_id: null,
+        // Comme à la création d'un sujet : le grand format d'office au premier degré.
+        large_display: !!theme?.is1d,
+      });
+      const levelIds = (referential?.levels ?? [])
+        .filter((level) => !!level.code && (objective.levels ?? []).includes(level.code))
+        .map((level) => level.id);
+      await setClassification(subject.id, {
+        level_ids: levelIds,
+        discipline_ids: [],
+        alignment_ids: [objective.id],
+      });
+      return subject;
+    },
+    onSuccess: (subject) => {
+      void queryClient.invalidateQueries({ queryKey: ['exercizer', 'subjects'] });
+      navigate(`/subject/edit/${subject.id}/`);
+    },
+  });
+
+  return (
+    <div className="text-center py-24" data-testid="catalog-contribute">
+      <img src={illuExercizer} alt="" width={200} className="mb-16" />
+      <p className="fw-bold mb-8">{t('exercizer.catalog.contribute.empty')}</p>
+      <p className="text-muted mb-16">{t('exercizer.catalog.contribute.help')}</p>
+      {contribute.isError && (
+        <Alert type="danger" className="mb-16">
+          {t('exercizer.error')}
+        </Alert>
+      )}
+      <Button color="primary" variant="filled" isLoading={contribute.isPending} onClick={() => contribute.mutate()}>
+        {t('exercizer.catalog.contribute.action')}
+      </Button>
     </div>
   );
 }

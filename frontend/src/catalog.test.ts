@@ -8,7 +8,9 @@ import {
   referentialInContext,
   buildProgrammeTree,
   canManageCatalogSubject,
+  isObjective,
   nodeCriteria,
+  programmeCoverage,
   parseOrg,
   resolveOrg,
   visibleProgrammeNodes,
@@ -175,6 +177,50 @@ describe('buildProgrammeTree', () => {
     ]);
     expect(tree.map((item) => item.id)).toEqual(['c2', 'orphelin']);
     expect(tree[0].children.map((item) => [item.id, item.count])).toEqual([['mat', 3]]);
+  });
+});
+
+describe('programmeCoverage', () => {
+  const typed = (id: string, parent: string | null, type: string, count = 0, levels = ['CE1']) => ({
+    ...programmeNode(id, parent, count, levels),
+    type,
+  });
+  // Cycle › Enseignement › Domaine › (Domaine) › Sous-domaine › objectifs, plus un attendu hors domaine.
+  const nodes = [
+    typed('c2', null, 'Cycle', 2),
+    typed('mat', 'c2', 'Enseignement', 2),
+    typed('calc', 'mat', 'Domaine', 2),
+    typed('calc.sub', 'calc', 'Domaine', 2),
+    typed('pose', 'calc.sub', 'Sous-domaine', 2),
+    typed('sous', 'pose', 'Objectif d’apprentissage', 2),
+    typed('add', 'pose', 'Objectif d’apprentissage', 0),
+    typed('cp', 'pose', 'Objectif d’apprentissage', 0, ['CP']),
+    typed('geo', 'mat', 'Domaine', 0),
+    typed('fig', 'geo', 'Objectif d’apprentissage', 0),
+    typed('att', 'mat', 'Attendu de fin de cycle', 0),
+  ];
+
+  it('compte les objectifs couverts sous le domaine le plus haut, dans l’ordre du programme', () => {
+    expect(
+      programmeCoverage(nodes, null).map((row) => [row.id, row.covered, row.objectives, row.exercises, row.path]),
+    ).toEqual([
+      ['calc', 1, 3, 2, ['Énoncé c2', 'Énoncé mat']],
+      ['geo', 0, 1, 0, ['Énoncé c2', 'Énoncé mat']],
+      // Hors de tout domaine : rangé sous son enseignement.
+      ['mat', 0, 1, 2, ['Énoncé c2']],
+    ]);
+  });
+
+  it('ne garde que les objectifs des niveaux demandés', () => {
+    expect(programmeCoverage(nodes, ['CP']).map((row) => [row.id, row.covered, row.objectives])).toEqual([
+      ['calc', 0, 1],
+    ]);
+  });
+
+  it('isObjective écarte les énoncés de structure', () => {
+    expect(isObjective('Domaine')).toBe(false);
+    expect(isObjective(null)).toBe(false);
+    expect(isObjective('Attendu de fin de cycle')).toBe(true);
   });
 });
 
