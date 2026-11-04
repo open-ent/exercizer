@@ -65,9 +65,11 @@ final class ProgrammeSql {
         TEACHINGS.put("QUESTIONNER_LE_MONDE", Arrays.asList("QLM", "DMV", "RTE"));
         TEACHINGS.put("EXPLORER_LE_MONDE", Arrays.asList("DMV", "RTE", "OUM"));
         TEACHINGS.put("SCIENCES_TECHNO", Arrays.asList("SCT", "QLM", "DMV"));
-        TEACHINGS.put("SVT", Arrays.asList("SCT", "QLM"));
-        TEACHINGS.put("PHYSIQUE_CHIMIE", Arrays.asList("SCT", "QLM"));
-        TEACHINGS.put("TECHNOLOGIE", Arrays.asList("SCT", "QLM"));
+        // Collège : la sixième garde « sciences et technologie », le cycle 4 les sépare.
+        TEACHINGS.put("SVT", Arrays.asList("SVT", "SCT", "QLM"));
+        TEACHINGS.put("PHYSIQUE_CHIMIE", Arrays.asList("PHC", "SCT", "QLM"));
+        TEACHINGS.put("TECHNOLOGIE", Arrays.asList("TEC", "SCT", "QLM"));
+        TEACHINGS.put("DOCUMENTATION", Collections.singletonList("EMI"));
     }
 
     private ProgrammeSql() {}
