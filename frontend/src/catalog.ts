@@ -76,6 +76,12 @@ export function labelsOf<T extends { id: number; label: string }>(
 export const isPublishable = (classification: Classification) =>
   classification.level_ids.length > 0 && classification.discipline_ids.length > 0;
 
+/** Le sujet porte-t-il un niveau, une matière ou un énoncé du programme ? */
+export const isClassified = (classification: Classification) =>
+  classification.level_ids.length > 0 ||
+  classification.discipline_ids.length > 0 ||
+  (classification.alignment_ids?.length ?? 0) > 0;
+
 /**
  * Peut-on retirer ou reclasser ce sujet du catalogue ? Son auteur, ou un modérateur — le serveur
  * reste seul juge, ceci ne fait que masquer des boutons inutiles.

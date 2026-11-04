@@ -9,22 +9,23 @@ import { AlignmentPicker } from '../features/AlignmentPicker';
 import { ClassificationPicker } from '../features/ClassificationPicker';
 import { CatalogReferential, Classification, Subject } from '../types';
 
-const EMPTY: Classification = { level_ids: [], discipline_ids: [], alignment_ids: [] };
+export const EMPTY_CLASSIFICATION: Classification = { level_ids: [], discipline_ids: [], alignment_ids: [] };
 
 /** Le texte d'un sujet (titre et description sans balises), d'où partent les suggestions. */
-const subjectText = (subject: Subject) =>
+export const subjectText = (subject: Pick<Subject, 'title' | 'description'>) =>
   `${subject.title ?? ''} ${
     new DOMParser().parseFromString(subject.description ?? '', 'text/html').body.textContent ?? ''
   }`.trim();
 
 /** Niveaux et matières, puis les énoncés du programme que le sujet travaille. */
-function ClassificationFields({
-  subject,
+export function ClassificationFields({
+  text,
   referential,
   value,
   onChange,
 }: {
-  subject: Subject;
+  /** Le titre et la description du sujet, d'où partent les suggestions de rattachement. */
+  text: string;
   referential: CatalogReferential;
   value: Classification;
   onChange: (value: Classification) => void;
@@ -43,7 +44,7 @@ function ClassificationFields({
           onChange={(alignment_ids) => onChange({ ...value, alignment_ids })}
           levelIds={value.level_ids}
           disciplineIds={value.discipline_ids}
-          text={subjectText(subject)}
+          text={text}
         />
       </fieldset>
     </>
@@ -64,7 +65,7 @@ function useClassificationDraft(subjectId: number) {
     queryKey: ['exercizer', 'classification', subjectId],
     queryFn: () => getClassification(subjectId),
   });
-  const [draft, setDraft] = useState<Classification>(EMPTY);
+  const [draft, setDraft] = useState<Classification>(EMPTY_CLASSIFICATION);
   useEffect(() => {
     if (query.data) setDraft(query.data);
   }, [query.data]);
@@ -107,7 +108,7 @@ export function ClassificationDialog({
         )}
         <p className="text-muted mb-16">{t('exercizer.catalog.classify.help')}</p>
         {referential.data && query.isSuccess ? (
-          <ClassificationFields subject={subject} referential={referential.data} value={draft} onChange={setDraft} />
+          <ClassificationFields text={subjectText(subject)} referential={referential.data} value={draft} onChange={setDraft} />
         ) : referential.isError || query.isError ? (
           <Alert type="danger">{t('exercizer.error')}</Alert>
         ) : (
@@ -187,7 +188,7 @@ export function PublishToCatalogDialog({
         </FormControl>
         {referential.data && query.isSuccess ? (
           <ClassificationFields
-            subject={subject}
+            text={subjectText(subject)}
             referential={referential.data}
             value={draft}
             onChange={(next) => {

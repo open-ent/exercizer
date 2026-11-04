@@ -44,6 +44,14 @@ public interface ICatalogService {
     void programmeTree(String programme, boolean full, JsonObject criteria, Handler<Either<String, JsonObject>> handler);
 
     /**
+     * Énoncés de programmes publiés (de {@code programme} seul s'il n'est pas null) qui répondent à la
+     * recherche {@code q}, avec le nombre de sujets visibles (critères de {@link #list}, sans {@code q})
+     * rattachés à chacun ou à ses descendants : {@code {objectives: [{id, programme, programme_title,
+     * code, label, type, levels, count}]}}.
+     */
+    void objectives(String q, String programme, JsonObject criteria, Handler<Either<String, JsonObject>> handler);
+
+    /**
      * Énoncés d'un programme à proposer pour un sujet de ces niveaux et matières (id), au texte donné :
      * {@code {suggestions: [{id, code, label, type}]}}.
      */

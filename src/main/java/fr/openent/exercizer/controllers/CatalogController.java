@@ -126,6 +126,15 @@ public class CatalogController extends ControllerHelper {
 				"true".equals(request.params().get("full")), criteria(request, user), notFoundOr(request)));
 	}
 
+	@Get("/catalog/objectives")
+	@ApiDoc("Searches curriculum items by code or statement (q), with the count of catalog subjects aligned to "
+			+ "each or its descendants under the criteria (levels, disciplines); programme restricts to one curriculum.")
+	@SecuredAction(value = "", type = ActionType.AUTHENTICATED)
+	public void objectives(final HttpServerRequest request) {
+		withAction(request, CREATE_ACTION, user -> catalogService.objectives(request.params().get("q"),
+				request.params().get("programme"), criteria(request, user), defaultResponseHandler(request)));
+	}
+
 	@Get("/catalog/programmes/:id/suggestions")
 	@ApiDoc("Suggests curriculum items for a subject: levels and disciplines (comma-separated ids), text.")
 	@SecuredAction(value = "", type = ActionType.AUTHENTICATED)

@@ -25,6 +25,8 @@ public class CatalogServiceSqlImpl extends AbstractExercizerServiceSqlImpl imple
     private static final int MAX_LIMIT = 100;
     private static final String CATALOG_GUARD = "s.is_library_subject = true AND s.is_deleted = false";
     private static final int SUGGESTIONS = 8;
+    /** Énoncés du programme proposés en tête des résultats d'une recherche. */
+    private static final int OBJECTIVES = 8;
     /** Colonnes JSON du classement d'un sujet, à décoder dans la réponse. */
     private static final String[] JSON_COLUMNS = {"level_ids", "discipline_ids", "alignments"};
 
@@ -59,7 +61,7 @@ public class CatalogServiceSqlImpl extends AbstractExercizerServiceSqlImpl imple
     public void list(final JsonObject criteria, final Handler<Either<String, JsonObject>> handler) {
         withProgrammes(programmes -> {
             final JsonArray values = new JsonArray();
-            final StringBuilder where = new StringBuilder(" WHERE ").append(visibleFilter(criteria, values));
+            final StringBuilder where = new StringBuilder(" WHERE ").append(visibleFilter(criteria, values, programmes));
             final String programme = criteria.getString("programme");
             final String node = criteria.getString("node");
             if (programmes && programme != null && node != null) {
@@ -94,25 +96,50 @@ public class CatalogServiceSqlImpl extends AbstractExercizerServiceSqlImpl imple
 
     @Override
     public void facets(final JsonObject criteria, final Handler<Either<String, JsonObject>> handler) {
-        final JsonArray values = new JsonArray();
-        // Un sujet vaut souvent pour plusieurs niveaux et matières : chaque regroupement est compté à
-        // part (sujets DISTINCTS), la somme des comptes d'un niveau compterait deux fois ces sujets.
-        // GROUPING() distingue un regroupement d'un niveau sans groupe (level_group null).
-        final String query = "SELECT CASE GROUPING(l.level_group, sl.level_id, sd.discipline_id) " +
-                "WHEN 3 THEN 'group' WHEN 5 THEN 'level' WHEN 4 THEN 'level_discipline' ELSE 'discipline' END AS kind, " +
-                "l.level_group, sl.level_id, sd.discipline_id, count(DISTINCT s.id) AS count " +
-                "FROM " + S + "subject AS s JOIN " + S + "subject_level AS sl ON sl.subject_id = s.id " +
-                "JOIN " + S + "subject_lesson_level AS l ON l.id = sl.level_id " +
-                "JOIN " + S + "subject_discipline AS sd ON sd.subject_id = s.id " +
-                "WHERE " + visibleFilter(criteria, values) +
-                " GROUP BY GROUPING SETS ((l.level_group), (sl.level_id), (sl.level_id, sd.discipline_id), (sd.discipline_id))";
-        sql.prepared(query, values, SqlResult.validResultHandler(event -> {
-            if (event.isLeft()) {
-                handler.handle(new Either.Left<>(event.left().getValue()));
-            } else {
-                handler.handle(new Either.Right<>(new JsonObject().put("facets", event.right().getValue())));
+        withProgrammes(programmes -> {
+            final JsonArray values = new JsonArray();
+            // Un sujet vaut souvent pour plusieurs niveaux et matières : chaque regroupement est compté à
+            // part (sujets DISTINCTS), la somme des comptes d'un niveau compterait deux fois ces sujets.
+            // GROUPING() distingue un regroupement d'un niveau sans groupe (level_group null).
+            final String query = "SELECT CASE GROUPING(l.level_group, sl.level_id, sd.discipline_id) " +
+                    "WHEN 3 THEN 'group' WHEN 5 THEN 'level' WHEN 4 THEN 'level_discipline' ELSE 'discipline' END AS kind, " +
+                    "l.level_group, sl.level_id, sd.discipline_id, count(DISTINCT s.id) AS count " +
+                    "FROM " + S + "subject AS s JOIN " + S + "subject_level AS sl ON sl.subject_id = s.id " +
+                    "JOIN " + S + "subject_lesson_level AS l ON l.id = sl.level_id " +
+                    "JOIN " + S + "subject_discipline AS sd ON sd.subject_id = s.id " +
+                    "WHERE " + visibleFilter(criteria, values, programmes) +
+                    " GROUP BY GROUPING SETS ((l.level_group), (sl.level_id), (sl.level_id, sd.discipline_id), (sd.discipline_id))";
+            sql.prepared(query, values, SqlResult.validResultHandler(event -> {
+                if (event.isLeft()) {
+                    handler.handle(new Either.Left<>(event.left().getValue()));
+                } else {
+                    handler.handle(new Either.Right<>(new JsonObject().put("facets", event.right().getValue())));
+                }
+            }));
+        });
+    }
+
+    @Override
+    public void objectives(final String q, final String programme, final JsonObject criteria,
+                           final Handler<Either<String, JsonObject>> handler) {
+        withProgrammes(programmes -> {
+            if (!programmes || q == null || q.trim().isEmpty()) {
+                handler.handle(new Either.Right<>(new JsonObject().put("objectives", new JsonArray())));
+                return;
             }
-        }));
+            // Le compte d'un énoncé = tous ses exercices visibles, pas seulement ceux qui répondent au texte.
+            final JsonArray values = new JsonArray();
+            final String visible = visibleSubjects(criteria.copy().put("q", (String) null), values, true);
+            final String query = ProgrammeSql.objectives(visible, q.trim(), programme,
+                    criteria.getJsonArray("levels", new JsonArray()), OBJECTIVES, values);
+            sql.prepared(query, values, SqlResult.validResultHandler(event -> {
+                if (event.isLeft()) {
+                    handler.handle(new Either.Left<>(event.left().getValue()));
+                } else {
+                    handler.handle(new Either.Right<>(new JsonObject().put("objectives", event.right().getValue())));
+                }
+            }, "levels"));
+        });
     }
 
     @Override
@@ -123,7 +150,7 @@ public class CatalogServiceSqlImpl extends AbstractExercizerServiceSqlImpl imple
                 return;
             }
             final JsonArray values = new JsonArray();
-            sql.prepared(ProgrammeSql.programmes(visibleSubjects(criteria, values)), values,
+            sql.prepared(ProgrammeSql.programmes(visibleSubjects(criteria, values, programmes)), values,
                     SqlResult.validResultHandler(event -> {
                         if (event.isLeft()) {
                             handler.handle(new Either.Left<>(event.left().getValue()));
@@ -143,7 +170,7 @@ public class CatalogServiceSqlImpl extends AbstractExercizerServiceSqlImpl imple
                 return;
             }
             final JsonArray values = new JsonArray();
-            final String visible = visibleSubjects(criteria, values);
+            final String visible = visibleSubjects(criteria, values, programmes);
             final JsonArray unalignedValues = values.copy().add(programme);
             values.add(programme).add(programme).add(programme);
             sql.prepared(ProgrammeSql.tree(visible, full), values, SqlResult.validResultHandler(nodes -> {
@@ -213,15 +240,20 @@ public class CatalogServiceSqlImpl extends AbstractExercizerServiceSqlImpl imple
      * {@code disciplines} et {@code structures} (cf. {@link ICatalogService#list}) : une condition sur
      * {@code s}. Ajoute ses paramètres à {@code values}.
      */
-    private static String visibleFilter(final JsonObject criteria, final JsonArray values) {
+    private static String visibleFilter(final JsonObject criteria, final JsonArray values, final boolean programmes) {
         final StringBuilder where = new StringBuilder(CATALOG_GUARD);
         where.append(CatalogSql.packAccessGuard(criteria.getJsonArray("structures", new JsonArray()).getList(), values));
 
         final String q = criteria.getString("q");
         if (q != null && !q.trim().isEmpty()) {
-            final String pattern = "%" + escapeLike(q.trim()) + "%";
-            where.append(" AND (s.title ILIKE ? OR s.description ILIKE ?)");
+            final String pattern = "%" + ProgrammeSql.escapeLike(q.trim()) + "%";
+            where.append(" AND (s.title ILIKE ? OR s.description ILIKE ?");
             values.add(pattern).add(pattern);
+            // Chercher par objectif : un sujet rattaché à un énoncé du programme qui répond à la recherche.
+            if (programmes) {
+                where.append(" OR s.id IN (").append(ProgrammeSql.alignedToMatching(q.trim(), values)).append(")");
+            }
+            where.append(")");
         }
         final JsonArray levels = criteria.getJsonArray("levels", new JsonArray());
         if (!levels.isEmpty()) {
@@ -239,8 +271,8 @@ public class CatalogServiceSqlImpl extends AbstractExercizerServiceSqlImpl imple
     }
 
     /** Les id des sujets visibles (cf. {@link #visibleFilter}), en sous-requête. */
-    private static String visibleSubjects(final JsonObject criteria, final JsonArray values) {
-        return "SELECT s.id FROM " + S + "subject AS s WHERE " + visibleFilter(criteria, values);
+    private static String visibleSubjects(final JsonObject criteria, final JsonArray values, final boolean programmes) {
+        return "SELECT s.id FROM " + S + "subject AS s WHERE " + visibleFilter(criteria, values, programmes);
     }
 
     /** « (?,?) » pour ces id, ou « (NULL) » — aucun — si la liste est vide. */
@@ -441,9 +473,5 @@ public class CatalogServiceSqlImpl extends AbstractExercizerServiceSqlImpl imple
                 "JOIN " + S + "subject_lesson_level AS l ON l.id = sl.level_id WHERE sl.subject_id = s.id), '[]'::json) AS level_ids, " +
                 "COALESCE((SELECT json_agg(sd.discipline_id ORDER BY sd.discipline_id) FROM " + S + "subject_discipline AS sd " +
                 "WHERE sd.subject_id = s.id), '[]'::json) AS discipline_ids";
-    }
-
-    private static String escapeLike(final String text) {
-        return text.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_");
     }
 }

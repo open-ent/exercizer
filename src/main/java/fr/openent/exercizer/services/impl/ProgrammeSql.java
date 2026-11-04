@@ -165,6 +165,69 @@ final class ProgrammeSql {
                 "WHERE sa.subject_id = " + subject + " AND i.document_id = ?";
     }
 
+    /**
+     * Un énoncé {@code i} répond à la recherche {@code q} : son code commence par elle (C3.MAT.1.3 → la
+     * branche), ou son texte en contient les mots (plein texte en français : « fractions décimales »
+     * trouve « une fraction décimale »). Ajoute ses paramètres à {@code values}.
+     */
+    private static String statementMatches(final String q, final JsonArray values) {
+        values.add(escapeLike(q) + "%").add(q);
+        return "(i.human_coding_scheme ILIKE ? OR to_tsvector('french', i.full_statement) @@ plainto_tsquery('french', ?))";
+    }
+
+    /**
+     * Les sujets rattachés à un énoncé (d'un référentiel publié) qui répond à la recherche {@code q}, en
+     * sous-requête. Ajoute ses paramètres à {@code values}.
+     */
+    static String alignedToMatching(final String q, final JsonArray values) {
+        return "SELECT sa.subject_id FROM " + S + "subject_alignment AS sa JOIN " + CASE + "item AS i ON i.identifier = sa.cfitem_id " +
+                "JOIN " + CASE + "document AS d ON d.identifier = i.document_id AND d.published = true " +
+                "WHERE " + statementMatches(q, values);
+    }
+
+    /**
+     * Au plus {@code limit} énoncés de programmes publiés (de {@code programme} seul s'il est donné, des
+     * niveaux {@code levelIds} s'il y en a) qui répondent à la recherche {@code q} : {@code id, programme, programme_title, code, label, type,
+     * levels, count}, où {@code count} compte les sujets visibles rattachés à l'énoncé ou à l'un de ses
+     * descendants. Ceux qui ont des exercices d'abord, puis par pertinence.
+     *
+     * Paramètres : ceux de {@code visibleSubjects} déjà dans {@code values}, puis les siens.
+     */
+    static String objectives(final String visibleSubjects, final String q, final String programme,
+                             final JsonArray levelIds, final int limit, final JsonArray values) {
+        values.add(q);
+        final String match = statementMatches(q, values);
+        if (programme != null) values.add(programme);
+        // Les niveaux regardés (id d'exercizer) : un énoncé sans niveau reste proposé.
+        final String levelMatch = levelIds.isEmpty() ? "" :
+                " AND (jsonb_array_length(COALESCE(i.education_levels, '[]'::jsonb)) = 0 OR jsonb_exists_any(i.education_levels, " +
+                "ARRAY(SELECT l.code FROM " + S + "subject_lesson_level AS l WHERE l.code IS NOT NULL AND l.id IN " +
+                Sql.listPrepared(levelIds.getList()) + ")))";
+        levelIds.forEach(values::add);
+        values.add(limit);
+        return "WITH RECURSIVE visible AS (" + visibleSubjects + "), " +
+                "hits AS (SELECT i.identifier AS id, i.document_id AS programme, d.title AS programme_title, " +
+                "i.human_coding_scheme AS code, i.full_statement AS label, i.item_type AS type, i.education_levels AS levels, " +
+                // Normalisé par la longueur : un énoncé court qui nomme la notion passe avant un long qui la répète.
+                "ts_rank(to_tsvector('french', i.full_statement), plainto_tsquery('french', ?), 2) AS rank " +
+                "FROM " + CASE + "item AS i JOIN " + CASE + "document AS d ON d.identifier = i.document_id AND d.published = true " +
+                "WHERE " + match + (programme != null ? " AND i.document_id = ?" : "") + levelMatch + "), " +
+                // Chaque énoncé trouvé descend jusqu'aux feuilles : (énoncé trouvé, descendant).
+                "below(hit, id) AS (SELECT id, id FROM hits UNION SELECT b.hit, a.origin_id FROM below AS b " +
+                "JOIN " + CASE + "association AS a ON a.destination_id = b.id AND a.association_type = 'isChildOf'), " +
+                "counts AS (SELECT b.hit, count(DISTINCT sa.subject_id) AS count FROM below AS b " +
+                "JOIN " + S + "subject_alignment AS sa ON sa.cfitem_id = b.id JOIN visible AS v ON v.id = sa.subject_id " +
+                "GROUP BY b.hit) " +
+                "SELECT h.id, h.programme, h.programme_title, h.code, h.label, h.type, h.levels, COALESCE(c.count, 0) AS count " +
+                "FROM hits AS h LEFT JOIN counts AS c ON c.hit = h.id " +
+                "ORDER BY (COALESCE(c.count, 0) > 0) DESC, h.rank DESC, h.code LIMIT ?";
+    }
+
+    /** Échappe les jokers de LIKE. */
+    static String escapeLike(final String text) {
+        return text.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_");
+    }
+
     /** Les énoncés (de référentiels publiés) d'un sujet {@code s}, triés par code, en JSON. */
     static String alignmentsColumn() {
         return "COALESCE((SELECT json_agg(json_build_object('id', i.identifier, 'code', i.human_coding_scheme, " +
@@ -197,7 +260,8 @@ final class ProgrammeSql {
                 "SELECT i.identifier AS id, i.human_coding_scheme AS code, i.full_statement AS label, i.item_type AS type, " +
                 "i.rank, max(i.rank) OVER () AS best " +
                 "FROM (SELECT i.*, (" + levelMatch + ") AS level_match, (" + teachingMatch + ") AS teaching_match, " +
-                "ts_rank(to_tsvector('french', i.full_statement), plainto_tsquery('french', ?)) AS rank " +
+                // Normalisé par la longueur : un énoncé court qui nomme la notion passe avant un long qui la répète.
+                "ts_rank(to_tsvector('french', i.full_statement), plainto_tsquery('french', ?), 2) AS rank " +
                 "FROM " + CASE + "item AS i JOIN " + CASE + "document AS d ON d.identifier = i.document_id AND d.published = true " +
                 "WHERE i.document_id = ? AND i.item_type NOT IN " + Sql.listPrepared(STRUCTURAL_TYPES.toArray()) + ") AS i " +
                 "WHERE i.level_match AND i.teaching_match) AS i " +

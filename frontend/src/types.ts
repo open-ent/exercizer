@@ -360,6 +360,19 @@ export interface ProgrammeTree {
   unaligned: number;
 }
 
+/** Un énoncé de programme qui répond à une recherche du catalogue. */
+export interface CatalogObjective {
+  id: string;
+  programme: string;
+  programme_title: string;
+  code: string | null;
+  label: string;
+  type: string | null;
+  levels: string[];
+  /** Sujets visibles rattachés à l'énoncé ou à l'un de ses descendants (sans le filtre du texte). */
+  count: number;
+}
+
 /** Une suggestion de rattachement pour un sujet. */
 export interface AlignmentSuggestion {
   id: string;

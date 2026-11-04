@@ -26,6 +26,7 @@ import {
   copyCatalogSubject,
   createSubject,
   getCatalogFacets,
+  getCatalogObjectives,
   getCatalogSubject,
   getProgrammeTree,
   getUiPreference,
@@ -65,6 +66,7 @@ import {
 import { useCatalogReferential } from '../components/CatalogDialogs';
 import { AlignmentPicker, useContextLevels, useProgrammes } from '../features/AlignmentPicker';
 import { CatalogTree } from '../features/CatalogTree';
+import { CreateSequenceDialog, ObjectiveHits } from '../features/CatalogProgrammeActions';
 import { WORKFLOW } from '../rights';
 import { Alignment, CatalogOrg, CatalogReferential, CatalogSubject, CatalogView, Programme } from '../types';
 import { sanitizeHtml } from '../zones';
@@ -121,6 +123,7 @@ export function Catalog() {
   const [openedId, setOpenedId] = useState<number | null>(null);
   const [full, setFull] = useState(false);
   const [treeShown, setTreeShown] = useState(false);
+  const [sequenceShown, setSequenceShown] = useState(false);
   const q = useDebounced(search);
 
   // Contexte : les niveaux que servent les établissements de l'usager (ou l'ENT, d'après son
@@ -254,6 +257,23 @@ export function Catalog() {
   // Un nouveau critère ramène à la première page.
   useEffect(() => setPage(1), [q, levelId, disciplineId, org, node, contextKey]);
 
+  // Chercher par objectif : les énoncés des programmes (de celui qui range le catalogue, sinon de
+  // ceux du contexte) qui répondent à la recherche, avec leurs exercices.
+  const visibleProgrammeIds = visibleProgrammes.map((entry) => entry.id).join(',');
+  const objectives = useQuery({
+    queryKey: ['exercizer', 'catalog', 'objectives', q, programme, filterLevel, filterDiscipline, contextKey],
+    queryFn: () => getCatalogObjectives(criteria, programme),
+    enabled: ready && !!q.trim() && visibleProgrammes.length > 0 && view !== 'coverage',
+    placeholderData: keepPreviousData,
+  });
+  const objectiveHits = useMemo(
+    () =>
+      q.trim()
+        ? (objectives.data ?? []).filter((objective) => visibleProgrammeIds.split(',').includes(objective.programme))
+        : [],
+    [q, objectives.data, visibleProgrammeIds],
+  );
+
   const results = useQuery({
     queryKey: ['exercizer', 'catalog', 'search', org, node, q, filterLevel, filterDiscipline, contextKey, page],
     queryFn: () => searchCatalog({ ...searchUnder(node), limit: PAGE_SIZE, offset: (page - 1) * PAGE_SIZE }),
@@ -368,6 +388,19 @@ export function Catalog() {
         )}
       </div>
 
+      {view !== 'coverage' && (
+        <ObjectiveHits
+          objectives={objectiveHits}
+          q={q.trim()}
+          onOpen={(objective) => {
+            // L'énoncé ouvert montre tous ses exercices : la recherche qui y a mené s'efface.
+            setSearch('');
+            if (objective.count === 0) setFull(true);
+            go({ org: programmeOrg(objective.programme), view: 'tree', node: objective.id });
+          }}
+        />
+      )}
+
       {!ready || referential.isPending ? (
         <LoadingScreen position={false} />
       ) : view === 'coverage' ? (
@@ -434,9 +467,20 @@ export function Catalog() {
               <div className="d-flex align-items-center gap-8 mb-8">
                 <span className="small text-muted">{t('exercizer.catalog.tree.in')}</span>
                 {selected.code && <strong className="small">{selected.code}</strong>}
-                <span className="small text-truncate" title={selected.name}>
+                <span className="small text-truncate flex-fill" title={selected.name}>
                   {selected.name}
                 </span>
+                {total > 0 && selected.id !== UNALIGNED_NODE && (
+                  <Button
+                    size="sm"
+                    color="primary"
+                    variant="outline"
+                    className="text-nowrap"
+                    onClick={() => setSequenceShown(true)}
+                  >
+                    {t('exercizer.catalog.sequence.open')}
+                  </Button>
+                )}
               </div>
             )}
             {results.isError ? (
@@ -481,6 +525,10 @@ export function Catalog() {
             )}
           </div>
         </div>
+      )}
+
+      {sequenceShown && selected && (
+        <CreateSequenceDialog node={selected} search={searchUnder(node)} onClose={() => setSequenceShown(false)} />
       )}
 
       {openedId !== null && (

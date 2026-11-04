@@ -17,6 +17,7 @@ import {
   withOutlineLeaves,
   groupLevels,
   isCatalogAudience,
+  isClassified,
   isPublishable,
   labelsOf,
   pageCount,
@@ -82,6 +83,16 @@ describe('isPublishable', () => {
     expect(isPublishable({ level_ids: [1], discipline_ids: [] })).toBe(false);
     expect(isPublishable({ level_ids: [], discipline_ids: [1] })).toBe(false);
     expect(isPublishable({ level_ids: [1], discipline_ids: [1] })).toBe(true);
+  });
+});
+
+describe('isClassified', () => {
+  it('un niveau, une matière ou un énoncé suffit', () => {
+    expect(isClassified({ level_ids: [], discipline_ids: [], alignment_ids: [] })).toBe(false);
+    expect(isClassified({ level_ids: [], discipline_ids: [] })).toBe(false);
+    expect(isClassified({ level_ids: [1], discipline_ids: [] })).toBe(true);
+    expect(isClassified({ level_ids: [], discipline_ids: [2] })).toBe(true);
+    expect(isClassified({ level_ids: [], discipline_ids: [], alignment_ids: ['c3-mat'] })).toBe(true);
   });
 });
 

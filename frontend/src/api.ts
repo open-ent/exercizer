@@ -16,6 +16,7 @@ import {
   CatalogFacet,
   CatalogContext,
   CatalogOrg,
+  CatalogObjective,
   CatalogPage,
   CatalogReferential,
   CatalogSubjectDetail,
@@ -904,6 +905,18 @@ export const getProgrammeTree = (programme: string, search: CatalogSearch, full 
   return get<ProgrammeTree>(
     `/exercizer/catalog/programmes/${encodeURIComponent(programme)}/tree?${params}${full ? `${params ? '&' : ''}full=true` : ''}`,
   ).then((tree) => ({ nodes: tree?.nodes ?? [], unaligned: tree?.unaligned ?? 0 }));
+};
+
+/**
+ * Les énoncés des programmes qui répondent à la recherche `q` (par code ou par texte), avec le
+ * nombre d'exercices de chacun sous les autres critères ; `programme` n'en garde qu'un.
+ */
+export const getCatalogObjectives = (search: CatalogSearch, programme?: string | null) => {
+  const params = new URLSearchParams(criteriaParams(search));
+  if (programme) params.set('programme', programme);
+  return get<{ objectives: CatalogObjective[] }>(`/exercizer/catalog/objectives?${params}`).then(
+    (body) => (body?.objectives ?? []).map((objective) => ({ ...objective, levels: objective.levels ?? [] })),
+  );
 };
 
 /** Énoncés d'un programme à proposer pour un sujet de ces niveaux et matières. */

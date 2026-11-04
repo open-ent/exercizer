@@ -26,12 +26,20 @@ import {
   createSubject,
   exportMoodleUrl,
   importSubject,
+  setClassification,
   updateSubject,
   uploadWorkspaceImage,
 } from '../api';
+import { isClassified } from '../catalog';
 import { allImages, applyImageLinks, MoodleXmlError, parseMoodleXml } from '../moodleImport';
 import { WORKFLOW } from '../rights';
-import { Subject } from '../types';
+import { Classification, Subject } from '../types';
+import {
+  ClassificationFields,
+  EMPTY_CLASSIFICATION,
+  subjectText,
+  useCatalogReferential,
+} from './CatalogDialogs';
 
 /** Ce que rend la médiathèque varie selon le type demandé : un lien, un document, ou une liste. */
 function pictureUrl(result: unknown): string | null {
@@ -175,16 +183,26 @@ export function NewSubjectDialog({
     large_display: !!theme?.is1d,
   });
   const [error, setError] = useState<string | null>(null);
+  // Niveaux, matières et programme dès la création : ils suivront le sujet jusqu'au catalogue (la
+  // publication les reprend) et jusqu'aux badges (les résultats sont alignés sur ses énoncés).
+  const referential = useCatalogReferential();
+  const [classifying, setClassifying] = useState(false);
+  const [classification, setClassificationDraft] = useState<Classification>(EMPTY_CLASSIFICATION);
 
   const create = useMutation({
-    mutationFn: () =>
-      createSubject({
+    mutationFn: async () => {
+      const subject = await createSubject({
         title: fields.title.trim(),
         description: fields.description,
         picture: fields.picture || undefined,
         large_display: fields.large_display,
         folder_id: folderId,
-      }),
+      });
+      // Le sujet existe déjà : un échec du classement ne doit pas le faire recréer. Il se reprend
+      // depuis « Niveaux et matières » de la liste.
+      if (isClassified(classification)) await setClassification(subject.id, classification).catch(() => undefined);
+      return subject;
+    },
     onSuccess: onCreated,
     onError: () => setError(t('exercizer.error')),
   });
@@ -231,7 +249,7 @@ export function NewSubjectDialog({
   ];
 
   return (
-    <Modal id={id} isOpen onModalClose={onClose} size="lg">
+    <Modal id={id} isOpen onModalClose={onClose} size="lg" scrollable>
       <Modal.Header onModalClose={onClose}>
         {step === 'choose'
           ? t('exercizer.choose')
@@ -269,7 +287,41 @@ export function NewSubjectDialog({
             ))}
           </div>
         ) : (
-          <SubjectFields value={fields} onChange={setFields} />
+          <>
+            <SubjectFields value={fields} onChange={setFields} />
+            <div className="mt-24 border-top pt-16">
+              <Button
+                color="tertiary"
+                variant="ghost"
+                aria-expanded={classifying}
+                onClick={() => setClassifying((open) => !open)}
+              >
+                {t('exercizer.subject.classify.toggle')}
+                {isClassified(classification) &&
+                  ` (${t('exercizer.subject.classify.count', {
+                    count:
+                      classification.level_ids.length +
+                      classification.discipline_ids.length +
+                      (classification.alignment_ids?.length ?? 0),
+                  })})`}
+              </Button>
+              {classifying && (
+                <div className="mt-12" data-testid="new-subject-classification">
+                  <p className="small text-muted mb-12">{t('exercizer.subject.classify.help')}</p>
+                  {referential.data ? (
+                    <ClassificationFields
+                      text={subjectText(fields)}
+                      referential={referential.data}
+                      value={classification}
+                      onChange={setClassificationDraft}
+                    />
+                  ) : referential.isError ? (
+                    <Alert type="danger">{t('exercizer.error')}</Alert>
+                  ) : null}
+                </div>
+              )}
+            </div>
+          </>
         )}
       </Modal.Body>
       <Modal.Footer>
