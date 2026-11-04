@@ -104,6 +104,18 @@
 
     <build>
         <plugins>
+            <!-- Depuis le JDK 23, javac n'exécute plus les processeurs d'annotations trouvés sur le
+                 classpath : sans -proc:full, le jar part sans securedaction/ ni routes/ (404 sur
+                 toutes les routes sécurisées). -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-compiler-plugin</artifactId>
+                <configuration>
+                    <compilerArgs>
+                        <arg>-proc:full</arg>
+                    </compilerArgs>
+                </configuration>
+            </plugin>
             <plugin>
                 <artifactId>maven-surefire-plugin</artifactId>
                 <configuration>
