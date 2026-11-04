@@ -5,10 +5,50 @@ import { useTranslation } from 'react-i18next';
 
 import { getCatalogReferential, getClassification, publishToCatalog, setClassification } from '../api';
 import { isPublishable } from '../catalog';
+import { AlignmentPicker } from '../features/AlignmentPicker';
 import { ClassificationPicker } from '../features/ClassificationPicker';
-import { Classification, Subject } from '../types';
+import { CatalogReferential, Classification, Subject } from '../types';
 
-const EMPTY: Classification = { level_ids: [], discipline_ids: [] };
+const EMPTY: Classification = { level_ids: [], discipline_ids: [], alignment_ids: [] };
+
+/** Le texte d'un sujet (titre et description sans balises), d'où partent les suggestions. */
+const subjectText = (subject: Subject) =>
+  `${subject.title ?? ''} ${
+    new DOMParser().parseFromString(subject.description ?? '', 'text/html').body.textContent ?? ''
+  }`.trim();
+
+/** Niveaux et matières, puis les énoncés du programme que le sujet travaille. */
+function ClassificationFields({
+  subject,
+  referential,
+  value,
+  onChange,
+}: {
+  subject: Subject;
+  referential: CatalogReferential;
+  value: Classification;
+  onChange: (value: Classification) => void;
+}) {
+  const { t } = useTranslation(['exercizer', 'common']);
+  return (
+    <>
+      <ClassificationPicker referential={referential} value={value} onChange={onChange} />
+      <fieldset className="mt-24">
+        {/* `float-none` : cf. ClassificationPicker. */}
+        <legend className="h5 mb-4 float-none">{t('exercizer.catalog.align.title')}</legend>
+        <p className="small text-muted mb-12">{t('exercizer.catalog.align.help')}</p>
+        <AlignmentPicker
+          referential={referential}
+          value={value.alignment_ids ?? []}
+          onChange={(alignment_ids) => onChange({ ...value, alignment_ids })}
+          levelIds={value.level_ids}
+          disciplineIds={value.discipline_ids}
+          text={subjectText(subject)}
+        />
+      </fieldset>
+    </>
+  );
+}
 
 /** Le référentiel des niveaux et matières : il ne change qu'avec une migration, on le garde. */
 export const useCatalogReferential = () =>
@@ -32,8 +72,8 @@ function useClassificationDraft(subjectId: number) {
 }
 
 /**
- * « Niveaux et matières » d'un de mes sujets. Le classement suit le sujet quand on le duplique ou
- * qu'on le publie au catalogue.
+ * « Niveaux et matières » d'un de mes sujets, et son rattachement au programme. Le classement suit
+ * le sujet quand on le duplique ou qu'on le publie au catalogue.
  */
 export function ClassificationDialog({
   subject,
@@ -67,7 +107,7 @@ export function ClassificationDialog({
         )}
         <p className="text-muted mb-16">{t('exercizer.catalog.classify.help')}</p>
         {referential.data && query.isSuccess ? (
-          <ClassificationPicker referential={referential.data} value={draft} onChange={setDraft} />
+          <ClassificationFields subject={subject} referential={referential.data} value={draft} onChange={setDraft} />
         ) : referential.isError || query.isError ? (
           <Alert type="danger">{t('exercizer.error')}</Alert>
         ) : (
@@ -146,7 +186,8 @@ export function PublishToCatalogDialog({
           />
         </FormControl>
         {referential.data && query.isSuccess ? (
-          <ClassificationPicker
+          <ClassificationFields
+            subject={subject}
             referential={referential.data}
             value={draft}
             onChange={(next) => {

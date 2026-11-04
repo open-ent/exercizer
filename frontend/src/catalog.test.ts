@@ -2,7 +2,17 @@ import { describe, expect, it } from 'vitest';
 
 import { catalogSearchParams } from './api';
 import {
+  buildLevelTree,
+  contextLevels,
+  programmesInContext,
+  referentialInContext,
+  buildProgrammeTree,
   canManageCatalogSubject,
+  nodeCriteria,
+  parseOrg,
+  resolveOrg,
+  visibleProgrammeNodes,
+  withOutlineLeaves,
   groupLevels,
   isCatalogAudience,
   isPublishable,
@@ -11,7 +21,7 @@ import {
   sortDisciplines,
   toggleId,
 } from './catalog';
-import { CatalogDiscipline, CatalogLevel } from './types';
+import { CatalogDiscipline, CatalogFacet, CatalogLevel, LevelGroup, Programme, ProgrammeNode } from './types';
 
 const level = (id: number, code: string, rank: number | null, group: CatalogLevel['level_group']) => ({
   id,
@@ -106,5 +116,160 @@ describe('isCatalogAudience', () => {
     expect(isCatalogAudience('PERSEDUCNAT')).toBe(true);
     expect(isCatalogAudience('ELEVE')).toBe(false);
     expect(isCatalogAudience('PERSRELELEVE')).toBe(false);
+  });
+});
+
+describe('catalogSearchParams (programme)', () => {
+  it('ajoute le programme et le nœud, et `direct` seulement s’il est demandé', () => {
+    expect(catalogSearchParams({ programme: 'doc', node: 'n1', direct: true })).toBe(
+      'programme=doc&node=n1&direct=true',
+    );
+    expect(catalogSearchParams({ programme: 'doc', node: 'n1' })).toBe('programme=doc&node=n1');
+    // Un nœud sans programme n'a pas de sens : rien n'est envoyé.
+    expect(catalogSearchParams({ node: 'n1' })).toBe('');
+  });
+});
+
+describe('parseOrg / resolveOrg', () => {
+  const programmes = [
+    { id: 'vide', title: 'Vide', version: null, aligned: 0, levels: [] },
+    { id: 'p1d', title: 'Primaire', version: '2026', aligned: 19, levels: ['maternelle', 'elementaire'] as LevelGroup[] },
+  ];
+
+  it('rejette les valeurs inconnues', () => {
+    expect(parseOrg('level')).toBe('level');
+    expect(parseOrg('programme:p1d')).toBe('programme:p1d');
+    expect(parseOrg('programme:')).toBeNull();
+    expect(parseOrg('n’importe quoi')).toBeNull();
+  });
+
+  it('préfère l’URL, puis la préférence, puis le premier programme qui a des exercices', () => {
+    expect(resolveOrg('discipline', 'level', programmes)).toBe('discipline');
+    expect(resolveOrg(null, 'level', programmes)).toBe('level');
+    expect(resolveOrg(null, null, programmes)).toBe('programme:p1d');
+    expect(resolveOrg(null, null, [])).toBe('level');
+  });
+
+  it('ignore un programme qui n’est plus publié', () => {
+    expect(resolveOrg('programme:retire', 'programme:retire', programmes)).toBe('programme:p1d');
+  });
+});
+
+const programmeNode = (id: string, parent: string | null, count = 0, levels = ['CP']): ProgrammeNode => ({
+  id,
+  parent,
+  seq: null,
+  code: id.toUpperCase(),
+  label: `Énoncé ${id}`,
+  type: null,
+  levels,
+  count,
+});
+
+describe('buildProgrammeTree', () => {
+  it('reconstruit l’arbre et remonte à la racine un énoncé dont le parent manque', () => {
+    const tree = buildProgrammeTree([
+      programmeNode('c2', null, 3),
+      programmeNode('mat', 'c2', 3),
+      programmeNode('orphelin', 'absent', 1),
+    ]);
+    expect(tree.map((item) => item.id)).toEqual(['c2', 'orphelin']);
+    expect(tree[0].children.map((item) => [item.id, item.count])).toEqual([['mat', 3]]);
+  });
+});
+
+describe('visibleProgrammeNodes', () => {
+  const nodes = [
+    programmeNode('c1', null, 0, ['PS', 'MS']),
+    programmeNode('c2', null, 0, ['CP', 'CE1']),
+    { ...programmeNode('sous', 'c2', 0, ['CE1']), label: 'Poser une soustraction' },
+  ];
+
+  it('renvoie null sans recherche ni niveau : tout l’arbre', () => {
+    expect(visibleProgrammeNodes(nodes, '', [])).toBeNull();
+  });
+
+  it('garde les correspondances (sans accents) et leurs ancêtres', () => {
+    expect([...(visibleProgrammeNodes(nodes, 'SOUSTRACTION', []) ?? [])].sort()).toEqual(['c2', 'sous']);
+  });
+
+  it('filtre par niveau', () => {
+    expect([...(visibleProgrammeNodes(nodes, '', ['MS']) ?? [])]).toEqual(['c1']);
+  });
+});
+
+describe('rangements par niveau et par matière', () => {
+  const levels = [level(24, 'CP', 10, 'elementaire'), level(25, 'CE1', 11, 'elementaire')];
+  const disciplines: CatalogDiscipline[] = [{ id: 11, code: 'MATHEMATIQUES', label: 'maths' }];
+  const facets: CatalogFacet[] = [
+    { kind: 'group', level_group: 'elementaire', level_id: null, discipline_id: null, count: 2 },
+    { kind: 'level', level_group: null, level_id: 24, discipline_id: null, count: 2 },
+    { kind: 'level_discipline', level_group: null, level_id: 24, discipline_id: 11, count: 2 },
+    { kind: 'discipline', level_group: null, level_id: null, discipline_id: 11, count: 2 },
+  ];
+
+  it('construit groupe › niveau › matière sans les branches vides', () => {
+    const tree = buildLevelTree({ levels, disciplines }, facets, (key) => key);
+    expect(tree.map((item) => item.id)).toEqual(['g:elementaire']);
+    expect(tree[0].children.map((item) => item.id)).toEqual(['l:24']);
+    expect(tree[0].children[0].children.map((item) => [item.id, item.count])).toEqual([['l:24|d:11', 2]]);
+  });
+
+  it('traduit un nœud en critères de recherche', () => {
+    expect(nodeCriteria('g:elementaire', levels)).toEqual({ levels: [24, 25], disciplines: [] });
+    expect(nodeCriteria('d:11|l:25', levels)).toEqual({ levels: [25], disciplines: [11] });
+    expect(nodeCriteria(null, levels)).toEqual({ levels: [], disciplines: [] });
+  });
+});
+
+describe('withOutlineLeaves', () => {
+  const tree = buildProgrammeTree([programmeNode('c2', null, 3), programmeNode('mat', 'c2', 3)]);
+
+  it('pose une feuille d’attente sous une branche feuille non chargée', () => {
+    const [c2] = withOutlineLeaves(tree, new Map(), '…', () => '');
+    expect(c2.children[0].children.map((item) => item.kind)).toEqual(['loading']);
+  });
+
+  it('ajoute les exercices chargés, puis la suite d’une liste tronquée', () => {
+    const loaded = new Map([['mat', { subjects: [{ id: 7, title: 'Soustraction' }], total: 3 }]]);
+    const [c2] = withOutlineLeaves(tree, loaded, '…', (count) => `+${count}`);
+    const leaves = c2.children[0].children;
+    expect(leaves.map((item) => [item.kind, item.name])).toEqual([
+      ['subject', 'Soustraction'],
+      ['more', '+2'],
+    ]);
+    expect(leaves[0].subjectId).toBe(7);
+  });
+});
+
+describe('contexte des niveaux', () => {
+  const programmes: Programme[] = [
+    { id: 'p1d', title: 'Primaire', version: null, aligned: 19, levels: ['maternelle', 'elementaire'] },
+    { id: 'p2d', title: 'Collège', version: null, aligned: 0, levels: ['college'] },
+  ];
+
+  it('préfère les établissements au thème, et « tout afficher » lève le filtre', () => {
+    const context = { schoolLevels: ['college' as LevelGroup], source: 'type' as const };
+    expect(contextLevels(context, ['maternelle'], false)).toEqual(['college']);
+    expect(contextLevels({ schoolLevels: [], source: 'none' }, ['maternelle', 'inconnu'], false)).toEqual([
+      'maternelle',
+    ]);
+    expect(contextLevels(undefined, undefined, false)).toBeNull();
+    expect(contextLevels(context, ['maternelle'], true)).toBeNull();
+  });
+
+  it('ne garde que les programmes du contexte, et celui qu’un lien désigne', () => {
+    expect(programmesInContext(programmes, ['college']).map((p) => p.id)).toEqual(['p2d']);
+    expect(programmesInContext(programmes, ['college'], 'p1d').map((p) => p.id)).toEqual(['p1d', 'p2d']);
+    expect(programmesInContext(programmes, null)).toHaveLength(2);
+  });
+
+  it('réduit le référentiel aux niveaux du contexte', () => {
+    const referential = {
+      levels: [level(24, 'CP', 10, 'elementaire'), level(1, '6E', 20, 'college'), level(99, 'X', null, null)],
+      disciplines: [],
+    };
+    expect(referentialInContext(referential, ['college']).levels.map((l) => l.code)).toEqual(['6E']);
+    expect(referentialInContext(referential, null).levels).toHaveLength(3);
   });
 });

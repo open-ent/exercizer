@@ -24,6 +24,11 @@ public class CatalogServiceSqlImpl extends AbstractExercizerServiceSqlImpl imple
     private static final String S = "exercizer.";
     private static final int MAX_LIMIT = 100;
     private static final String CATALOG_GUARD = "s.is_library_subject = true AND s.is_deleted = false";
+    private static final int SUGGESTIONS = 8;
+    /** Colonnes JSON du classement d'un sujet, à décoder dans la réponse. */
+    private static final String[] JSON_COLUMNS = {"level_ids", "discipline_ids", "alignments"};
+
+    private volatile boolean programmesAvailable = false;
 
     public CatalogServiceSqlImpl() {
         super("exercizer", "subject");
@@ -52,8 +57,164 @@ public class CatalogServiceSqlImpl extends AbstractExercizerServiceSqlImpl imple
 
     @Override
     public void list(final JsonObject criteria, final Handler<Either<String, JsonObject>> handler) {
-        final StringBuilder where = new StringBuilder(" WHERE ").append(CATALOG_GUARD);
+        withProgrammes(programmes -> {
+            final JsonArray values = new JsonArray();
+            final StringBuilder where = new StringBuilder(" WHERE ").append(visibleFilter(criteria, values));
+            final String programme = criteria.getString("programme");
+            final String node = criteria.getString("node");
+            if (programmes && programme != null && node != null) {
+                where.append(ProgrammeSql.nodeFilter(programme, node, criteria.getBoolean("direct", false), values));
+            }
+
+            final int limit = Math.max(1, Math.min(MAX_LIMIT, criteria.getInteger("limit", 24)));
+            final int offset = Math.max(0, criteria.getInteger("offset", 0));
+            values.add(limit).add(offset);
+
+            final String query = "SELECT s.id, s.title, s.description, s.picture, s.max_score, s.type, s.owner, s.owner_username, " +
+                    "s.authors_contributors, s.created, s.modified, " +
+                    "(SELECT count(*) FROM " + S + "grain AS g WHERE g.subject_id = s.id AND g.grain_type_id > 3) AS question_count, " +
+                    classificationColumns(programmes) + ", count(*) OVER () AS total " +
+                    "FROM " + S + "subject AS s" + where +
+                    " ORDER BY (SELECT min(l.rank) FROM " + S + "subject_level AS ol JOIN " + S + "subject_lesson_level AS l " +
+                    "ON l.id = ol.level_id WHERE ol.subject_id = s.id) NULLS LAST, lower(s.title), s.id " +
+                    "LIMIT ? OFFSET ?";
+
+            sql.prepared(query, values, SqlResult.validResultHandler(event -> {
+                if (event.isLeft()) {
+                    handler.handle(new Either.Left<>(event.left().getValue()));
+                    return;
+                }
+                final JsonArray rows = event.right().getValue();
+                final long total = rows.isEmpty() ? 0 : rows.getJsonObject(0).getLong("total", 0L);
+                rows.forEach(row -> ((JsonObject) row).remove("total"));
+                handler.handle(new Either.Right<>(new JsonObject().put("total", total).put("subjects", rows)));
+            }, JSON_COLUMNS));
+        });
+    }
+
+    @Override
+    public void facets(final JsonObject criteria, final Handler<Either<String, JsonObject>> handler) {
         final JsonArray values = new JsonArray();
+        // Un sujet vaut souvent pour plusieurs niveaux et matières : chaque regroupement est compté à
+        // part (sujets DISTINCTS), la somme des comptes d'un niveau compterait deux fois ces sujets.
+        // GROUPING() distingue un regroupement d'un niveau sans groupe (level_group null).
+        final String query = "SELECT CASE GROUPING(l.level_group, sl.level_id, sd.discipline_id) " +
+                "WHEN 3 THEN 'group' WHEN 5 THEN 'level' WHEN 4 THEN 'level_discipline' ELSE 'discipline' END AS kind, " +
+                "l.level_group, sl.level_id, sd.discipline_id, count(DISTINCT s.id) AS count " +
+                "FROM " + S + "subject AS s JOIN " + S + "subject_level AS sl ON sl.subject_id = s.id " +
+                "JOIN " + S + "subject_lesson_level AS l ON l.id = sl.level_id " +
+                "JOIN " + S + "subject_discipline AS sd ON sd.subject_id = s.id " +
+                "WHERE " + visibleFilter(criteria, values) +
+                " GROUP BY GROUPING SETS ((l.level_group), (sl.level_id), (sl.level_id, sd.discipline_id), (sd.discipline_id))";
+        sql.prepared(query, values, SqlResult.validResultHandler(event -> {
+            if (event.isLeft()) {
+                handler.handle(new Either.Left<>(event.left().getValue()));
+            } else {
+                handler.handle(new Either.Right<>(new JsonObject().put("facets", event.right().getValue())));
+            }
+        }));
+    }
+
+    @Override
+    public void programmes(final JsonObject criteria, final Handler<Either<String, JsonObject>> handler) {
+        withProgrammes(programmes -> {
+            if (!programmes) {
+                handler.handle(new Either.Right<>(new JsonObject().put("programmes", new JsonArray())));
+                return;
+            }
+            final JsonArray values = new JsonArray();
+            sql.prepared(ProgrammeSql.programmes(visibleSubjects(criteria, values)), values,
+                    SqlResult.validResultHandler(event -> {
+                        if (event.isLeft()) {
+                            handler.handle(new Either.Left<>(event.left().getValue()));
+                        } else {
+                            handler.handle(new Either.Right<>(new JsonObject().put("programmes", event.right().getValue())));
+                        }
+                    }, "levels"));
+        });
+    }
+
+    @Override
+    public void programmeTree(final String programme, final boolean full, final JsonObject criteria,
+                              final Handler<Either<String, JsonObject>> handler) {
+        withProgrammes(programmes -> {
+            if (!programmes) {
+                handler.handle(new Either.Left<>("not.found"));
+                return;
+            }
+            final JsonArray values = new JsonArray();
+            final String visible = visibleSubjects(criteria, values);
+            final JsonArray unalignedValues = values.copy().add(programme);
+            values.add(programme).add(programme).add(programme);
+            sql.prepared(ProgrammeSql.tree(visible, full), values, SqlResult.validResultHandler(nodes -> {
+                if (nodes.isLeft()) {
+                    handler.handle(new Either.Left<>(nodes.left().getValue()));
+                    return;
+                }
+                if (nodes.right().getValue().isEmpty() && full) {
+                    // Un référentiel publié a toujours des énoncés : il est inconnu ou non publié.
+                    handler.handle(new Either.Left<>("not.found"));
+                    return;
+                }
+                sql.prepared(ProgrammeSql.unalignedCount(visible), unalignedValues, SqlResult.validUniqueResultHandler(unaligned -> {
+                    if (unaligned.isLeft()) {
+                        handler.handle(new Either.Left<>(unaligned.left().getValue()));
+                        return;
+                    }
+                    handler.handle(new Either.Right<>(new JsonObject()
+                            .put("nodes", nodes.right().getValue())
+                            .put("unaligned", unaligned.right().getValue().getLong("count", 0L))));
+                }));
+            }, "levels"));
+        });
+    }
+
+    @Override
+    public void suggestions(final String programme, final JsonArray levelIds, final JsonArray disciplineIds,
+                            final String text, final Handler<Either<String, JsonObject>> handler) {
+        withProgrammes(programmes -> {
+            if (!programmes) {
+                handler.handle(new Either.Right<>(new JsonObject().put("suggestions", new JsonArray())));
+                return;
+            }
+            // Les niveaux et les matières sont des id d'exercizer : on les traduit d'abord en codes.
+            final JsonArray codeValues = new JsonArray();
+            final String codes = "SELECT 'level' AS kind, code FROM " + S + "subject_lesson_level WHERE code IS NOT NULL AND id IN " +
+                    inList(levelIds, codeValues) +
+                    " UNION ALL SELECT 'discipline', code FROM " + S + "subject_lesson_type WHERE code IS NOT NULL AND id IN " +
+                    inList(disciplineIds, codeValues);
+            sql.prepared(codes, codeValues, SqlResult.validResultHandler(found -> {
+                if (found.isLeft()) {
+                    handler.handle(new Either.Left<>(found.left().getValue()));
+                    return;
+                }
+                final java.util.List<String> levels = new java.util.ArrayList<>();
+                final java.util.List<String> disciplines = new java.util.ArrayList<>();
+                found.right().getValue().forEach(row -> {
+                    final JsonObject r = (JsonObject) row;
+                    ("level".equals(r.getString("kind")) ? levels : disciplines).add(r.getString("code"));
+                });
+                final JsonArray values = new JsonArray();
+                final String query = ProgrammeSql.suggestions(programme, levels, ProgrammeSql.teachingsOf(disciplines),
+                        text, SUGGESTIONS, values);
+                sql.prepared(query, values, SqlResult.validResultHandler(event -> {
+                    if (event.isLeft()) {
+                        handler.handle(new Either.Left<>(event.left().getValue()));
+                    } else {
+                        handler.handle(new Either.Right<>(new JsonObject().put("suggestions", event.right().getValue())));
+                    }
+                }));
+            }));
+        });
+    }
+
+    /**
+     * Les sujets du catalogue que l'usager voit, sous les critères {@code q}, {@code levels},
+     * {@code disciplines} et {@code structures} (cf. {@link ICatalogService#list}) : une condition sur
+     * {@code s}. Ajoute ses paramètres à {@code values}.
+     */
+    private static String visibleFilter(final JsonObject criteria, final JsonArray values) {
+        final StringBuilder where = new StringBuilder(CATALOG_GUARD);
         where.append(CatalogSql.packAccessGuard(criteria.getJsonArray("structures", new JsonArray()).getList(), values));
 
         final String q = criteria.getString("q");
@@ -74,30 +235,34 @@ public class CatalogServiceSqlImpl extends AbstractExercizerServiceSqlImpl imple
                     .append("AND fd.discipline_id IN ").append(Sql.listPrepared(disciplines.getList())).append(")");
             disciplines.forEach(values::add);
         }
+        return where.toString();
+    }
 
-        final int limit = Math.max(1, Math.min(MAX_LIMIT, criteria.getInteger("limit", 24)));
-        final int offset = Math.max(0, criteria.getInteger("offset", 0));
-        values.add(limit).add(offset);
+    /** Les id des sujets visibles (cf. {@link #visibleFilter}), en sous-requête. */
+    private static String visibleSubjects(final JsonObject criteria, final JsonArray values) {
+        return "SELECT s.id FROM " + S + "subject AS s WHERE " + visibleFilter(criteria, values);
+    }
 
-        final String query = "SELECT s.id, s.title, s.description, s.picture, s.max_score, s.type, s.owner, s.owner_username, " +
-                "s.authors_contributors, s.created, s.modified, " +
-                "(SELECT count(*) FROM " + S + "grain AS g WHERE g.subject_id = s.id AND g.grain_type_id > 3) AS question_count, " +
-                classificationColumns() + ", count(*) OVER () AS total " +
-                "FROM " + S + "subject AS s" + where +
-                " ORDER BY (SELECT min(l.rank) FROM " + S + "subject_level AS ol JOIN " + S + "subject_lesson_level AS l " +
-                "ON l.id = ol.level_id WHERE ol.subject_id = s.id) NULLS LAST, lower(s.title), s.id " +
-                "LIMIT ? OFFSET ?";
+    /** « (?,?) » pour ces id, ou « (NULL) » — aucun — si la liste est vide. */
+    private static String inList(final JsonArray ids, final JsonArray values) {
+        if (ids.isEmpty()) return "(NULL)";
+        ids.forEach(values::add);
+        return Sql.listPrepared(ids.getList());
+    }
 
-        sql.prepared(query, values, SqlResult.validResultHandler(event -> {
-            if (event.isLeft()) {
-                handler.handle(new Either.Left<>(event.left().getValue()));
-                return;
-            }
-            final JsonArray rows = event.right().getValue();
-            final long total = rows.isEmpty() ? 0 : rows.getJsonObject(0).getLong("total", 0L);
-            rows.forEach(row -> ((JsonObject) row).remove("total"));
-            handler.handle(new Either.Right<>(new JsonObject().put("total", total).put("subjects", rows)));
-        }, "level_ids", "discipline_ids"));
+    /**
+     * Le schéma du module case est-il présent ? Une réponse positive est retenue ; une négative est
+     * revérifiée à chaque appel, le module pouvant être installé plus tard sans redémarrer exercizer.
+     */
+    private void withProgrammes(final Handler<Boolean> next) {
+        if (programmesAvailable) {
+            next.handle(true);
+            return;
+        }
+        sql.raw(ProgrammeSql.AVAILABLE, SqlResult.validUniqueResultHandler(event -> {
+            programmesAvailable = event.isRight() && event.right().getValue().getBoolean("available", false);
+            next.handle(programmesAvailable);
+        }));
     }
 
     @Override
@@ -108,53 +273,62 @@ public class CatalogServiceSqlImpl extends AbstractExercizerServiceSqlImpl imple
     @Override
     public void get(final Long catalogSubjectId, final java.util.List<String> structures,
                     final Handler<Either<String, JsonObject>> handler) {
-        final JsonArray values = new JsonArray().add(catalogSubjectId);
-        final String subjectQuery = "SELECT s.*, " + classificationColumns() + " FROM " + S + "subject AS s " +
-                "WHERE s.id = ? AND " + CATALOG_GUARD
-                + (structures == null ? "" : CatalogSql.packAccessGuard(structures, values));
-        sql.prepared(subjectQuery, values, SqlResult.validUniqueResultHandler(subject -> {
-            if (subject.isLeft()) {
-                handler.handle(new Either.Left<>(subject.left().getValue()));
-                return;
-            }
-            if (subject.right().getValue().isEmpty()) {
-                handler.handle(new Either.Left<>("not.found"));
-                return;
-            }
-            sql.prepared("SELECT * FROM " + S + "grain WHERE subject_id = ? ORDER BY order_by, id",
-                    new JsonArray().add(catalogSubjectId), SqlResult.validResultHandler(grains -> {
-                        if (grains.isLeft()) {
-                            handler.handle(new Either.Left<>(grains.left().getValue()));
-                            return;
-                        }
-                        sql.prepared("SELECT * FROM " + S + "subject_section WHERE subject_id = ? ORDER BY order_by, id",
-                                new JsonArray().add(catalogSubjectId), SqlResult.validResultHandler(sections -> {
-                                    if (sections.isLeft()) {
-                                        handler.handle(new Either.Left<>(sections.left().getValue()));
-                                        return;
-                                    }
-                                    handler.handle(new Either.Right<>(new JsonObject()
-                                            .put("subject", subject.right().getValue())
-                                            .put("grains", grains.right().getValue())
-                                            .put("sections", sections.right().getValue())));
-                                }));
-                    }));
-        }, "level_ids", "discipline_ids"));
+        withProgrammes(programmes -> {
+            final JsonArray values = new JsonArray().add(catalogSubjectId);
+            final String subjectQuery = "SELECT s.*, " + classificationColumns(programmes) + " FROM " + S + "subject AS s " +
+                    "WHERE s.id = ? AND " + CATALOG_GUARD
+                    + (structures == null ? "" : CatalogSql.packAccessGuard(structures, values));
+            sql.prepared(subjectQuery, values, SqlResult.validUniqueResultHandler(subject -> {
+                if (subject.isLeft()) {
+                    handler.handle(new Either.Left<>(subject.left().getValue()));
+                    return;
+                }
+                if (subject.right().getValue().isEmpty()) {
+                    handler.handle(new Either.Left<>("not.found"));
+                    return;
+                }
+                sql.prepared("SELECT * FROM " + S + "grain WHERE subject_id = ? ORDER BY order_by, id",
+                        new JsonArray().add(catalogSubjectId), SqlResult.validResultHandler(grains -> {
+                            if (grains.isLeft()) {
+                                handler.handle(new Either.Left<>(grains.left().getValue()));
+                                return;
+                            }
+                            sql.prepared("SELECT * FROM " + S + "subject_section WHERE subject_id = ? ORDER BY order_by, id",
+                                    new JsonArray().add(catalogSubjectId), SqlResult.validResultHandler(sections -> {
+                                        if (sections.isLeft()) {
+                                            handler.handle(new Either.Left<>(sections.left().getValue()));
+                                            return;
+                                        }
+                                        handler.handle(new Either.Right<>(new JsonObject()
+                                                .put("subject", subject.right().getValue())
+                                                .put("grains", grains.right().getValue())
+                                                .put("sections", sections.right().getValue())));
+                                    }));
+                        }));
+            }, JSON_COLUMNS));
+        });
     }
 
     @Override
     public void classification(final Long subjectId, final Handler<Either<String, JsonObject>> handler) {
-        sql.prepared("SELECT " + classificationColumns() + " FROM " + S + "subject AS s WHERE s.id = ?",
-                new JsonArray().add(subjectId), SqlResult.validUniqueResultHandler(handler, "level_ids", "discipline_ids"));
+        withProgrammes(programmes -> sql.prepared("SELECT " + classificationColumns(programmes) + " FROM " + S +
+                        "subject AS s WHERE s.id = ?",
+                new JsonArray().add(subjectId), SqlResult.validUniqueResultHandler(handler, JSON_COLUMNS)));
     }
 
     @Override
     public void setClassification(final Long subjectId, final JsonArray levelIds, final JsonArray disciplineIds,
-                                  final Handler<Either<String, JsonObject>> handler) {
-        final SqlStatementsBuilder s = new SqlStatementsBuilder();
-        CatalogSql.replaceClassification(s, subjectId, levelIds, disciplineIds);
-        s.prepared("UPDATE " + S + "subject SET modified = NOW() WHERE id = ?", new JsonArray().add(subjectId));
-        sql.transaction(s.build(), SqlResult.validRowsResultHandler(handler));
+                                  final JsonArray alignmentIds, final Handler<Either<String, JsonObject>> handler) {
+        withProgrammes(programmes -> {
+            final SqlStatementsBuilder s = new SqlStatementsBuilder();
+            CatalogSql.replaceClassification(s, subjectId, levelIds, disciplineIds);
+            // Sans le champ (ancienne interface), les rattachements restent tels quels.
+            if (programmes && alignmentIds != null) {
+                ProgrammeSql.replaceAlignments(s, subjectId, alignmentIds);
+            }
+            s.prepared("UPDATE " + S + "subject SET modified = NOW() WHERE id = ?", new JsonArray().add(subjectId));
+            sql.transaction(s.build(), SqlResult.validRowsResultHandler(handler));
+        });
     }
 
     @Override
@@ -187,9 +361,10 @@ public class CatalogServiceSqlImpl extends AbstractExercizerServiceSqlImpl imple
     }
 
     @Override
-    public void publish(final Long subjectId, final JsonArray levelIds, final JsonArray disciplineIds, final String authors,
-                        final UserInfos user, final Handler<Either<String, JsonObject>> handler) {
-        withNewSubjectId(handler, newId -> {
+    public void publish(final Long subjectId, final JsonArray levelIds, final JsonArray disciplineIds,
+                        final JsonArray alignmentIds, final String authors, final UserInfos user,
+                        final Handler<Either<String, JsonObject>> handler) {
+        withProgrammes(programmes -> withNewSubjectId(handler, newId -> {
             final SqlStatementsBuilder s = new SqlStatementsBuilder();
             s.prepared("SELECT " + S + "merge_users(?,?)", new JsonArray().add(user.getUserId()).add(user.getUsername()));
             s.prepared("INSERT INTO " + S + "subject (id, folder_id, owner, owner_username, title, description, picture, " +
@@ -205,6 +380,12 @@ public class CatalogServiceSqlImpl extends AbstractExercizerServiceSqlImpl imple
                     new JsonArray().add(newId).add(subjectId));
             SectionSql.copySectionsAndGrains(s, newId, subjectId);
             CatalogSql.replaceClassification(s, newId, levelIds, disciplineIds);
+            // Les rattachements choisis à la publication, sinon ceux du sujet d'origine.
+            if (programmes && alignmentIds != null) {
+                ProgrammeSql.replaceAlignments(s, newId, alignmentIds);
+            } else {
+                CatalogSql.copyAlignments(s, newId, subjectId);
+            }
             sql.transaction(s.build(), SqlResult.validRowsResultHandler(1, inserted -> {
                 if (inserted.isLeft()) {
                     handler.handle(new Either.Left<>(inserted.left().getValue()));
@@ -214,7 +395,7 @@ public class CatalogServiceSqlImpl extends AbstractExercizerServiceSqlImpl imple
                     handler.handle(new Either.Right<>(new JsonObject().put("id", newId)));
                 }
             }));
-        });
+        }));
     }
 
     @Override
@@ -237,6 +418,7 @@ public class CatalogServiceSqlImpl extends AbstractExercizerServiceSqlImpl imple
                 new JsonArray().add(newId).add(fromId));
         SectionSql.copySectionsAndGrains(s, newId, fromId);
         CatalogSql.copyClassification(s, newId, fromId);
+        CatalogSql.copyAlignments(s, newId, fromId);
     }
 
     private void withNewSubjectId(final Handler<Either<String, JsonObject>> handler, final Handler<Long> next) {
@@ -249,9 +431,13 @@ public class CatalogServiceSqlImpl extends AbstractExercizerServiceSqlImpl imple
         }));
     }
 
-    /** Les id de niveaux (dans l'ordre de la scolarité) et de matières d'un sujet {@code s}, en JSON. */
-    private static String classificationColumns() {
-        return "COALESCE((SELECT json_agg(sl.level_id ORDER BY l.rank NULLS LAST, l.id) FROM " + S + "subject_level AS sl " +
+    /**
+     * Les id de niveaux (dans l'ordre de la scolarité) et de matières d'un sujet {@code s}, et ses
+     * rattachements aux programmes ({@code programmes} : le schéma du module case est présent), en JSON.
+     */
+    private static String classificationColumns(final boolean programmes) {
+        return (programmes ? ProgrammeSql.alignmentsColumn() : "'[]'::json AS alignments") + ", " +
+                "COALESCE((SELECT json_agg(sl.level_id ORDER BY l.rank NULLS LAST, l.id) FROM " + S + "subject_level AS sl " +
                 "JOIN " + S + "subject_lesson_level AS l ON l.id = sl.level_id WHERE sl.subject_id = s.id), '[]'::json) AS level_ids, " +
                 "COALESCE((SELECT json_agg(sd.discipline_id ORDER BY sd.discipline_id) FROM " + S + "subject_discipline AS sd " +
                 "WHERE sd.subject_id = s.id), '[]'::json) AS discipline_ids";

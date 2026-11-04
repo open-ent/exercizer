@@ -44,6 +44,13 @@ final class CatalogSql {
                 new JsonArray().add(newSubjectId).add(fromSubjectId));
     }
 
+    /** Recopie les rattachements d'un sujet aux programmes (cf. {@link ProgrammeSql}) sur un autre. */
+    static void copyAlignments(final SqlStatementsBuilder s, final Number newSubjectId, final Number fromSubjectId) {
+        s.prepared("INSERT INTO " + SCHEMA + "subject_alignment (subject_id, cfitem_id) " +
+                        "SELECT ?, cfitem_id FROM " + SCHEMA + "subject_alignment WHERE subject_id = ? ON CONFLICT DO NOTHING",
+                new JsonArray().add(newSubjectId).add(fromSubjectId));
+    }
+
     /**
      * Remplace le classement d'un sujet. Un id inconnu du référentiel est ignoré (INSERT…SELECT sur le
      * référentiel) plutôt que de faire échouer toute la transaction sur une clé étrangère.

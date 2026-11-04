@@ -11,9 +11,15 @@
 
 import { PilotageState } from './pilotage';
 import {
+  Alignment,
+  AlignmentSuggestion,
+  CatalogFacet,
+  CatalogContext,
+  CatalogOrg,
   CatalogPage,
   CatalogReferential,
   CatalogSubjectDetail,
+  CatalogView,
   Classification,
   Folder,
   Grain,
@@ -22,6 +28,8 @@ import {
   GrainData,
   GrainScheduled,
   GrainType,
+  Programme,
+  ProgrammeTree,
   ScheduledAt,
   ScheduledSection,
   Section,
@@ -831,6 +839,11 @@ export interface CatalogSearch {
   q?: string;
   levels?: number[];
   disciplines?: number[];
+  /** Rangement par programme : le référentiel et l'énoncé (`__none__` : sujets non rattachés). */
+  programme?: string;
+  node?: string;
+  /** Les sujets rattachés à l'énoncé lui-même, sans ses descendants. */
+  direct?: boolean;
   limit?: number;
   offset?: number;
 }
@@ -841,6 +854,11 @@ export function catalogSearchParams(search: CatalogSearch): string {
   if (search.q?.trim()) params.set('q', search.q.trim());
   if (search.levels?.length) params.set('levels', search.levels.join(','));
   if (search.disciplines?.length) params.set('disciplines', search.disciplines.join(','));
+  if (search.programme && search.node) {
+    params.set('programme', search.programme);
+    params.set('node', search.node);
+    if (search.direct) params.set('direct', 'true');
+  }
   if (search.limit !== undefined) params.set('limit', String(search.limit));
   if (search.offset !== undefined) params.set('offset', String(search.offset));
   return params.toString();
@@ -848,6 +866,59 @@ export function catalogSearchParams(search: CatalogSearch): string {
 
 export const searchCatalog = (search: CatalogSearch) =>
   get<CatalogPage>(`/exercizer/catalog/subjects?${catalogSearchParams(search)}`);
+
+/** Les critères de recherche seuls (q, niveaux, matières), pour les comptes de l'arbre. */
+const criteriaParams = ({ q, levels, disciplines }: CatalogSearch) =>
+  catalogSearchParams({ q, levels, disciplines });
+
+/** Nombre de sujets par groupe de niveaux, niveau et matière, sous ces critères. */
+export const getCatalogFacets = (search: CatalogSearch) =>
+  get<{ facets: CatalogFacet[] }>(`/exercizer/catalog/facets?${criteriaParams(search)}`).then(
+    (body) => body?.facets ?? [],
+  );
+
+/** Les niveaux servis par les établissements de l'usager ; un défaut de lecture vaut « inconnus ». */
+export const getCatalogContext = (): Promise<CatalogContext> =>
+  get<CatalogContext>('/exercizer/catalog/context')
+    .then((context) => ({ schoolLevels: context?.schoolLevels ?? [], source: context?.source ?? 'none' }))
+    .catch(() => ({ schoolLevels: [], source: 'none' as const }));
+
+/**
+ * Les niveaux que le thème de l'ENT déclare servir (`schoolLevels` de `/theme`, lus par le portail
+ * dans le manifeste du thème) ; vide pour un thème qui n'en déclare pas.
+ */
+export const getThemeSchoolLevels = (): Promise<string[]> =>
+  get<{ schoolLevels?: string[] }>('/theme')
+    .then((theme) => theme?.schoolLevels ?? [])
+    .catch(() => []);
+
+/** Les programmes officiels publiés ; vide si le module case n'est pas installé. */
+export const getProgrammes = () =>
+  get<{ programmes: Programme[] }>('/exercizer/catalog/programmes').then((body) =>
+    (body?.programmes ?? []).map((programme) => ({ ...programme, levels: programme.levels ?? [] })),
+  );
+
+/** L'arbre d'un programme avec ses comptes ; `full` garde les branches sans exercice. */
+export const getProgrammeTree = (programme: string, search: CatalogSearch, full = false) => {
+  const params = criteriaParams(search);
+  return get<ProgrammeTree>(
+    `/exercizer/catalog/programmes/${encodeURIComponent(programme)}/tree?${params}${full ? `${params ? '&' : ''}full=true` : ''}`,
+  ).then((tree) => ({ nodes: tree?.nodes ?? [], unaligned: tree?.unaligned ?? 0 }));
+};
+
+/** Énoncés d'un programme à proposer pour un sujet de ces niveaux et matières. */
+export const getAlignmentSuggestions = (
+  programme: string,
+  { levels, disciplines, text }: { levels: number[]; disciplines: number[]; text: string },
+) => {
+  const params = new URLSearchParams();
+  if (levels.length) params.set('levels', levels.join(','));
+  if (disciplines.length) params.set('disciplines', disciplines.join(','));
+  if (text.trim()) params.set('text', text.trim().slice(0, 500));
+  return get<{ suggestions: AlignmentSuggestion[] }>(
+    `/exercizer/catalog/programmes/${encodeURIComponent(programme)}/suggestions?${params}`,
+  ).then((body) => body?.suggestions ?? []);
+};
 
 export const getCatalogSubject = async (id: number): Promise<CatalogSubjectDetail> => {
   const detail = await get<CatalogSubjectDetail>(`/exercizer/catalog/subject/${id}`);
@@ -866,10 +937,13 @@ export const reclassifyCatalogSubject = (id: number, classification: Classificat
 
 /** Le classement d'un de MES sujets (le serveur refuse les autres). */
 export const getClassification = (subjectId: number) =>
-  get<Classification>(`/exercizer/subject/${subjectId}/classification`).then((c) => ({
-    level_ids: c?.level_ids ?? [],
-    discipline_ids: c?.discipline_ids ?? [],
-  }));
+  get<Classification & { alignments?: Alignment[] }>(`/exercizer/subject/${subjectId}/classification`).then(
+    (c) => ({
+      level_ids: c?.level_ids ?? [],
+      discipline_ids: c?.discipline_ids ?? [],
+      alignment_ids: (c?.alignments ?? []).map((alignment) => alignment.id),
+    }),
+  );
 
 export const setClassification = (subjectId: number, classification: Classification) =>
   sendVoid('PUT', `/exercizer/subject/${subjectId}/classification`, classification);
@@ -1028,6 +1102,8 @@ export interface UiPreference {
   returnShown?: number;
   feedback?: string;
   feedbackAt?: string;
+  /** Rangement et vue du catalogue choisis en dernier ; `allLevels` : niveaux hors contexte affichés. */
+  catalog?: { org?: CatalogOrg; view?: CatalogView; allLevels?: boolean };
 }
 
 const UI_PREFERENCE_URL = '/userbook/preference/exercizerUi';

@@ -17,6 +17,10 @@ Le même jeu forme le pack « Catalogue d'exercices Open ENT » (OEIP 1.1), offe
     python3 <entcore>/interoperability/tools/oeip_pack.py <dossier source> catalogue.oeip
 Installé sur une plateforme où la migration 042 est passée, le pack REPREND ses sujets (même titre,
 même compte technique) au lieu de les dupliquer.
+
+Les rattachements aux programmes (ALIGNMENTS) des sujets de la 042, pour les plateformes où le pack
+n'est pas installé — source de la migration 045 :
+    python3 deployment/catalog-seed/catalog_seed.py --alignments > src/main/resources/sql/045-catalog-alignments.sql
 """
 import json
 import os
@@ -512,6 +516,34 @@ def write_pack(subjects, target):
           file=sys.stderr)
 
 
+def render_alignments(subjects):
+    """Rattache les sujets de la 042 aux énoncés du programme (idempotent : le pack a pu le faire)."""
+    referential = json.load(open(REFERENTIAL, encoding="utf-8"))
+    by_code = {i["humanCodingScheme"]: i["identifier"] for i in referential["CFItems"] if i.get("humanCodingScheme")}
+    out = [
+        "-- Rattachement des sujets du catalogue (042) aux programmes de l'école primaire (référentiel CASE",
+        "-- du module case), pour que le catalogue se range par programme sans installer le pack.",
+        "-- Fichier GÉNÉRÉ par deployment/catalog-seed/catalog_seed.py --alignments — ne pas modifier à la main.",
+        "-- Idempotent : le pack « Catalogue d'exercices » pose les mêmes rattachements.",
+        "",
+    ]
+    titles = {s["title"] for s in subjects}
+    for title, codes in ALIGNMENTS.items():
+        if title not in titles:
+            sys.exit(f"« {title} » : sujet absent du catalogue")
+        missing = [c for c in codes if c not in by_code]
+        if missing:
+            sys.exit(f"« {title} » : codes absents du référentiel {missing}")
+        items = ", ".join(f"({lit(by_code[c])})" for c in codes)
+        out.append(f"""-- {title} : {', '.join(codes)}
+INSERT INTO exercizer.subject_alignment (subject_id, cfitem_id)
+SELECT s.id, v.cfitem_id FROM exercizer.subject AS s, (VALUES {items}) AS v(cfitem_id)
+WHERE s.owner = {lit(OWNER_ID)} AND s.is_library_subject = true AND s.title = {lit(title)}
+ON CONFLICT DO NOTHING;
+""")
+    return "\n".join(out)
+
+
 def render(subjects):
     out = [
         "-- Jeu d'exercices du catalogue Open ENT : exercices ORIGINAUX, classés par niveau et matière.",
@@ -566,5 +598,7 @@ if __name__ == "__main__":
         sys.exit("Deux sujets portent le même titre.")
     if len(sys.argv) == 3 and sys.argv[1] == "--pack":
         write_pack(SUBJECTS, sys.argv[2])
+    elif len(sys.argv) == 2 and sys.argv[1] == "--alignments":
+        sys.stdout.write(render_alignments(SUBJECTS))
     else:
         sys.stdout.write(render(SUBJECTS))

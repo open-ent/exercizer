@@ -1,4 +1,16 @@
-import { CatalogDiscipline, CatalogLevel, Classification, LevelGroup } from './types';
+import {
+  CatalogContext,
+  CatalogDiscipline,
+  CatalogFacet,
+  CatalogLevel,
+  CatalogOrg,
+  CatalogReferential,
+  CatalogView,
+  Classification,
+  LevelGroup,
+  Programme,
+  ProgrammeNode,
+} from './types';
 
 /**
  * Règles du catalogue d'exercices et du classement par niveau et matière, hors de tout écran.
@@ -84,3 +96,332 @@ export const isCatalogAudience = (userType: string | undefined) =>
 /** Le nombre de pages d'un résultat. */
 export const pageCount = (total: number, pageSize: number) =>
   Math.max(1, Math.ceil(total / pageSize));
+
+// ── Rangement du catalogue en arbre ───────────────────────────────────────────
+
+/** L'énoncé fictif qui regroupe les sujets rattachés à aucun énoncé du programme. */
+export const UNALIGNED_NODE = '__none__';
+
+const PROGRAMME_PREFIX = 'programme:';
+
+/** Le référentiel CASE d'un rangement par programme, ou null. */
+export const programmeOf = (org: CatalogOrg | null | undefined): string | null =>
+  org?.startsWith(PROGRAMME_PREFIX) ? org.slice(PROGRAMME_PREFIX.length) : null;
+
+export const programmeOrg = (programme: string): CatalogOrg => `${PROGRAMME_PREFIX}${programme}`;
+
+/** Un rangement lu dans l'URL ou une préférence ; null s'il est illisible. */
+export function parseOrg(value: string | null | undefined): CatalogOrg | null {
+  if (value === 'level' || value === 'discipline') return value;
+  if (value?.startsWith(PROGRAMME_PREFIX) && value.length > PROGRAMME_PREFIX.length) {
+    return value as CatalogOrg;
+  }
+  return null;
+}
+
+export const parseView = (value: string | null | undefined): CatalogView | null =>
+  value === 'tree' || value === 'outline' ? value : null;
+
+/**
+ * Le rangement à afficher : celui de l'URL, sinon celui de la préférence s'il existe encore, sinon
+ * le premier programme qui a des exercices rattachés, sinon par niveau.
+ */
+export function resolveOrg(
+  fromUrl: CatalogOrg | null,
+  fromPreference: CatalogOrg | null,
+  programmes: Programme[],
+): CatalogOrg {
+  const exists = (org: CatalogOrg | null) => {
+    const programme = programmeOf(org);
+    return !!org && (!programme || programmes.some((p) => p.id === programme));
+  };
+  if (fromUrl && exists(fromUrl)) return fromUrl;
+  if (fromPreference && exists(fromPreference)) return fromPreference;
+  const aligned = programmes.find((p) => p.aligned > 0);
+  return aligned ? programmeOrg(aligned.id) : 'level';
+}
+
+/**
+ * Un nœud d'arbre du catalogue, au format du `Tree` du socle. `kind` distingue les branches, les
+ * exercices (vue sommaire), la suite d'une liste tronquée et l'attente d'un chargement.
+ */
+export interface CatalogTreeItem {
+  id: string;
+  name: string;
+  kind: 'node' | 'subject' | 'more' | 'loading';
+  code?: string | null;
+  count: number;
+  children: CatalogTreeItem[];
+  /** L'exercice d'une feuille `subject`. */
+  subjectId?: number;
+  /** Le nœud qui porte une feuille `subject`, `more` ou `loading`. */
+  owner?: string;
+}
+
+/** L'arbre d'un programme, à partir de sa liste plate (dans l'ordre des énoncés frères). */
+export function buildProgrammeTree(nodes: ProgrammeNode[]): CatalogTreeItem[] {
+  const known = new Set(nodes.map((node) => node.id));
+  const byParent = new Map<string | null, ProgrammeNode[]>();
+  for (const node of nodes) {
+    // Un parent absent de la liste (branche filtrée) rattache l'énoncé à la racine.
+    const parent = node.parent && known.has(node.parent) ? node.parent : null;
+    byParent.set(parent, [...(byParent.get(parent) ?? []), node]);
+  }
+  const build = (parent: string | null): CatalogTreeItem[] =>
+    (byParent.get(parent) ?? []).map((node) => ({
+      id: node.id,
+      name: node.label,
+      kind: 'node',
+      code: node.code,
+      count: node.count,
+      children: build(node.id),
+    }));
+  return build(null);
+}
+
+// Identifiants des nœuds des rangements par niveau et par matière : « g:<groupe> », « l:<id> »,
+// « d:<id> », et un couple « l:<id>|d:<id> » ou « d:<id>|l:<id> ».
+
+/** Les niveaux et les matières qu'un nœud des rangements par niveau ou par matière désigne. */
+export function nodeCriteria(
+  node: string | null,
+  levels: CatalogLevel[],
+): { levels: number[]; disciplines: number[] } {
+  const criteria = { levels: [] as number[], disciplines: [] as number[] };
+  for (const part of node?.split('|') ?? []) {
+    const [kind, value] = [part.slice(0, 2), part.slice(2)];
+    if (kind === 'g:') {
+      const group = groupLevels(levels).find((entry) => entry.group === value);
+      criteria.levels.push(...(group?.levels.map((level) => level.id) ?? []));
+    } else if (kind === 'l:' && Number(value)) {
+      criteria.levels.push(Number(value));
+    } else if (kind === 'd:' && Number(value)) {
+      criteria.disciplines.push(Number(value));
+    }
+  }
+  return criteria;
+}
+
+const facetCount = (facets: CatalogFacet[], match: (facet: CatalogFacet) => boolean) =>
+  facets.find(match)?.count ?? 0;
+
+/** Groupe de niveaux › niveau › matière, sans les branches vides. */
+export function buildLevelTree(
+  referential: CatalogReferential,
+  facets: CatalogFacet[],
+  translate: (key: string) => string,
+): CatalogTreeItem[] {
+  const disciplines = sortDisciplines(referential.disciplines, translate);
+  return groupLevels(referential.levels)
+    .map(({ group, levels }) => ({
+      id: `g:${group}`,
+      name: translate(`exercizer.catalog.group.${group}`),
+      kind: 'node' as const,
+      count: facetCount(
+        facets,
+        (f) => f.kind === 'group' && (f.level_group ?? 'other') === group,
+      ),
+      children: levels
+        .map((level) => ({
+          id: `l:${level.id}`,
+          name: translate(level.label),
+          kind: 'node' as const,
+          count: facetCount(facets, (f) => f.kind === 'level' && f.level_id === level.id),
+          children: disciplines
+            .map((discipline) => ({
+              id: `l:${level.id}|d:${discipline.id}`,
+              name: translate(discipline.label),
+              kind: 'node' as const,
+              count: facetCount(
+                facets,
+                (f) =>
+                  f.kind === 'level_discipline' &&
+                  f.level_id === level.id &&
+                  f.discipline_id === discipline.id,
+              ),
+              children: [],
+            }))
+            .filter((item) => item.count > 0),
+        }))
+        .filter((item) => item.count > 0),
+    }))
+    .filter((item) => item.count > 0);
+}
+
+/** Matière › niveau, sans les branches vides. */
+export function buildDisciplineTree(
+  referential: CatalogReferential,
+  facets: CatalogFacet[],
+  translate: (key: string) => string,
+): CatalogTreeItem[] {
+  const levels = groupLevels(referential.levels).flatMap((entry) => entry.levels);
+  return sortDisciplines(referential.disciplines, translate)
+    .map((discipline) => ({
+      id: `d:${discipline.id}`,
+      name: translate(discipline.label),
+      kind: 'node' as const,
+      count: facetCount(facets, (f) => f.kind === 'discipline' && f.discipline_id === discipline.id),
+      children: levels
+        .map((level) => ({
+          id: `d:${discipline.id}|l:${level.id}`,
+          name: translate(level.label),
+          kind: 'node' as const,
+          count: facetCount(
+            facets,
+            (f) =>
+              f.kind === 'level_discipline' &&
+              f.level_id === level.id &&
+              f.discipline_id === discipline.id,
+          ),
+          children: [],
+        }))
+        .filter((item) => item.count > 0),
+    }))
+    .filter((item) => item.count > 0);
+}
+
+/** Les exercices chargés sous un nœud de la vue sommaire. */
+export interface OutlineEntry {
+  subjects: { id: number; title: string }[];
+  total: number;
+}
+
+/**
+ * La vue sommaire : l'arbre, avec sous chaque nœud déjà déplié ses exercices en feuilles (puis
+ * « … et N autres » si la liste est tronquée). Un nœud qui porte des exercices mais n'a pas encore
+ * été chargé reçoit une feuille d'attente, pour que le socle lui affiche un chevron.
+ */
+export function withOutlineLeaves(
+  items: CatalogTreeItem[],
+  loaded: ReadonlyMap<string, OutlineEntry>,
+  loadingLabel: string,
+  moreLabel: (count: number) => string,
+): CatalogTreeItem[] {
+  return items.map((item) => {
+    const children = withOutlineLeaves(item.children, loaded, loadingLabel, moreLabel);
+    const entry = loaded.get(item.id);
+    if (!entry) {
+      // Une branche feuille qui porte des exercices : à charger quand on la déplie.
+      return item.children.length === 0 && item.count > 0
+        ? {
+            ...item,
+            children: [{ id: `loading:${item.id}`, name: loadingLabel, kind: 'loading', count: 0, children: [], owner: item.id }],
+          }
+        : { ...item, children };
+    }
+    const leaves: CatalogTreeItem[] = entry.subjects.map((subject) => ({
+      id: `s:${item.id}:${subject.id}`,
+      name: subject.title,
+      kind: 'subject',
+      count: 0,
+      children: [],
+      subjectId: subject.id,
+      owner: item.id,
+    }));
+    if (entry.total > entry.subjects.length) {
+      leaves.push({
+        id: `more:${item.id}`,
+        name: moreLabel(entry.total - entry.subjects.length),
+        kind: 'more',
+        count: 0,
+        children: [],
+        owner: item.id,
+      });
+    }
+    return { ...item, children: [...children, ...leaves] };
+  });
+}
+
+/** Le nœud d'id donné, n'importe où dans l'arbre. */
+export function findTreeItem(items: CatalogTreeItem[], id: string): CatalogTreeItem | undefined {
+  for (const item of items) {
+    if (item.id === id) return item;
+    const found = findTreeItem(item.children, id);
+    if (found) return found;
+  }
+  return undefined;
+}
+
+// ── Choix des énoncés d'un programme (rattachement d'un sujet) ────────────────
+
+/** Minuscules sans accents, pour comparer un texte saisi à un énoncé. */
+export const foldText = (text: string) =>
+  text
+    .normalize('NFD')
+    .replace(/[̀-ͯ]/g, '')
+    .toLowerCase();
+
+/**
+ * Les énoncés à montrer dans le sélecteur : ceux qui répondent à la recherche (code ou texte) et
+ * aux niveaux du sujet, avec leurs ancêtres pour garder l'arbre lisible. Sans recherche ni niveau,
+ * null : tout l'arbre.
+ */
+export function visibleProgrammeNodes(
+  nodes: ProgrammeNode[],
+  search: string,
+  levelCodes: string[],
+): Set<string> | null {
+  const term = foldText(search.trim());
+  if (!term && levelCodes.length === 0) return null;
+  const byId = new Map(nodes.map((node) => [node.id, node]));
+  const visible = new Set<string>();
+  for (const node of nodes) {
+    const levelOk = levelCodes.length === 0 || node.levels.some((code) => levelCodes.includes(code));
+    const textOk =
+      !term || foldText(node.label).includes(term) || foldText(node.code ?? '').includes(term);
+    if (!levelOk || !textOk) continue;
+    for (let current: ProgrammeNode | undefined = node; current && !visible.has(current.id); ) {
+      visible.add(current.id);
+      current = current.parent ? byId.get(current.parent) : undefined;
+    }
+  }
+  return visible;
+}
+
+// ── Contexte : les niveaux que sert l'établissement ou l'ENT ──────────────────
+
+/**
+ * Les groupes de niveaux à montrer : ceux des établissements de l'usager, sinon ceux que le thème
+ * de l'ENT déclare servir ; null — tout montrer — si rien n'est connu ou si l'usager a demandé
+ * « Afficher tous les niveaux ».
+ */
+export function contextLevels(
+  context: CatalogContext | undefined,
+  themeLevels: readonly string[] | undefined,
+  showAll: boolean,
+): LevelGroup[] | null {
+  if (showAll) return null;
+  const known = (levels: readonly string[] | undefined) =>
+    (levels ?? []).filter((level): level is LevelGroup => LEVEL_GROUPS.includes(level as LevelGroup));
+  const fromStructures = known(context?.schoolLevels);
+  if (fromStructures.length) return fromStructures;
+  const fromTheme = known(themeLevels);
+  return fromTheme.length ? fromTheme : null;
+}
+
+/**
+ * Les programmes qui couvrent l'un de ces niveaux (tous sans contexte). `keep` reste proposé même
+ * hors contexte : un lien partagé vers un autre programme doit s'ouvrir.
+ */
+export function programmesInContext(
+  programmes: Programme[],
+  levels: LevelGroup[] | null,
+  keep?: string | null,
+): Programme[] {
+  if (!levels) return programmes;
+  return programmes.filter(
+    (programme) => programme.id === keep || programme.levels.some((level) => levels.includes(level)),
+  );
+}
+
+/** Le référentiel réduit aux niveaux de ces groupes (inchangé sans contexte). */
+export function referentialInContext(
+  referential: CatalogReferential,
+  levels: LevelGroup[] | null,
+): CatalogReferential {
+  if (!levels) return referential;
+  return {
+    ...referential,
+    levels: referential.levels.filter((level) => !!level.level_group && levels.includes(level.level_group)),
+  };
+}

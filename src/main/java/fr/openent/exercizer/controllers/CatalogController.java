@@ -4,6 +4,7 @@ import static org.entcore.common.http.response.DefaultResponseHandler.defaultRes
 
 import fr.openent.exercizer.services.ICatalogService;
 import fr.openent.exercizer.services.impl.CatalogServiceSqlImpl;
+import fr.openent.exercizer.utils.SchoolLevels;
 import fr.wseduc.rs.ApiDoc;
 import fr.wseduc.rs.Delete;
 import fr.wseduc.rs.Get;
@@ -21,12 +22,14 @@ import io.vertx.core.json.JsonObject;
 import org.entcore.common.controller.ControllerHelper;
 import org.entcore.common.http.filter.ResourceFilter;
 import org.entcore.common.http.filter.sql.OwnerOnly;
+import org.entcore.common.neo4j.Neo4j;
+import org.entcore.common.neo4j.Neo4jResult;
 import org.entcore.common.user.UserInfos;
 import org.entcore.common.user.UserUtils;
 
 /**
- * Catalogue d'exercices partagé entre établissements, et classement des sujets par niveau et matière
- * (cf. sql/041-subject-catalog.sql).
+ * Catalogue d'exercices partagé entre établissements, classement des sujets par niveau et matière
+ * (cf. sql/041-subject-catalog.sql) et rattachement aux programmes officiels (référentiels CASE).
  *
  * Droits : on s'appuie sur les droits « workflow » DÉJÀ attribués, pour que le catalogue fonctionne
  * sans reprendre la gestion des accès de chaque établissement :
@@ -61,21 +64,75 @@ public class CatalogController extends ControllerHelper {
 	}
 
 	@Get("/catalog/subjects")
-	@ApiDoc("Searches the catalog: q, levels and disciplines (comma-separated ids), limit, offset.")
+	@ApiDoc("Searches the catalog: q, levels and disciplines (comma-separated ids), programme and node "
+			+ "(CASE framework and item, descendants included unless direct=true; __none__ = not aligned), limit, offset.")
 	@SecuredAction(value = "", type = ActionType.AUTHENTICATED)
 	public void list(final HttpServerRequest request) {
 		withAction(request, CREATE_ACTION, user -> {
-			final JsonObject criteria = new JsonObject()
-					.put("q", request.params().get("q"))
-					.put("levels", idList(request.params().get("levels")))
-					.put("disciplines", idList(request.params().get("disciplines")))
-					.put("structures", new JsonArray(user.getStructures()));
+			final JsonObject criteria = criteria(request, user)
+					.put("programme", request.params().get("programme"))
+					.put("node", request.params().get("node"))
+					.put("direct", "true".equals(request.params().get("direct")));
 			final Integer limit = intParam(request.params().get("limit"));
 			final Integer offset = intParam(request.params().get("offset"));
 			if (limit != null) criteria.put("limit", limit);
 			if (offset != null) criteria.put("offset", offset);
 			catalogService.list(criteria, defaultResponseHandler(request));
 		});
+	}
+
+	@Get("/catalog/context")
+	@ApiDoc("Gets the school levels served by the user's structures: {schoolLevels, source}.")
+	@SecuredAction(value = "", type = ActionType.AUTHENTICATED)
+	public void context(final HttpServerRequest request) {
+		withAction(request, CREATE_ACTION, user -> {
+			// Les niveaux choisis par l'administrateur de chaque établissement (identité de
+			// l'établissement), sinon ceux de sa nature AAF : un établissement privé peut servir
+			// primaire, collège et lycée.
+			final String query = "MATCH (s:Structure) WHERE s.id IN $ids " +
+					"RETURN s.schoolLevels as schoolLevels, s.type as type";
+			Neo4j.getInstance().execute(query, new JsonObject().put("ids", new JsonArray(user.getStructures())),
+					Neo4jResult.validResultHandler(event -> {
+						if (event.isRight()) {
+							renderJson(request, SchoolLevels.resolve(event.right().getValue()));
+						} else {
+							renderError(request, new JsonObject().put("error", event.left().getValue()));
+						}
+					}));
+		});
+	}
+
+	@Get("/catalog/facets")
+	@ApiDoc("Counts catalog subjects per (level, discipline) pair, under the search criteria (q, levels, disciplines).")
+	@SecuredAction(value = "", type = ActionType.AUTHENTICATED)
+	public void facets(final HttpServerRequest request) {
+		withAction(request, CREATE_ACTION, user ->
+				catalogService.facets(criteria(request, user), defaultResponseHandler(request)));
+	}
+
+	@Get("/catalog/programmes")
+	@ApiDoc("Lists the published curricula (CASE frameworks of the case module) with their aligned subject count.")
+	@SecuredAction(value = "", type = ActionType.AUTHENTICATED)
+	public void programmes(final HttpServerRequest request) {
+		withAction(request, CREATE_ACTION, user ->
+				catalogService.programmes(criteria(request, user), defaultResponseHandler(request)));
+	}
+
+	@Get("/catalog/programmes/:id/tree")
+	@ApiDoc("Gets a curriculum tree with subject counts under the search criteria; full=true keeps empty branches.")
+	@SecuredAction(value = "", type = ActionType.AUTHENTICATED)
+	public void programmeTree(final HttpServerRequest request) {
+		withAction(request, CREATE_ACTION, user -> catalogService.programmeTree(request.params().get("id"),
+				"true".equals(request.params().get("full")), criteria(request, user), notFoundOr(request)));
+	}
+
+	@Get("/catalog/programmes/:id/suggestions")
+	@ApiDoc("Suggests curriculum items for a subject: levels and disciplines (comma-separated ids), text.")
+	@SecuredAction(value = "", type = ActionType.AUTHENTICATED)
+	public void suggestions(final HttpServerRequest request) {
+		withAction(request, CREATE_ACTION, user -> catalogService.suggestions(request.params().get("id"),
+				idList(request.params().get("levels")), idList(request.params().get("disciplines")),
+				request.params().get("text"), defaultResponseHandler(request)));
 	}
 
 	@Get("/catalog/subject/:id")
@@ -108,7 +165,7 @@ public class CatalogController extends ControllerHelper {
 		if (id == null) return;
 		withCatalogAuthorOrModerator(request, id, () -> RequestUtils.bodyToJson(request, body ->
 				catalogService.setClassification(id, ids(body, "level_ids"), ids(body, "discipline_ids"),
-						defaultResponseHandler(request))));
+						alignmentIds(body), defaultResponseHandler(request))));
 	}
 
 	@Delete("/catalog/subject/:id")
@@ -144,7 +201,7 @@ public class CatalogController extends ControllerHelper {
 		final Long id = idParam(request, "id");
 		if (id == null) return;
 		RequestUtils.bodyToJson(request, body -> catalogService.setClassification(id, ids(body, "level_ids"),
-				ids(body, "discipline_ids"), defaultResponseHandler(request)));
+				ids(body, "discipline_ids"), alignmentIds(body), defaultResponseHandler(request)));
 	}
 
 	@Post("/subject/:id/catalog")
@@ -161,7 +218,8 @@ public class CatalogController extends ControllerHelper {
 				badRequest(request, "exercizer.catalog.publish.classification.required");
 				return;
 			}
-			catalogService.publish(id, levelIds, disciplineIds, body.getString("authors"), user, notFoundOr(request));
+			catalogService.publish(id, levelIds, disciplineIds, alignmentIds(body), body.getString("authors"), user,
+					notFoundOr(request));
 		}));
 	}
 
@@ -219,6 +277,30 @@ public class CatalogController extends ControllerHelper {
 	}
 
 	// ── Paramètres ──────────────────────────────────────────────────────────────
+
+	/** Les critères de recherche communs : q, levels, disciplines, et les établissements de l'usager. */
+	private static JsonObject criteria(final HttpServerRequest request, final UserInfos user) {
+		return new JsonObject()
+				.put("q", request.params().get("q"))
+				.put("levels", idList(request.params().get("levels")))
+				.put("disciplines", idList(request.params().get("disciplines")))
+				.put("structures", new JsonArray(user.getStructures()));
+	}
+
+	/**
+	 * Les énoncés CASE du corps ({@code alignment_ids}, chaînes sans doublon), ou null si le champ est
+	 * absent : l'ancienne interface ne l'envoie pas et ne doit pas effacer les rattachements.
+	 */
+	private static JsonArray alignmentIds(final JsonObject body) {
+		if (!body.containsKey("alignment_ids")) return null;
+		final JsonArray ids = new JsonArray();
+		for (Object value : body.getJsonArray("alignment_ids", new JsonArray())) {
+			if (value instanceof String && !ids.contains(value)) {
+				ids.add(value);
+			}
+		}
+		return ids;
+	}
 
 	/** L'id numérique d'un paramètre de route ; répond 400 et renvoie null s'il est illisible. */
 	private Long idParam(final HttpServerRequest request, final String name) {

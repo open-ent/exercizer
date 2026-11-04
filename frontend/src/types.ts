@@ -302,14 +302,93 @@ export interface CatalogReferential {
   disciplines: CatalogDiscipline[];
 }
 
-/** Le classement d'un sujet : des id de niveaux et de matières. */
+/**
+ * Le classement d'un sujet : des id de niveaux et de matières, et les énoncés du programme qu'il
+ * travaille (`alignment_ids`, CFItem CASE). Sans `alignment_ids`, le serveur garde les rattachements.
+ */
 export interface Classification {
   level_ids: number[];
   discipline_ids: number[];
+  alignment_ids?: string[];
 }
+
+/** Un rattachement d'un sujet à un énoncé d'un programme (référentiel CASE publié). */
+export interface Alignment {
+  id: string;
+  code: string | null;
+  label: string;
+  /** Le référentiel de l'énoncé. */
+  programme: string;
+}
+
+/** Un programme officiel publié par le module case, et le nombre de sujets qui y sont rattachés. */
+export interface Programme {
+  id: string;
+  title: string;
+  version: string | null;
+  aligned: number;
+  /** Les groupes de niveaux que le programme couvre (maternelle, elementaire…). */
+  levels: LevelGroup[];
+}
+
+/**
+ * Les niveaux servis par les établissements de l'usager : choisis par leur administrateur
+ * (`structures`), déduits de leur nature AAF (`type`), ou inconnus (`none`).
+ */
+export interface CatalogContext {
+  schoolLevels: LevelGroup[];
+  source: 'structures' | 'type' | 'none';
+}
+
+/** Un énoncé de l'arbre d'un programme, à plat : `parent` est null au premier niveau. */
+export interface ProgrammeNode {
+  id: string;
+  parent: string | null;
+  seq: number | null;
+  code: string | null;
+  label: string;
+  type: string | null;
+  /** Codes des niveaux de l'énoncé (PS, CP, CM2…), les mêmes que ceux du référentiel d'exercizer. */
+  levels: string[];
+  /** Sujets rattachés à l'énoncé ou à l'un de ses descendants. */
+  count: number;
+}
+
+export interface ProgrammeTree {
+  nodes: ProgrammeNode[];
+  /** Sujets rattachés à aucun énoncé de ce programme. */
+  unaligned: number;
+}
+
+/** Une suggestion de rattachement pour un sujet. */
+export interface AlignmentSuggestion {
+  id: string;
+  code: string | null;
+  label: string;
+  type: string | null;
+}
+
+/**
+ * Nombre de sujets DISTINCTS d'un regroupement (`kind`) : seules ses colonnes sont renseignées,
+ * les autres sont null.
+ */
+export interface CatalogFacet {
+  kind: 'group' | 'level' | 'level_discipline' | 'discipline';
+  level_group: LevelGroup | null;
+  level_id: number | null;
+  discipline_id: number | null;
+  count: number;
+}
+
+/** Le rangement du catalogue : par niveau, par matière, ou selon un programme (`programme:<id>`). */
+export type CatalogOrg = 'level' | 'discipline' | `programme:${string}`;
+
+/** Arbre à côté des résultats, ou sommaire dont les exercices sont les feuilles. */
+export type CatalogView = 'tree' | 'outline';
 
 /** Un sujet du catalogue, tel que la recherche le renvoie. */
 export interface CatalogSubject extends Classification {
+  alignments?: Alignment[];
   id: number;
   title: string;
   description?: string | null;
