@@ -1,4 +1,4 @@
-import { Alert, Button, FormControl, Input, Label, LoadingScreen, Modal } from '@open-ent/react';
+import { Alert, Button, FormControl, Input, Label, LoadingScreen, Modal, useHasWorkflow } from '@open-ent/react';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { useEffect, useId, useState } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -7,6 +7,7 @@ import { getCatalogReferential, getClassification, publishToCatalog, setClassifi
 import { isPublishable } from '../catalog';
 import { AlignmentPicker } from '../features/AlignmentPicker';
 import { ClassificationPicker } from '../features/ClassificationPicker';
+import { WORKFLOW } from '../rights';
 import { CatalogReferential, Classification, Subject } from '../types';
 
 export const EMPTY_CLASSIFICATION: Classification = { level_ids: [], discipline_ids: [], alignment_ids: [] };
@@ -154,6 +155,7 @@ export function PublishToCatalogDialog({
   const { query, draft, setDraft } = useClassificationDraft(subject.id);
   const [authors, setAuthors] = useState(subject.owner_username ?? '');
   const [error, setError] = useState<string | null>(null);
+  const isModerator = useHasWorkflow(WORKFLOW.catalogManage) as boolean | undefined;
 
   const publish = useMutation({
     mutationFn: async () => {
@@ -175,6 +177,8 @@ export function PublishToCatalogDialog({
         )}
         <Alert type="info" className="mb-16">
           {t('exercizer.catalog.publish.help')}
+          {/* Le rattachement d'un enseignant ne range l'exercice qu'une fois validé (cf. CatalogQuality). */}
+          {isModerator === false && <> {t('exercizer.catalog.align.proposed')}</>}
         </Alert>
         <FormControl id={`${id}-authors`} className="mb-16">
           <Label>{t('exercizer.catalog.publish.authors')}</Label>

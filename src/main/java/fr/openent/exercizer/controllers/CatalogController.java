@@ -39,13 +39,19 @@ import org.entcore.common.user.UserUtils;
  *    à leurs groupes d'élèves : le droit seul ne suffit pas ;
  *  - publier = le droit de publication en bibliothèque ({@code SubjectController|publish}) ;
  *  - retirer ou reclasser un sujet du catalogue = en être l'auteur, ou détenir le seul droit neuf,
- *    {@code exercizer.catalog.manage} (modération, à attribuer dans la console d'administration).
+ *    {@code exercizer.catalog.manage} (modération, à attribuer dans la console d'administration) ;
+ *  - le rattachement au programme d'un enseignant sans ce droit n'est qu'une proposition : il range
+ *    l'exercice une fois validé dans la file de modération ;
+ *  - donner un avis = avoir copié le sujet, sans en être l'auteur.
  */
 public class CatalogController extends ControllerHelper {
 
 	private static final String CREATE_ACTION = "fr.openent.exercizer.controllers.SubjectController|persist";
 	private static final String PUBLISH_ACTION = "fr.openent.exercizer.controllers.SubjectController|publish";
 	private static final String MANAGE_ACTION = "fr.openent.exercizer.controllers.CatalogController|manage";
+
+	/** Longueur maximale du commentaire d'un avis. */
+	private static final int REVIEW_MAX_LENGTH = 2000;
 
 	private final ICatalogService catalogService = new CatalogServiceSqlImpl();
 
@@ -172,9 +178,9 @@ public class CatalogController extends ControllerHelper {
 	public void reclassify(final HttpServerRequest request) {
 		final Long id = idParam(request, "id");
 		if (id == null) return;
-		withCatalogAuthorOrModerator(request, id, () -> RequestUtils.bodyToJson(request, body ->
-				catalogService.setClassification(id, ids(body, "level_ids"), ids(body, "discipline_ids"),
-						alignmentIds(body), defaultResponseHandler(request))));
+		withCatalogAuthorOrModerator(request, id, user -> RequestUtils.bodyToJson(request, body ->
+				catalogService.reclassify(id, ids(body, "level_ids"), ids(body, "discipline_ids"),
+						alignmentIds(body), user, hasAction(user, MANAGE_ACTION), defaultResponseHandler(request))));
 	}
 
 	@Delete("/catalog/subject/:id")
@@ -183,12 +189,102 @@ public class CatalogController extends ControllerHelper {
 	public void remove(final HttpServerRequest request) {
 		final Long id = idParam(request, "id");
 		if (id == null) return;
-		withCatalogAuthorOrModerator(request, id, () -> catalogService.remove(id, event -> {
+		withCatalogAuthorOrModerator(request, id, user -> catalogService.remove(id, event -> {
 			if (event.isRight()) {
 				Renders.noContent(request);
 			} else {
 				renderError(request);
 			}
+		}));
+	}
+
+	// ── Qualité et confiance : signaux d'usage, avis, modération des rattachements ──
+
+	@Get("/catalog/subject/:id/usage")
+	@ApiDoc("Gets the usage signals of a catalog subject: copies, structures, ratings and colleagues' reviews.")
+	@SecuredAction(value = "", type = ActionType.AUTHENTICATED)
+	public void usage(final HttpServerRequest request) {
+		final Long id = idParam(request, "id");
+		if (id == null) return;
+		withAction(request, CREATE_ACTION, user -> catalogService.usage(id, user, notFoundOr(request)));
+	}
+
+	@Put("/catalog/subject/:id/review")
+	@ApiDoc("Sets the user's review of a catalog subject he copied: rating (1 to 5) and optional comment.")
+	@SecuredAction(value = "", type = ActionType.AUTHENTICATED)
+	public void review(final HttpServerRequest request) {
+		final Long id = idParam(request, "id");
+		if (id == null) return;
+		withAction(request, CREATE_ACTION, user -> RequestUtils.bodyToJson(request, body -> {
+			final Object rating = body.getValue("rating");
+			if (!(rating instanceof Number) || ((Number) rating).intValue() < 1 || ((Number) rating).intValue() > 5) {
+				badRequest(request, "exercizer.catalog.review.rating.invalid");
+				return;
+			}
+			final String comment = body.getString("comment");
+			if (comment != null && comment.length() > REVIEW_MAX_LENGTH) {
+				badRequest(request, "exercizer.catalog.review.comment.tooLong");
+				return;
+			}
+			catalogService.review(id, user, ((Number) rating).intValue(),
+					comment == null || comment.trim().isEmpty() ? null : comment.trim(), event -> {
+						if (event.isLeft() && "forbidden".equals(event.left().getValue())) {
+							unauthorized(request);
+						} else {
+							defaultResponseHandler(request).handle(event);
+						}
+					});
+		}));
+	}
+
+	@Delete("/catalog/subject/:id/review")
+	@ApiDoc("Removes the user's review of a catalog subject.")
+	@SecuredAction(value = "", type = ActionType.AUTHENTICATED)
+	public void removeReview(final HttpServerRequest request) {
+		final Long id = idParam(request, "id");
+		if (id == null) return;
+		withAction(request, CREATE_ACTION, user ->
+				catalogService.removeReview(id, user.getUserId(), defaultResponseHandler(request)));
+	}
+
+	@Delete("/catalog/subject/:id/review/:userId")
+	@ApiDoc("Removes a colleague's review of a catalog subject (catalog moderator).")
+	@SecuredAction(value = "", type = ActionType.AUTHENTICATED)
+	public void moderateReview(final HttpServerRequest request) {
+		final Long id = idParam(request, "id");
+		if (id == null) return;
+		withAction(request, MANAGE_ACTION, user -> catalogService.removeReview(id, request.params().get("userId"),
+				defaultResponseHandler(request)));
+	}
+
+	@Get("/catalog/moderation")
+	@ApiDoc("Lists the curriculum alignments proposed by teachers, awaiting validation (catalog moderator).")
+	@SecuredAction(value = "", type = ActionType.AUTHENTICATED)
+	public void moderation(final HttpServerRequest request) {
+		withAction(request, MANAGE_ACTION, user -> catalogService.moderation(defaultResponseHandler(request)));
+	}
+
+	@Post("/catalog/moderation")
+	@ApiDoc("Accepts or rejects proposed alignments: {decisions: [{subject_id, cfitem_id, accept}]} (catalog moderator).")
+	@SecuredAction(value = "", type = ActionType.AUTHENTICATED)
+	public void decide(final HttpServerRequest request) {
+		withAction(request, MANAGE_ACTION, user -> RequestUtils.bodyToJson(request, body -> {
+			final JsonArray decisions = new JsonArray();
+			for (Object value : body.getJsonArray("decisions", new JsonArray())) {
+				if (!(value instanceof JsonObject)) continue;
+				final JsonObject decision = (JsonObject) value;
+				if (decision.getValue("subject_id") instanceof Number && decision.getValue("cfitem_id") instanceof String) {
+					decisions.add(new JsonObject()
+							.put("subject_id", ((Number) decision.getValue("subject_id")).longValue())
+							.put("cfitem_id", decision.getString("cfitem_id"))
+							.put("accept", Boolean.TRUE.equals(decision.getValue("accept"))));
+				}
+			}
+			if (decisions.isEmpty()) {
+				badRequest(request, "exercizer.catalog.moderation.empty");
+				return;
+			}
+			catalogService.decide(decisions, defaultResponseHandler(request));
 		}));
 	}
 
@@ -228,7 +324,7 @@ public class CatalogController extends ControllerHelper {
 				return;
 			}
 			catalogService.publish(id, levelIds, disciplineIds, alignmentIds(body), body.getString("authors"), user,
-					notFoundOr(request));
+					hasAction(user, MANAGE_ACTION), notFoundOr(request));
 		}));
 	}
 
@@ -256,16 +352,17 @@ public class CatalogController extends ControllerHelper {
 	}
 
 	/** L'auteur d'un sujet du catalogue (celui qui l'a publié) ou un modérateur. */
-	private void withCatalogAuthorOrModerator(final HttpServerRequest request, final Long id, final Runnable next) {
+	private void withCatalogAuthorOrModerator(final HttpServerRequest request, final Long id,
+			final Handler<UserInfos> next) {
 		withAction(request, CREATE_ACTION, user -> {
 			if (hasAction(user, MANAGE_ACTION)) {
-				next.run();
+				next.handle(user);
 				return;
 			}
 			catalogService.get(id, event -> {
 				if (event.isRight() && user.getUserId().equals(
 						event.right().getValue().getJsonObject("subject", new JsonObject()).getString("owner"))) {
-					next.run();
+					next.handle(user);
 				} else if (event.isLeft() && "not.found".equals(event.left().getValue())) {
 					notFound(request);
 				} else {

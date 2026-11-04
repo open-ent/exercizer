@@ -16,6 +16,8 @@ import {
   visibleProgrammeNodes,
   withOutlineLeaves,
   groupLevels,
+  groupProposals,
+  ratingStars,
   isCatalogAudience,
   isClassified,
   isPublishable,
@@ -24,7 +26,7 @@ import {
   sortDisciplines,
   toggleId,
 } from './catalog';
-import { CatalogDiscipline, CatalogFacet, CatalogLevel, LevelGroup, Programme, ProgrammeNode } from './types';
+import { AlignmentProposal, CatalogDiscipline, CatalogFacet, CatalogLevel, LevelGroup, Programme, ProgrammeNode } from './types';
 
 const level = (id: number, code: string, rank: number | null, group: CatalogLevel['level_group']) => ({
   id,
@@ -328,5 +330,47 @@ describe('contexte des niveaux', () => {
     };
     expect(referentialInContext(referential, ['college']).levels.map((l) => l.code)).toEqual(['6E']);
     expect(referentialInContext(referential, null).levels).toHaveLength(3);
+  });
+});
+
+describe('ratingStars', () => {
+  it('arrondit à l\'étoile la plus proche et borne à 0–5', () => {
+    expect(ratingStars(4.2)).toBe('★★★★☆');
+    expect(ratingStars(4.5)).toBe('★★★★★');
+    expect(ratingStars(0)).toBe('☆☆☆☆☆');
+    expect(ratingStars(7)).toBe('★★★★★');
+  });
+});
+
+describe('groupProposals', () => {
+  const proposal = (subject_id: number, cfitem_id: string): AlignmentProposal => ({
+    subject_id,
+    subject_title: `Sujet ${subject_id}`,
+    subject_owner_username: 'Amélie Martin',
+    cfitem_id,
+    code: cfitem_id.toUpperCase(),
+    label: cfitem_id,
+    programme: 'p',
+    programme_title: 'Programme',
+    proposed_by: 'u',
+    proposed_by_name: 'Amélie Martin',
+    proposed_at: '2026-11-04T10:00:00',
+  });
+
+  it('regroupe par sujet dans l\'ordre de la première proposition', () => {
+    const groups = groupProposals([proposal(7, 'a'), proposal(3, 'b'), proposal(7, 'c')]);
+    expect(groups.map((g) => g.subjectId)).toEqual([7, 3]);
+    expect(groups[0].proposals.map((p) => p.cfitem_id)).toEqual(['a', 'c']);
+  });
+
+  it('ne renvoie rien pour une file vide', () => {
+    expect(groupProposals([])).toEqual([]);
+  });
+});
+
+describe('catalogSearchParams — tri', () => {
+  it('omet le tri par défaut et transmet les autres', () => {
+    expect(catalogSearchParams({ sort: 'level' })).toBe('');
+    expect(catalogSearchParams({ sort: 'usage' })).toBe('sort=usage');
   });
 });

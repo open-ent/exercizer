@@ -79,11 +79,46 @@ public interface ICatalogService {
 
     /**
      * Publie au catalogue une copie d'un sujet de l'usager : {@code {id}} du sujet du catalogue. Les
-     * rattachements sont {@code alignmentIds}, ou ceux du sujet d'origine s'il est null.
+     * rattachements sont {@code alignmentIds}, ou ceux du sujet d'origine s'il est null ; posés tels quels
+     * par un modérateur ({@code moderator}), simplement proposés sinon (cf. {@link #moderation}).
      */
     void publish(Long subjectId, JsonArray levelIds, JsonArray disciplineIds, JsonArray alignmentIds, String authors,
-                 UserInfos user, Handler<Either<String, JsonObject>> handler);
+                 UserInfos user, boolean moderator, Handler<Either<String, JsonObject>> handler);
+
+    /**
+     * Reclasse un sujet du catalogue. Les rattachements ({@code alignmentIds}, inchangés s'il est null)
+     * remplacent ceux du sujet pour un modérateur, qui valide du même coup les propositions retenues ;
+     * pour l'auteur, les énoncés nouveaux deviennent des propositions.
+     */
+    void reclassify(Long catalogSubjectId, JsonArray levelIds, JsonArray disciplineIds, JsonArray alignmentIds,
+                    UserInfos user, boolean moderator, Handler<Either<String, JsonObject>> handler);
 
     /** Retire un sujet du catalogue (suppression physique : il n'a ni copie ni distribution). */
     void remove(Long catalogSubjectId, Handler<Either<String, JsonObject>> handler);
+
+    // ── Qualité et confiance (cf. sql/046-catalog-quality.sql) ──────────────────
+
+    /**
+     * Les signaux d'usage d'un sujet du catalogue vus par l'usager : {@code {copies, structures,
+     * my_structures, rating_avg, rating_count, can_review, reviews: [{user_id, username, rating, comment,
+     * modified}]}} ; {@code my_structures} = copies faites depuis l'un des établissements de l'usager.
+     */
+    void usage(Long catalogSubjectId, UserInfos user, Handler<Either<String, JsonObject>> handler);
+
+    /** Dépose ou remplace l'avis de l'usager ; « forbidden » s'il n'a pas copié le sujet ou en est l'auteur. */
+    void review(Long catalogSubjectId, UserInfos user, int rating, String comment,
+                Handler<Either<String, JsonObject>> handler);
+
+    /** Retire l'avis d'un usager sur un sujet du catalogue. */
+    void removeReview(Long catalogSubjectId, String userId, Handler<Either<String, JsonObject>> handler);
+
+    /**
+     * La file de validation des rattachements proposés : {@code {proposals: [{subject_id, subject_title,
+     * subject_owner_username, cfitem_id, code, label, programme, programme_title, proposed_by,
+     * proposed_by_name, proposed_at}]}}.
+     */
+    void moderation(Handler<Either<String, JsonObject>> handler);
+
+    /** Valide ou refuse des propositions : {@code [{subject_id, cfitem_id, accept}]}. */
+    void decide(JsonArray decisions, Handler<Either<String, JsonObject>> handler);
 }

@@ -284,4 +284,72 @@ final class ProgrammeSql {
                     new JsonArray().add(subjectId).add(cfitemId));
         }
     }
+
+    // ── Rattachements proposés (cf. sql/046-catalog-quality.sql) ────────────────
+
+    /** Les rattachements d'un sujet {@code s} qui attendent la validation d'un modérateur, en JSON. */
+    static String pendingAlignmentsColumn() {
+        return "COALESCE((SELECT json_agg(json_build_object('id', i.identifier, 'code', i.human_coding_scheme, " +
+                "'label', i.full_statement, 'programme', i.document_id, 'proposed_by_name', p.proposed_by_name) " +
+                "ORDER BY i.human_coding_scheme) " +
+                "FROM " + S + "subject_alignment_proposal AS p JOIN " + CASE + "item AS i ON i.identifier = p.cfitem_id " +
+                "JOIN " + CASE + "document AS d ON d.identifier = i.document_id AND d.published = true " +
+                "WHERE p.subject_id = s.id), '[]'::json) AS pending_alignments";
+    }
+
+    /**
+     * Le rattachement voulu par l'auteur d'un sujet du catalogue qui n'est pas modérateur : un
+     * rattachement validé hors de la liste est retiré tout de suite (retirer ne fausse pas le
+     * rangement), un énoncé nouveau devient une proposition, une proposition hors de la liste tombe.
+     */
+    static void proposeAlignments(final SqlStatementsBuilder s, final Number subjectId, final JsonArray cfitemIds,
+                                  final String userId, final String username) {
+        final String kept = cfitemIds.isEmpty() ? "" : " AND cfitem_id NOT IN " + Sql.listPrepared(cfitemIds.getList());
+        s.prepared("DELETE FROM " + S + "subject_alignment WHERE subject_id = ?" + kept,
+                new JsonArray().add(subjectId).addAll(cfitemIds));
+        s.prepared("DELETE FROM " + S + "subject_alignment_proposal WHERE subject_id = ?" + kept,
+                new JsonArray().add(subjectId).addAll(cfitemIds));
+        for (Object cfitemId : cfitemIds) {
+            s.prepared("INSERT INTO " + S + "subject_alignment_proposal (subject_id, cfitem_id, proposed_by, proposed_by_name) " +
+                            "SELECT ?, i.identifier, ?, ? FROM " + CASE + "item AS i WHERE i.identifier = ? " +
+                            "AND NOT EXISTS (SELECT 1 FROM " + S + "subject_alignment AS sa " +
+                            "WHERE sa.subject_id = ? AND sa.cfitem_id = i.identifier) ON CONFLICT DO NOTHING",
+                    new JsonArray().add(subjectId).add(userId).add(username).add(cfitemId).add(subjectId));
+        }
+    }
+
+    /** Propose pour un sujet nouvellement publié les rattachements d'un autre (le sujet d'origine). */
+    static void proposeAlignmentsOf(final SqlStatementsBuilder s, final Number subjectId, final Number fromSubjectId,
+                                    final String userId, final String username) {
+        s.prepared("INSERT INTO " + S + "subject_alignment_proposal (subject_id, cfitem_id, proposed_by, proposed_by_name) " +
+                        "SELECT ?, cfitem_id, ?, ? FROM " + S + "subject_alignment WHERE subject_id = ? ON CONFLICT DO NOTHING",
+                new JsonArray().add(subjectId).add(userId).add(username).add(fromSubjectId));
+    }
+
+    /**
+     * La file de validation : les rattachements proposés sur les sujets du catalogue, du plus ancien au
+     * plus récent, avec le sujet et l'énoncé.
+     */
+    static String proposals() {
+        return "SELECT p.subject_id, s.title AS subject_title, s.owner_username AS subject_owner_username, " +
+                "p.cfitem_id, i.human_coding_scheme AS code, i.full_statement AS label, " +
+                "i.document_id AS programme, d.title AS programme_title, p.proposed_by, p.proposed_by_name, p.proposed_at " +
+                "FROM " + S + "subject_alignment_proposal AS p " +
+                "JOIN " + S + "subject AS s ON s.id = p.subject_id AND s.is_library_subject = true AND s.is_deleted = false " +
+                "JOIN " + CASE + "item AS i ON i.identifier = p.cfitem_id " +
+                "JOIN " + CASE + "document AS d ON d.identifier = i.document_id AND d.published = true " +
+                "ORDER BY p.proposed_at, s.id, i.human_coding_scheme";
+    }
+
+    /** Valide (le rattachement est posé) ou refuse une proposition ; elle quitte la file dans les deux cas. */
+    static void decide(final SqlStatementsBuilder s, final Number subjectId, final String cfitemId, final boolean accept) {
+        if (accept) {
+            s.prepared("INSERT INTO " + S + "subject_alignment (subject_id, cfitem_id) " +
+                            "SELECT subject_id, cfitem_id FROM " + S + "subject_alignment_proposal " +
+                            "WHERE subject_id = ? AND cfitem_id = ? ON CONFLICT DO NOTHING",
+                    new JsonArray().add(subjectId).add(cfitemId));
+        }
+        s.prepared("DELETE FROM " + S + "subject_alignment_proposal WHERE subject_id = ? AND cfitem_id = ?",
+                new JsonArray().add(subjectId).add(cfitemId));
+    }
 }

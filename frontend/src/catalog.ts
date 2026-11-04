@@ -1,4 +1,5 @@
 import {
+  AlignmentProposal,
   CatalogContext,
   CatalogDiscipline,
   CatalogFacet,
@@ -525,4 +526,35 @@ export function referentialInContext(
     ...referential,
     levels: referential.levels.filter((level) => !!level.level_group && levels.includes(level.level_group)),
   };
+}
+
+// ── Qualité et confiance : avis et file de validation ──────────────────────────
+
+/** Les étoiles d'une note sur 5 arrondie à l'entier le plus proche : « ★★★★☆ ». */
+export function ratingStars(rating: number): string {
+  const full = Math.max(0, Math.min(5, Math.round(rating)));
+  return '★'.repeat(full) + '☆'.repeat(5 - full);
+}
+
+/** Une proposition de la file, rangée avec les autres propositions faites sur le même sujet. */
+export interface ProposalGroup {
+  subjectId: number;
+  subjectTitle: string;
+  proposals: AlignmentProposal[];
+}
+
+/** Les propositions groupées par sujet, dans l'ordre de leur première proposition (la plus ancienne d'abord). */
+export function groupProposals(proposals: AlignmentProposal[]): ProposalGroup[] {
+  const groups = new Map<number, ProposalGroup>();
+  for (const proposal of proposals) {
+    const group = groups.get(proposal.subject_id);
+    if (group) group.proposals.push(proposal);
+    else
+      groups.set(proposal.subject_id, {
+        subjectId: proposal.subject_id,
+        subjectTitle: proposal.subject_title,
+        proposals: [proposal],
+      });
+  }
+  return [...groups.values()];
 }

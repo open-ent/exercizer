@@ -20,6 +20,9 @@ import {
   CatalogPage,
   CatalogReferential,
   CatalogSubjectDetail,
+  CatalogSort,
+  CatalogUsage,
+  AlignmentProposal,
   CatalogView,
   Classification,
   Folder,
@@ -845,6 +848,8 @@ export interface CatalogSearch {
   node?: string;
   /** Les sujets rattachés à l'énoncé lui-même, sans ses descendants. */
   direct?: boolean;
+  /** Tri des résultats ; l'ordre de la scolarité par défaut. */
+  sort?: CatalogSort;
   limit?: number;
   offset?: number;
 }
@@ -860,6 +865,7 @@ export function catalogSearchParams(search: CatalogSearch): string {
     params.set('node', search.node);
     if (search.direct) params.set('direct', 'true');
   }
+  if (search.sort && search.sort !== 'level') params.set('sort', search.sort);
   if (search.limit !== undefined) params.set('limit', String(search.limit));
   if (search.offset !== undefined) params.set('offset', String(search.offset));
   return params.toString();
@@ -947,6 +953,26 @@ export const removeCatalogSubject = (id: number) =>
 
 export const reclassifyCatalogSubject = (id: number, classification: Classification) =>
   sendVoid('PUT', `/exercizer/catalog/subject/${id}/classification`, classification);
+
+/** Copies, établissements et avis d'un sujet du catalogue. */
+export const getCatalogUsage = (id: number) => get<CatalogUsage>(`/exercizer/catalog/subject/${id}/usage`);
+
+/** Dépose ou remplace mon avis sur un sujet du catalogue que j'ai copié. */
+export const reviewCatalogSubject = (id: number, review: { rating: number; comment: string }) =>
+  sendVoid('PUT', `/exercizer/catalog/subject/${id}/review`, review);
+
+/** Retire mon avis, ou celui d'un collègue (`userId`, modérateur seulement). */
+export const removeCatalogReview = (id: number, userId?: string) =>
+  sendVoid('DELETE', `/exercizer/catalog/subject/${id}/review${userId ? `/${encodeURIComponent(userId)}` : ''}`);
+
+/** La file de validation des rattachements proposés (modérateurs du catalogue). */
+export const getAlignmentProposals = () =>
+  get<{ proposals: AlignmentProposal[] }>('/exercizer/catalog/moderation').then((body) => body?.proposals ?? []);
+
+/** Valide ou refuse des rattachements proposés. */
+export const decideAlignmentProposals = (
+  decisions: Array<{ subject_id: number; cfitem_id: string; accept: boolean }>,
+) => sendVoid('POST', '/exercizer/catalog/moderation', { decisions });
 
 /** Le classement d'un de MES sujets (le serveur refuse les autres). */
 export const getClassification = (subjectId: number) =>

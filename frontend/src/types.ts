@@ -415,6 +415,59 @@ export interface CatalogSubject extends Classification {
   question_count: number;
   created?: string;
   modified?: string;
+  /** Signaux d'usage : copies faites depuis le catalogue, établissements qui l'ont copié, avis. */
+  copy_count?: number;
+  structure_count?: number;
+  /** Note moyenne sur 5, au dixième ; null sans avis. */
+  rating_avg?: number | null;
+  rating_count?: number;
+  /** Rattachements proposés par un enseignant, en attente de validation (aperçu seulement). */
+  pending_alignments?: PendingAlignment[];
+}
+
+/** Un rattachement proposé, que le rangement par programme ne compte qu'une fois validé. */
+export interface PendingAlignment extends Alignment {
+  proposed_by_name: string | null;
+}
+
+/** Tri des résultats du catalogue : ordre de la scolarité, les plus copiés, les mieux notés. */
+export type CatalogSort = 'level' | 'usage' | 'rating';
+
+/** L'avis d'un collègue sur un sujet du catalogue. */
+export interface CatalogReview {
+  user_id: string;
+  username: string;
+  rating: number;
+  comment: string | null;
+  modified: string;
+}
+
+/** Les signaux d'usage d'un sujet du catalogue, vus par l'usager. */
+export interface CatalogUsage {
+  copies: number;
+  structures: number;
+  /** Copies faites depuis l'un des établissements de l'usager. */
+  my_structures: number;
+  rating_avg: number | null;
+  rating_count: number;
+  /** L'usager a copié le sujet et n'en est pas l'auteur. */
+  can_review: boolean;
+  reviews: CatalogReview[];
+}
+
+/** Un rattachement proposé dans la file de validation des modérateurs. */
+export interface AlignmentProposal {
+  subject_id: number;
+  subject_title: string;
+  subject_owner_username: string;
+  cfitem_id: string;
+  code: string | null;
+  label: string;
+  programme: string;
+  programme_title: string;
+  proposed_by: string;
+  proposed_by_name: string | null;
+  proposed_at: string;
 }
 
 export interface CatalogPage {

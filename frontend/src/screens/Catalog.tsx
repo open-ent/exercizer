@@ -67,8 +67,17 @@ import { useCatalogReferential } from '../components/CatalogDialogs';
 import { AlignmentPicker, useContextLevels, useProgrammes } from '../features/AlignmentPicker';
 import { CatalogTree } from '../features/CatalogTree';
 import { CreateSequenceDialog, ObjectiveHits } from '../features/CatalogProgrammeActions';
+import { ModerationButton, UsageLine, UsagePanel } from '../features/CatalogQuality';
 import { WORKFLOW } from '../rights';
-import { Alignment, CatalogOrg, CatalogReferential, CatalogSubject, CatalogView, Programme } from '../types';
+import {
+  Alignment,
+  CatalogOrg,
+  CatalogReferential,
+  CatalogSort,
+  CatalogSubject,
+  CatalogView,
+  Programme,
+} from '../types';
 import { sanitizeHtml } from '../zones';
 import { PrintedGrain } from './PrintSubject';
 
@@ -124,6 +133,8 @@ export function Catalog() {
   const [full, setFull] = useState(false);
   const [treeShown, setTreeShown] = useState(false);
   const [sequenceShown, setSequenceShown] = useState(false);
+  const [sort, setSort] = useState<CatalogSort>('level');
+  const isModerator = !!(useHasWorkflow(WORKFLOW.catalogManage) as boolean | undefined);
   const q = useDebounced(search);
 
   // Contexte : les niveaux que servent les établissements de l'usager (ou l'ENT, d'après son
@@ -255,7 +266,7 @@ export function Catalog() {
   );
 
   // Un nouveau critère ramène à la première page.
-  useEffect(() => setPage(1), [q, levelId, disciplineId, org, node, contextKey]);
+  useEffect(() => setPage(1), [q, levelId, disciplineId, org, node, contextKey, sort]);
 
   // Chercher par objectif : les énoncés des programmes (de celui qui range le catalogue, sinon de
   // ceux du contexte) qui répondent à la recherche, avec leurs exercices.
@@ -275,8 +286,8 @@ export function Catalog() {
   );
 
   const results = useQuery({
-    queryKey: ['exercizer', 'catalog', 'search', org, node, q, filterLevel, filterDiscipline, contextKey, page],
-    queryFn: () => searchCatalog({ ...searchUnder(node), limit: PAGE_SIZE, offset: (page - 1) * PAGE_SIZE }),
+    queryKey: ['exercizer', 'catalog', 'search', org, node, q, filterLevel, filterDiscipline, contextKey, sort, page],
+    queryFn: () => searchCatalog({ ...searchUnder(node), sort, limit: PAGE_SIZE, offset: (page - 1) * PAGE_SIZE }),
     enabled: ready && view === 'tree',
     placeholderData: keepPreviousData,
   });
@@ -341,9 +352,12 @@ export function Catalog() {
 
   return (
     <section className="py-16">
-      <Heading level="h1" headingStyle="h3" className="mb-8">
-        {t('exercizer.catalog.title')}
-      </Heading>
+      <div className="d-flex flex-wrap align-items-center gap-8 mb-8">
+        <Heading level="h1" headingStyle="h3" className="flex-fill m-0">
+          {t('exercizer.catalog.title')}
+        </Heading>
+        {isModerator && <ModerationButton />}
+      </div>
       <p className="text-muted mb-16">{t('exercizer.catalog.intro')}</p>
 
       <div className="d-flex flex-wrap gap-12 align-items-center mb-16">
@@ -495,9 +509,12 @@ export function Catalog() {
               )
             ) : (
               <>
-                <p className="small text-muted mb-8" aria-live="polite">
-                  {t('exercizer.catalog.count', { count: total })}
-                </p>
+                <div className="d-flex flex-wrap align-items-center gap-8 mb-8">
+                  <p className="small text-muted m-0 flex-fill" aria-live="polite">
+                    {t('exercizer.catalog.count', { count: total })}
+                  </p>
+                  <SortSelect sort={sort} onChange={setSort} />
+                </div>
                 <div className="grid gap-16">
                   {subjects.map((subject) => (
                     <div key={subject.id} className="g-col-12 g-col-lg-6">
@@ -539,6 +556,29 @@ export function Catalog() {
         />
       )}
     </section>
+  );
+}
+
+/** Le tri des résultats : ordre de la scolarité, les plus copiés ou les mieux notés. */
+function SortSelect({ sort, onChange }: { sort: CatalogSort; onChange: (sort: CatalogSort) => void }) {
+  const { t } = useTranslation(['exercizer', 'common']);
+  const id = useId();
+  return (
+    <div className="d-flex align-items-center gap-8">
+      <label htmlFor={id} className="small text-muted text-nowrap">
+        {t('exercizer.catalog.sort')}
+      </label>
+      <select
+        id={id}
+        className="form-select form-select-sm w-auto"
+        value={sort}
+        onChange={(event) => onChange(event.target.value as CatalogSort)}
+      >
+        <option value="level">{t('exercizer.catalog.sort.level')}</option>
+        <option value="usage">{t('exercizer.catalog.sort.usage')}</option>
+        <option value="rating">{t('exercizer.catalog.sort.rating')}</option>
+      </select>
+    </div>
   );
 }
 
@@ -953,6 +993,7 @@ function CatalogCard({
             {' · '}
             {subject.authors_contributors || subject.owner_username}
           </Card.Text>
+          <UsageLine subject={subject} />
         </div>
       </Card.Body>
     </Card>
@@ -988,6 +1029,8 @@ function CatalogPreview({
     mutationFn: () => copyCatalogSubject(subjectId, null),
     onSuccess: ({ id: newId }) => {
       void queryClient.invalidateQueries({ queryKey: ['exercizer', 'subjects'] });
+      // La copie compte dans les signaux d'usage des cartes et de l'aperçu.
+      void queryClient.invalidateQueries({ queryKey: ['exercizer', 'catalog'] });
       const simple = detail.data?.subject.type === 'simple';
       navigate(simple ? `/subject/edit/simple/${newId}/` : `/subject/edit/${newId}/`);
     },
@@ -1043,6 +1086,11 @@ function CatalogPreview({
               )}
               {aligning !== null && referential ? (
                 <div className="border rounded p-12 mb-16">
+                  {!isModerator && (
+                    <Alert type="info" className="mb-12">
+                      {t('exercizer.catalog.align.proposed')}
+                    </Alert>
+                  )}
                   <AlignmentPicker
                     referential={referential}
                     value={aligning}
@@ -1066,20 +1114,32 @@ function CatalogPreview({
                   </div>
                 </div>
               ) : (
-                !!subject.alignments?.length && (
+                (!!subject.alignments?.length || (canManage && !!subject.pending_alignments?.length)) && (
                   <div className="mb-16">
                     <div className="small text-muted mb-4">{t('exercizer.catalog.align.title')}</div>
                     <ul className="list-unstyled m-0 d-flex flex-column gap-4">
-                      {subject.alignments.map((alignment) => (
+                      {(subject.alignments ?? []).map((alignment) => (
                         <li key={alignment.id} className="small">
                           {alignment.code && <strong className="me-8">{alignment.code}</strong>}
                           {alignment.label}
                         </li>
                       ))}
+                      {/* Proposés, pas encore validés : seuls l'auteur et les modérateurs les voient. */}
+                      {canManage &&
+                        (subject.pending_alignments ?? []).map((alignment) => (
+                          <li key={alignment.id} className="small text-muted" data-testid="catalog-pending-alignment">
+                            {alignment.code && <strong className="me-8">{alignment.code}</strong>}
+                            {alignment.label}{' '}
+                            <Badge variant={{ type: 'content', level: 'warning', background: false }}>
+                              {t('exercizer.catalog.align.pending')}
+                            </Badge>
+                          </li>
+                        ))}
                     </ul>
                   </div>
                 )
               )}
+              <UsagePanel subjectId={subjectId} userId={user?.userId} isModerator={!!isModerator} />
               <Alert type="info" className="mb-16">
                 {t('exercizer.catalog.preview.help')}
               </Alert>
@@ -1118,7 +1178,14 @@ function CatalogPreview({
                 <Button
                   color="secondary"
                   variant="outline"
-                  onClick={() => setAligning((subject.alignments ?? []).map((alignment) => alignment.id))}
+                  // Les propositions en attente font partie du rattachement voulu : les garder cochées.
+                  onClick={() =>
+                    setAligning(
+                      [...(subject.alignments ?? []), ...(subject.pending_alignments ?? [])].map(
+                        (alignment) => alignment.id,
+                      ),
+                    )
+                  }
                 >
                   {t('exercizer.catalog.align.edit')}
                 </Button>

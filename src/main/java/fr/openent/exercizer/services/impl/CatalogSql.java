@@ -34,6 +34,34 @@ final class CatalogSql {
 
     private CatalogSql() {}
 
+    /**
+     * Les signaux d'usage d'un sujet {@code s} du catalogue (cf. sql/046-catalog-quality.sql) : nombre de
+     * copies, d'établissements qui l'ont copié, note moyenne (arrondie au dixième, null sans avis) et
+     * nombre d'avis.
+     */
+    static String usageColumns() {
+        return "(SELECT count(*) FROM " + SCHEMA + "subject_catalog_copy AS c WHERE c.catalog_subject_id = s.id) AS copy_count, " +
+                "(SELECT count(DISTINCT st) FROM " + SCHEMA + "subject_catalog_copy AS c " +
+                "CROSS JOIN LATERAL unnest(c.structure_ids) AS st WHERE c.catalog_subject_id = s.id) AS structure_count, " +
+                "(SELECT round(avg(r.rating), 1)::float8 FROM " + SCHEMA + "subject_catalog_review AS r " +
+                "WHERE r.catalog_subject_id = s.id) AS rating_avg, " +
+                "(SELECT count(*) FROM " + SCHEMA + "subject_catalog_review AS r WHERE r.catalog_subject_id = s.id) AS rating_count";
+    }
+
+    /**
+     * Note la copie {@code newSubjectId} d'un sujet du catalogue, faite par l'usager depuis ces
+     * établissements — sauf si l'usager en est l'auteur : il ne compte pas parmi ses utilisateurs. À
+     * placer après l'insertion du sujet copié, dans la même transaction.
+     */
+    static void recordCopy(final SqlStatementsBuilder s, final Number catalogSubjectId, final Number newSubjectId,
+                           final String userId, final java.util.List<String> structures) {
+        s.prepared("INSERT INTO " + SCHEMA + "subject_catalog_copy (catalog_subject_id, subject_id, user_id, structure_ids) " +
+                        "SELECT c.id, n.id, ?, string_to_array(?, ',')::varchar[] FROM " + SCHEMA + "subject AS c, " +
+                        SCHEMA + "subject AS n WHERE c.id = ? AND n.id = ? AND c.owner <> ?",
+                new JsonArray().add(userId).add(structures == null ? "" : String.join(",", structures))
+                        .add(catalogSubjectId).add(newSubjectId).add(userId));
+    }
+
     /** Recopie les niveaux et les matières d'un sujet sur un autre. */
     static void copyClassification(final SqlStatementsBuilder s, final Number newSubjectId, final Number fromSubjectId) {
         s.prepared("INSERT INTO " + SCHEMA + "subject_level (subject_id, level_id) " +
