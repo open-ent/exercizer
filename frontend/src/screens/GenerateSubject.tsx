@@ -12,11 +12,11 @@ import {
   useMediaLibrary,
 } from '@open-ent/react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
 
-import { createSubject, generateSubject, updateSubject } from '../api';
+import { createSubject, generateSubject, removeSubjects } from '../api';
 import { WORKFLOW } from '../rights';
 import { Subject } from '../types';
 import { Unauthorized } from '../components/Unauthorized';
@@ -55,9 +55,10 @@ export function isAcceptedImage(file: PickedFile | null): boolean {
  * d'`EditSimpleSubjectController`.
  *
  * L'enseignant donne la photo d'un énoncé ; un service de la plateforme en tire les questions
- * d'un sujet interactif. Le sujet est créé VIDE à l'ouverture de l'écran — c'est lui que le
- * service remplit — puis la génération tourne côté serveur : elle aboutit même si l'on quitte la
- * page, d'où le bouton pour repartir sans attendre.
+ * d'un sujet interactif. Le sujet que le service remplit n'est créé qu'au lancement, une fois
+ * l'image validée — l'ouvrir puis le quitter, ou lancer sans pièce jointe, ne laisse aucun sujet
+ * vide sans titre — et part à la corbeille si la génération échoue. La génération tourne côté
+ * serveur : elle aboutit même si l'on quitte la page, d'où le bouton pour repartir sans attendre.
  */
 export function GenerateSubject() {
   const { t } = useTranslation(['exercizer', 'common']);
@@ -67,32 +68,24 @@ export function GenerateSubject() {
   const { ref: mediaLibraryRef, ...mediaLibraryHandlers } = useMediaLibrary();
   const canGenerate = useHasWorkflow(WORKFLOW.generate) as boolean | undefined;
 
-  const [subject, setSubject] = useState<Subject | null>(null);
   const [title, setTitle] = useState('');
   const [file, setFile] = useState<PickedFile | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  const create = useMutation({
-    mutationFn: () => createSubject({ title: '', type: 'interactive', folder_id: null }),
-    onSuccess: setSubject,
-    onError: () => setError(t('exercizer.error')),
-  });
-
-  const started = useState(() => ({ done: false }))[0];
-  useEffect(() => {
-    if (!canGenerate || started.done) return;
-    started.done = true;
-    create.mutate();
-    // Le drapeau garantit qu'un seul sujet est créé, même sous le double rendu de StrictMode.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [canGenerate]);
-
   const generate = useMutation({
     mutationFn: async () => {
-      const current = subject as Subject;
-      // Le titre saisi est enregistré d'abord : le service complète le sujet, il ne le nomme pas.
-      if (title.trim()) await updateSubject({ ...current, title: title.trim() });
-      await generateSubject(current.id, (file as PickedFile)._id);
+      // Le service complète le sujet, il ne le nomme pas : le titre est donné à la création.
+      const current: Subject = await createSubject({
+        title: title.trim() || t('exercizer.simple.default.title'),
+        type: 'interactive',
+        folder_id: null,
+      });
+      try {
+        await generateSubject(current.id, (file as PickedFile)._id);
+      } catch (cause) {
+        await removeSubjects([current.id]).catch(() => undefined);
+        throw cause;
+      }
       return current;
     },
     onSuccess: (current) => {
@@ -126,8 +119,6 @@ export function GenerateSubject() {
     );
   }
 
-  if (!subject && !error) return <LoadingScreen position={false} />;
-
   const launch = () => {
     if (!file?._id) return setError(t('exercizer.simple.error.file.empty'));
     if (!isAcceptedImage(file)) return setError(t('exercizer.simple.error.file.type'));
@@ -145,7 +136,7 @@ export function GenerateSubject() {
           <Button color="tertiary" variant="ghost" onClick={leave}>
             {t('exercizer.update.quit')}
           </Button>
-          <Button color="primary" variant="filled" disabled={!subject} onClick={launch}>
+          <Button color="primary" variant="filled" onClick={launch}>
             {t('exercizer.generate')}
           </Button>
         </div>
