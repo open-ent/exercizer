@@ -992,5 +992,10 @@
   "exercizer.digitize.error.canvas": "Votre navigateur n'a pas pu afficher le document.",
   "exercizer.digitize.error.empty": "Aucun texte n'a pu être lu dans ce document. S'il s'agit d'une photo, reprenez-la bien éclairée, de face et nette.",
   "exercizer.digitize.error.read": "Le document n'a pas pu être lu. Vérifiez qu'il n'est pas protégé par un mot de passe.",
-  "exercizer.digitize.error.nothing": "Gardez au moins un élément pour créer le sujet."
+  "exercizer.digitize.error.nothing": "Gardez au moins un élément pour créer le sujet.",
+  "exercizer.pilotage.remaining.unit.day": "j",
+  "exercizer.pilotage.remaining.unit.hour": "h",
+  "exercizer.pilotage.remaining.unit.minute": "min",
+  "exercizer.media.audio": "Enregistrement audio",
+  "exercizer.media.video": "Vidéo"
 }

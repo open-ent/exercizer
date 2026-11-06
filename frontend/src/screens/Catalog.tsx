@@ -68,6 +68,7 @@ import { AlignmentPicker, useContextLevels, useProgrammes } from '../features/Al
 import { CatalogTree } from '../features/CatalogTree';
 import { CreateSequenceDialog, ObjectiveHits } from '../features/CatalogProgrammeActions';
 import { ModerationButton, UsageLine, UsagePanel } from '../features/CatalogQuality';
+import { mediaLabels, playableHtml } from '../media';
 import { WORKFLOW } from '../rights';
 import {
   Alignment,
@@ -1083,7 +1084,14 @@ function CatalogPreview({
                 {t('exercizer.catalog.by')} {subject.authors_contributors || subject.owner_username}
               </p>
               {subject.description && (
-                <div className="mb-16" dangerouslySetInnerHTML={{ __html: sanitizeHtml(subject.description) }} />
+                <div
+                  className="mb-16"
+                  dangerouslySetInnerHTML={{
+                    // Filtre STRICT (les cadres partent) sur une description venue d'un autre
+                    // établissement, puis les lecteurs des médias qui restent.
+                    __html: playableHtml(sanitizeHtml(subject.description), mediaLabels(t)),
+                  }}
+                />
               )}
               {aligning !== null && referential ? (
                 <div className="border rounded p-12 mb-16">

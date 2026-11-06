@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next';
 
 import { AutomaticCorrection, formatScore } from '../../correction';
 import { GRAIN, isZoneType, sanitizeScore } from '../../grains';
+import { mediaLabels, playableHtml } from '../../media';
 import { GrainCopy, GrainScheduled } from '../../types';
 import { ZoneReview } from '../zones/ZoneAnswers';
 import { AnswerReview } from './AnswerReview';
@@ -207,7 +208,9 @@ export function ExpectedAnswers({
       <section className="mt-8">
         <p className="form-label mb-4">{t('exercizer.grain.correction')}</p>
         {/* Produit par l'éditeur du socle, comme la réponse de l'élève (cf. AnswerReview). */}
-        <div dangerouslySetInnerHTML={{ __html: data.model_answer }} />
+        <div
+          dangerouslySetInnerHTML={{ __html: playableHtml(data.model_answer, mediaLabels(t)) }}
+        />
       </section>
     );
   }

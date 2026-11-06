@@ -7,19 +7,25 @@ import { useParams, useSearchParams } from 'react-router-dom';
 import { getGrains, getSubjects, getSubjectsScheduledAsTeacher } from '../api';
 import { blockStyle, ZoneCanvas } from '../features/zones/ZoneParts';
 import { byOrder, GRAIN, isQuestion, isUndecided, questionNumber, statementOf } from '../grains';
+import { DEFAULT_MEDIA_LABELS, MediaLabels, mediaLabels, mentionMedia } from '../media';
 import { Grain, GrainAnswer, GrainZone, Subject } from '../types';
 import { formatDateTime } from '../utils';
 import { answersTypeOf, printableFillText, sanitizeHtml } from '../zones';
 
 /**
  * Un HTML d'énoncé mis en forme pour le papier — `PrintSubjectController#formatHtml` : les
- * images sont bornées en largeur, et l'adresse d'un lien est écrite en clair après son texte,
- * puisqu'on ne clique pas sur une feuille.
+ * images sont bornées en largeur, l'adresse d'un lien est écrite en clair après son texte,
+ * puisqu'on ne clique pas sur une feuille, et un média laisse la mention de ce qu'il fallait
+ * écouter ou regarder, faute de quoi la feuille cacherait une partie de l'énoncé.
  */
-export function printableHtml(html: string | undefined): string {
+export function printableHtml(
+  html: string | undefined,
+  labels: MediaLabels = DEFAULT_MEDIA_LABELS,
+): string {
   if (!html) return '';
   const root = new DOMParser().parseFromString(`<body>${sanitizeHtml(html)}</body>`, 'text/html')
     .body;
+  mentionMedia(root, labels);
   root.querySelectorAll('img').forEach((image) => {
     image.style.maxWidth = image.classList.contains('smiley') ? '40px' : '300px';
     image.style.height = 'auto';
@@ -55,9 +61,10 @@ const Blank = ({ lines = 1 }: { lines?: number }) => (
   <div className="border rounded" style={{ minHeight: 40 * lines }} />
 );
 
-const Html = ({ html }: { html: string }) => (
-  <div dangerouslySetInnerHTML={{ __html: printableHtml(html) }} />
-);
+const Html = ({ html }: { html: string }) => {
+  const { t } = useTranslation(['exercizer', 'common']);
+  return <div dangerouslySetInnerHTML={{ __html: printableHtml(html, mediaLabels(t)) }} />;
+};
 
 /**
  * Impression d'un sujet — portage de `PrintSubjectController` et `print-subject.html`.
@@ -292,7 +299,7 @@ export function PrintedGrain({
           <div
             className="border rounded p-8"
             dangerouslySetInnerHTML={{
-              __html: printableHtml(printableFillText(custom, showResponses)),
+              __html: printableHtml(printableFillText(custom, showResponses), mediaLabels(t)),
             }}
           />
           {answersTypeOf(custom) === 'drag' && <Options options={custom.options ?? []} />}

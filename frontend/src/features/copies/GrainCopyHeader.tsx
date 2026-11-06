@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next';
 
 import { copyQuestionNumber, GRAIN, isQuestion } from '../../grains';
 import { formatScore } from '../../correction';
+import { mediaLabels, playableHtml } from '../../media';
 import { GrainCopy } from '../../types';
 
 /**
@@ -85,6 +86,7 @@ export function GrainCopyHeader({
 
 /** L'énoncé d'un grain, en HTML — `grain-copy-statement`. */
 export function GrainCopyStatement({ grainCopy }: { grainCopy: GrainCopy }) {
+  const { t } = useTranslation(['exercizer', 'common']);
   const data = grainCopy.grain_copy_data;
   // Un énoncé (type 3) porte son texte dans `custom_copy_data.statement` (recopié de
   // `custom_data` à la lecture) ; une question, dans `statement`.
@@ -94,8 +96,14 @@ export function GrainCopyStatement({ grainCopy }: { grainCopy: GrainCopy }) {
       : data.statement;
   if (!html) return null;
   // Contenu produit par l'éditeur du socle côté enseignant, affiché comme le faisait
-  // `bind-html` de l'ancienne IHM.
-  return <div className="mb-16" dangerouslySetInnerHTML={{ __html: html }} />;
+  // `bind-html` de l'ancienne IHM — mais passé par `playableHtml`, sans quoi un énoncé dicté
+  // n'offrirait aucun lecteur à l'élève.
+  return (
+    <div
+      className="mb-16"
+      dangerouslySetInnerHTML={{ __html: playableHtml(html, mediaLabels(t)) }}
+    />
+  );
 }
 
 /** Les documents attachés à un grain — conservés pour les sujets anciens. */

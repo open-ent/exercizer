@@ -110,13 +110,55 @@ export function connectPilotage(
   };
 }
 
-/** `m:ss`, précédé d'un signe moins quand le temps est dépassé. */
-export function formatRemaining(seconds: number): string {
+const MINUTE = 60;
+const HOUR = 60 * MINUTE;
+const DAY = 24 * HOUR;
+
+/** Les abréviations d'unités, que l'IHM traduit ; le défaut est celui du français. */
+export interface RemainingUnits {
+  day: string;
+  hour: string;
+  minute: string;
+}
+
+export const DEFAULT_REMAINING_UNITS: RemainingUnits = { day: 'j', hour: 'h', minute: 'min' };
+
+/** Les mêmes unités, traduites — `pilotage.ts` reste sans dépendance à react-i18next. */
+export const remainingUnits = (t: (key: string) => string): RemainingUnits => ({
+  day: t('exercizer.pilotage.remaining.unit.day'),
+  hour: t('exercizer.pilotage.remaining.unit.hour'),
+  minute: t('exercizer.pilotage.remaining.unit.minute'),
+});
+
+/**
+ * Le temps restant, précédé d'un signe moins quand il est dépassé. `m:ss` tant qu'il se compte en
+ * minutes — c'est l'échelle d'une séance en classe —, puis `5 h 12 min` et `2 j 3 h` au-delà :
+ * une échéance à une semaine s'écrivait « 10472:54 », que personne ne lit comme sept jours.
+ */
+export function formatRemaining(seconds: number, units = DEFAULT_REMAINING_UNITS): string {
   const sign = seconds < 0 ? '-' : '';
   const absolute = Math.abs(Math.trunc(seconds));
-  const rest = absolute % 60;
-  return `${sign}${Math.floor(absolute / 60)}:${rest < 10 ? '0' : ''}${rest}`;
+  if (absolute >= DAY) {
+    const hours = Math.floor((absolute % DAY) / HOUR);
+    return `${sign}${Math.floor(absolute / DAY)} ${units.day} ${hours} ${units.hour}`;
+  }
+  if (absolute >= HOUR) {
+    const minutes = Math.floor((absolute % HOUR) / MINUTE);
+    return `${sign}${Math.floor(absolute / HOUR)} ${units.hour} ${minutes} ${units.minute}`;
+  }
+  const rest = absolute % MINUTE;
+  return `${sign}${Math.floor(absolute / MINUTE)}:${rest < 10 ? '0' : ''}${rest}`;
 }
+
+/**
+ * Au-delà d'un jour, le décompte n'apprend rien : la date de remise est déjà en tête de l'écran,
+ * et la seconde près n'a pas de sens pour un devoir à rendre dans la semaine. L'élève ne le voit
+ * donc qu'à l'approche de l'échéance — et toujours une fois celle-ci passée.
+ */
+export const REMAINING_WINDOW_SECONDS = DAY;
+
+export const remainingWorthShowing = (seconds: number | null): number | null =>
+  seconds !== null && seconds <= REMAINING_WINDOW_SECONDS ? seconds : null;
 
 /**
  * Le temps restant affiché à l'enseignant : celui du serveur, moins ce qui s'est écoulé depuis
@@ -127,10 +169,11 @@ export function teacherRemaining(
   sessionState: string,
   fetchedAt: number,
   now: number,
+  units = DEFAULT_REMAINING_UNITS,
 ): string {
   if (student.remainingSeconds === undefined || student.remainingSeconds === null) return '';
   const elapsed = sessionState === 'en_cours' ? Math.floor((now - fetchedAt) / 1000) : 0;
-  return formatRemaining(student.remainingSeconds - elapsed);
+  return formatRemaining(student.remainingSeconds - elapsed, units);
 }
 
 /** Un élève qui a rendu n'a plus rien à prolonger ni à faire rendre. */

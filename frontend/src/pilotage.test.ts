@@ -7,6 +7,8 @@ import {
   initialStudentPilotage,
   isPilotageReadOnly,
   pilotageUrl,
+  REMAINING_WINDOW_SECONDS,
+  remainingWorthShowing,
   studentRemainingSeconds,
   StudentPilotage,
   teacherRemaining,
@@ -40,6 +42,22 @@ describe('temps restant', () => {
     expect(formatRemaining(125)).toBe('2:05');
     expect(formatRemaining(-61)).toBe('-1:01');
     expect(formatRemaining(0)).toBe('0:00');
+    expect(formatRemaining(3599)).toBe('59:59');
+  });
+
+  it('passe aux heures puis aux jours — une semaine ne s’écrit pas « 10472:54 »', () => {
+    expect(formatRemaining(3600)).toBe('1 h 0 min');
+    expect(formatRemaining(5 * 3600 + 12 * 60 + 30)).toBe('5 h 12 min');
+    expect(formatRemaining(7 * 86_400 + 6 * 3600)).toBe('7 j 6 h');
+    expect(formatRemaining(-2 * 86_400)).toBe('-2 j 0 h');
+    expect(formatRemaining(90_000, { day: 'd', hour: 'h', minute: 'min' })).toBe('1 d 1 h');
+  });
+
+  it('n’est montré à l’élève qu’à moins d’un jour de l’échéance, dépassement compris', () => {
+    expect(remainingWorthShowing(null)).toBeNull();
+    expect(remainingWorthShowing(REMAINING_WINDOW_SECONDS + 1)).toBeNull();
+    expect(remainingWorthShowing(REMAINING_WINDOW_SECONDS)).toBe(REMAINING_WINDOW_SECONDS);
+    expect(remainingWorthShowing(-30)).toBe(-30);
   });
 
   it('décompte chez l’enseignant depuis la dernière réponse du serveur, sauf en pause', () => {

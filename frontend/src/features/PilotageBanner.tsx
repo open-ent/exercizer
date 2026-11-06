@@ -11,6 +11,8 @@ import {
   initialStudentPilotage,
   isPilotageReadOnly,
   POLL_INTERVAL_MS,
+  remainingUnits,
+  remainingWorthShowing,
   studentRemainingSeconds,
   StudentPilotage,
   WS_OPEN_TIMEOUT_MS,
@@ -128,8 +130,9 @@ export function usePilotage(scheduled: SubjectScheduled | undefined, copy: Subje
     };
   }, [scheduledId, copyId, userId, queryClient]);
 
-  // Une fois la copie rendue, normalement ou d'office, le décompte n'a plus de sens.
-  const remaining =
+  // Une fois la copie rendue, normalement ou d'office, le décompte n'a plus de sens ; loin de
+  // l'échéance non plus, d'où la fenêtre d'affichage de `remainingWorthShowing`.
+  const remaining = remainingWorthShowing(
     state &&
     scheduled &&
     copy &&
@@ -138,7 +141,8 @@ export function usePilotage(scheduled: SubjectScheduled | undefined, copy: Subje
     !copy.submitted_date &&
     !state.isForcedSubmit
       ? studentRemainingSeconds(scheduled.due_date, state, now)
-      : null;
+      : null,
+  );
 
   return {
     state,
@@ -159,6 +163,7 @@ export function usePilotage(scheduled: SubjectScheduled | undefined, copy: Subje
 /** Ce que l'élève voit du pilotage : pause, remise d'office, messages, temps restant. */
 export function PilotageBanner({ pilotage }: { pilotage: ReturnType<typeof usePilotage> }) {
   const { t } = useTranslation(['exercizer', 'common']);
+  const units = remainingUnits(t);
   const { state, remaining, connected, extended } = pilotage;
   if (!state) return null;
   const paused = state.sessionState === 'en_pause';
@@ -200,7 +205,7 @@ export function PilotageBanner({ pilotage }: { pilotage: ReturnType<typeof usePi
       ))}
       {remaining !== null && (
         <p className="small fst-italic mb-0">
-          {t('exercizer.pilotage.remaining.time')} : {formatRemaining(remaining)}
+          {t('exercizer.pilotage.remaining.time')} : {formatRemaining(remaining, units)}
           {!connected && ` (${t('exercizer.pilotage.connection.poll')})`}
         </p>
       )}

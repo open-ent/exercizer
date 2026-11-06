@@ -34,6 +34,7 @@ import {
   connectPilotage,
   PilotageStudent,
   POLL_INTERVAL_MS,
+  remainingUnits,
   teacherRemaining,
 } from '../pilotage';
 import { SubjectCopy } from '../types';
@@ -66,6 +67,7 @@ export function Pilotage() {
   const [message, setMessage] = useState<{ type: 'success' | 'danger'; text: string } | null>(null);
   // L'horloge ne recalcule rien : elle fait défiler le décompte entre deux réponses du serveur.
   const [now, setNow] = useState(() => Date.now());
+  const units = remainingUnits(t);
 
   const stateKey = ['exercizer', 'pilotage', id];
   const stateQuery = useQuery({
@@ -218,7 +220,7 @@ export function Pilotage() {
                 <Table.Td>{student.studentName}</Table.Td>
                 <Table.Td>{t(`exercizer.copy.state.${student.state}`)}</Table.Td>
                 <Table.Td>
-                  {teacherRemaining(student, state.sessionState, stateQuery.dataUpdatedAt, now)}
+                  {teacherRemaining(student, state.sessionState, stateQuery.dataUpdatedAt, now, units)}
                 </Table.Td>
                 <Table.Td>
                   <div className="d-flex flex-wrap gap-8">

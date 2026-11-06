@@ -992,5 +992,10 @@
   "exercizer.digitize.error.canvas": "Your browser could not display the document.",
   "exercizer.digitize.error.empty": "No text could be read in this document. If it is a photo, take it again, well lit, straight on and in focus.",
   "exercizer.digitize.error.read": "The document could not be read. Check that it is not password-protected.",
-  "exercizer.digitize.error.nothing": "Keep at least one item to create the subject."
+  "exercizer.digitize.error.nothing": "Keep at least one item to create the subject.",
+  "exercizer.pilotage.remaining.unit.day": "d",
+  "exercizer.pilotage.remaining.unit.hour": "h",
+  "exercizer.pilotage.remaining.unit.minute": "min",
+  "exercizer.media.audio": "Audio recording",
+  "exercizer.media.video": "Video"
 }

@@ -2,6 +2,7 @@ import { Heading } from '@open-ent/react';
 import { ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 
+import { mediaLabels, playableHtml } from '../../media';
 import { groupCopiesBySection, sectionScore } from '../../sections';
 import { GrainCopy, ScheduledSection } from '../../types';
 
@@ -48,7 +49,12 @@ export function SectionedReview({
                 </span>
               </div>
               {group.section.description && (
-                <div className="mt-8" dangerouslySetInnerHTML={{ __html: group.section.description }} />
+                <div
+                  className="mt-8"
+                  dangerouslySetInnerHTML={{
+                    __html: playableHtml(group.section.description, mediaLabels(t)),
+                  }}
+                />
               )}
             </header>
             {group.grains.map(renderGrain)}

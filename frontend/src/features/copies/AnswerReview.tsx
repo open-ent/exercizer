@@ -2,6 +2,7 @@ import { useTranslation } from 'react-i18next';
 
 import { AutomaticCorrection } from '../../correction';
 import { GRAIN } from '../../grains';
+import { mediaLabels, playableHtml } from '../../media';
 import { GrainAnswer, GrainCustomCopyData } from '../../types';
 import { ZoneReview } from '../zones/ZoneAnswers';
 
@@ -88,8 +89,9 @@ function OpenAnswer({ value }: { value: string | null | undefined }) {
   const { t } = useTranslation(['exercizer', 'common']);
   if (!value) return <em className="text-muted">{t('exercizer.grain.noanswer')}</em>;
   // Le contenu vient de l'éditeur du socle, qui assainit ce qu'il produit ; c'est aussi ainsi que
-  // l'ancienne IHM l'affichait (`bind-html`).
-  return <div dangerouslySetInnerHTML={{ __html: value }} />;
+  // l'ancienne IHM l'affichait (`bind-html`). L'élève a pu s'y enregistrer au micro : son
+  // enregistrement doit s'écouter à la correction.
+  return <div dangerouslySetInnerHTML={{ __html: playableHtml(value, mediaLabels(t)) }} />;
 }
 
 function AnswerList({

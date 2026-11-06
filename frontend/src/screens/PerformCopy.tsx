@@ -18,6 +18,7 @@ import {
 } from '../api';
 import { ConfirmModal } from '../components/ConfirmModal';
 import { canPerformAsStudent } from '../copies';
+import { mediaLabels, playableHtml } from '../media';
 import { AnswerFields } from '../features/copies/AnswerFields';
 import {
   GrainCopyDocuments,
@@ -527,7 +528,11 @@ export function PerformCopy() {
                 {pageSection.title}
               </Heading>
               {showSectionDescription && (
-                <div dangerouslySetInnerHTML={{ __html: pageSection.description ?? '' }} />
+                <div
+                  dangerouslySetInnerHTML={{
+                    __html: playableHtml(pageSection.description, mediaLabels(t)),
+                  }}
+                />
               )}
             </header>
           )}
