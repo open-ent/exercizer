@@ -6,6 +6,7 @@ import { useTranslation } from 'react-i18next';
 import illuExercizer from '@images/emptyscreen/illu-exercizer.svg';
 import {
   decideAlignmentProposals,
+  suggestAlignments,
   getAlignmentProposals,
   getCatalogUsage,
   removeCatalogReview,
@@ -291,6 +292,10 @@ function ModerationDialog({ proposals, onClose }: { proposals: AlignmentProposal
     // L'arbre, les comptes et la file changent tous.
     onSuccess: () => void queryClient.invalidateQueries({ queryKey: ['exercizer', 'catalog'] }),
   });
+  const suggest = useMutation({
+    mutationFn: suggestAlignments,
+    onSuccess: () => void queryClient.invalidateQueries({ queryKey: ['exercizer', 'catalog', 'moderation'] }),
+  });
   const groups = groupProposals(proposals);
   const date = (value: string) => new Date(value).toLocaleDateString(i18n.language);
 
@@ -299,7 +304,26 @@ function ModerationDialog({ proposals, onClose }: { proposals: AlignmentProposal
       <Modal.Header onModalClose={onClose}>{t('exercizer.catalog.moderation.title')}</Modal.Header>
       <Modal.Body>
         <p className="text-muted">{t('exercizer.catalog.moderation.help')}</p>
-        {decide.isError && (
+        <div className="d-flex flex-wrap align-items-center gap-8 my-16">
+          <Button
+            color="primary"
+            variant="outline"
+            isLoading={suggest.isPending}
+            disabled={suggest.isPending}
+            onClick={() => suggest.mutate()}
+            data-testid="catalog-moderation-suggest"
+          >
+            {t('exercizer.catalog.moderation.suggest')}
+          </Button>
+          {suggest.data && (
+            <span className="small text-muted" role="status">
+              {suggest.data.proposals > 0
+                ? t('exercizer.catalog.moderation.suggested', suggest.data)
+                : t('exercizer.catalog.moderation.suggestedNone')}
+            </span>
+          )}
+        </div>
+        {(decide.isError || suggest.isError) && (
           <Alert type="danger" className="mb-16">
             {t('exercizer.error')}
           </Alert>
@@ -331,10 +355,12 @@ function ModerationDialog({ proposals, onClose }: { proposals: AlignmentProposal
                         {proposal.code && <strong className="me-8">{proposal.code}</strong>}
                         {proposal.label}
                         <span className="d-block text-muted">
-                          {t('exercizer.catalog.moderation.by', {
-                            name: proposal.proposed_by_name ?? proposal.subject_owner_username,
-                            date: date(proposal.proposed_at),
-                          })}
+                          {proposal.proposed_by === 'suggestion'
+                            ? t('exercizer.catalog.moderation.bySuggestion', { date: date(proposal.proposed_at) })
+                            : t('exercizer.catalog.moderation.by', {
+                                name: proposal.proposed_by_name ?? proposal.subject_owner_username,
+                                date: date(proposal.proposed_at),
+                              })}
                         </span>
                       </span>
                       <Button

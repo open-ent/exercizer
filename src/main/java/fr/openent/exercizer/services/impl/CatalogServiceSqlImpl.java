@@ -565,6 +565,27 @@ public class CatalogServiceSqlImpl extends AbstractExercizerServiceSqlImpl imple
     }
 
     @Override
+    public void suggestAlignments(final Handler<Either<String, JsonObject>> handler) {
+        withProgrammes(programmes -> {
+            if (!programmes) {
+                handler.handle(new Either.Right<>(new JsonObject().put("proposals", 0).put("subjects", 0)));
+                return;
+            }
+            final JsonArray values = new JsonArray();
+            sql.prepared(ProgrammeSql.suggestUnaligned(values), values, SqlResult.validResultHandler(event -> {
+                if (event.isLeft()) {
+                    handler.handle(new Either.Left<>(event.left().getValue()));
+                    return;
+                }
+                final JsonArray rows = event.right().getValue();
+                final java.util.Set<Object> subjects = new java.util.HashSet<>();
+                rows.forEach(row -> subjects.add(((JsonObject) row).getValue("subject_id")));
+                handler.handle(new Either.Right<>(new JsonObject().put("proposals", rows.size()).put("subjects", subjects.size())));
+            }));
+        });
+    }
+
+    @Override
     public void decide(final JsonArray decisions, final Handler<Either<String, JsonObject>> handler) {
         final SqlStatementsBuilder s = new SqlStatementsBuilder();
         for (Object value : decisions) {

@@ -969,6 +969,10 @@ export const removeCatalogReview = (id: number, userId?: string) =>
 export const getAlignmentProposals = () =>
   get<{ proposals: AlignmentProposal[] }>('/exercizer/catalog/moderation').then((body) => body?.proposals ?? []);
 
+/** Rattachement assisté : fait proposer des énoncés pour les sujets du catalogue rattachés à aucun. */
+export const suggestAlignments = () =>
+  send<{ proposals: number; subjects: number }>('POST', '/exercizer/catalog/moderation/suggestions');
+
 /** Valide ou refuse des rattachements proposés. */
 export const decideAlignmentProposals = (
   decisions: Array<{ subject_id: number; cfitem_id: string; accept: boolean }>,
@@ -1122,25 +1126,16 @@ export const copyCorrectedFileUrl = (copyId: number) =>
 export const myHomeworkFileUrl = (copyId: number, fileId: string) =>
   `/exercizer/subject-copy/${copyId}/mine/${fileId}`;
 
-// ── Préférence d'interface (bascule React / AngularJS) ────────────────────────
+// ── Préférence usager du module ───────────────────────────────────────────────
 
 /**
- * La préférence `exercizerUi` porte à la fois le CHOIX d'interface (lu par le serveur, cf.
- * `ExercizerController#preferredUi`) et l'état des bandeaux qui le proposent. On lit et réécrit
- * l'objet ENTIER : un bandeau n'a pas à effacer le compteur de l'autre.
+ * La préférence `exercizerUi` — nom hérité de la bascule entre les deux interfaces, conservé pour
+ * ne pas perdre les réglages déjà enregistrés. On lit et réécrit l'objet ENTIER : une écriture
+ * partielle effacerait les autres champs.
  *
  * ⚠ L'enveloppe renvoyée par l'ENT est `{ preference: "<json>" }` — une CHAÎNE, pas un objet.
  */
 export interface UiPreference {
-  ui?: 'react' | 'angular';
-  /** Bandeau de l'IHM AngularJS : « plus tard » définitif, et nombre d'affichages. */
-  invitationDismissed?: boolean;
-  invitationShown?: number;
-  /** Bandeau de l'IHM React : idem, dans l'autre sens. */
-  returnDismissed?: boolean;
-  returnShown?: number;
-  feedback?: string;
-  feedbackAt?: string;
   /** Rangement et vue du catalogue choisis en dernier ; `allLevels` : niveaux hors contexte affichés. */
   catalog?: { org?: CatalogOrg; view?: CatalogView; allLevels?: boolean };
 }

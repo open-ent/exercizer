@@ -119,6 +119,12 @@ public interface ICatalogService {
      */
     void moderation(Handler<Either<String, JsonObject>> handler);
 
+    /**
+     * Rattachement assisté : propose dans la file de validation les énoncés les plus proches des sujets
+     * du catalogue rattachés à aucun ; {@code {proposals, subjects}} = nombre de propositions et de sujets.
+     */
+    void suggestAlignments(Handler<Either<String, JsonObject>> handler);
+
     /** Valide ou refuse des propositions : {@code [{subject_id, cfitem_id, accept}]}. */
     void decide(JsonArray decisions, Handler<Either<String, JsonObject>> handler);
 }

@@ -264,6 +264,14 @@ public class CatalogController extends ControllerHelper {
 		withAction(request, MANAGE_ACTION, user -> catalogService.moderation(defaultResponseHandler(request)));
 	}
 
+	@Post("/catalog/moderation/suggestions")
+	@ApiDoc("Proposes, for the catalog subjects aligned to no curriculum item, the closest items into the validation "
+			+ "queue: {proposals, subjects} (catalog moderator).")
+	@SecuredAction(value = "", type = ActionType.AUTHENTICATED)
+	public void suggestAlignments(final HttpServerRequest request) {
+		withAction(request, MANAGE_ACTION, user -> catalogService.suggestAlignments(defaultResponseHandler(request)));
+	}
+
 	@Post("/catalog/moderation")
 	@ApiDoc("Accepts or rejects proposed alignments: {decisions: [{subject_id, cfitem_id, accept}]} (catalog moderator).")
 	@SecuredAction(value = "", type = ActionType.AUTHENTICATED)

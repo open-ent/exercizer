@@ -318,6 +318,50 @@ final class ProgrammeSql {
         }
     }
 
+    /** Auteur des propositions faites par le rattachement assisté ({@code proposed_by}). */
+    static final String SUGGESTION_AUTHOR = "suggestion";
+
+    /**
+     * Le rattachement assisté : pour chaque sujet du catalogue rattaché à aucun énoncé et sans proposition
+     * en attente, propose l'énoncé d'apprentissage le plus proche de son titre et de sa description parmi
+     * ceux de ses niveaux et de ses matières, tous programmes publiés confondus, et le suivant s'il est au
+     * moins à moitié aussi proche. Un sujet sans mot commun avec aucun énoncé ne reçoit rien ; un
+     * rattachement déjà refusé n'est pas reproposé. Renvoie une ligne par proposition ({@code subject_id}).
+     */
+    static String suggestUnaligned(final JsonArray values) {
+        final StringBuilder teachings = new StringBuilder();
+        TEACHINGS.forEach((discipline, segments) -> segments.forEach(segment -> {
+            teachings.append(teachings.length() == 0 ? "" : ", ").append("(?, ?)");
+            values.add(discipline).add(segment);
+        }));
+        STRUCTURAL_TYPES.forEach(values::add);
+        values.add(SUGGESTION_AUTHOR);
+        return "WITH teaching (discipline, segment) AS (VALUES " + teachings + "), " +
+                "subject AS (SELECT s.id, s.title || ' ' || COALESCE(s.description, '') AS text, " +
+                "ARRAY(SELECT l.code FROM " + S + "subject_level AS sl JOIN " + S + "subject_lesson_level AS l " +
+                "ON l.id = sl.level_id WHERE sl.subject_id = s.id AND l.code IS NOT NULL) AS levels, " +
+                "ARRAY(SELECT t.segment FROM " + S + "subject_discipline AS sd JOIN " + S + "subject_lesson_type AS lt " +
+                "ON lt.id = sd.discipline_id JOIN teaching AS t ON t.discipline = lt.code WHERE sd.subject_id = s.id) AS segments " +
+                "FROM " + S + "subject AS s WHERE s.is_library_subject = true AND s.is_deleted = false " +
+                "AND NOT EXISTS (SELECT 1 FROM " + S + "subject_alignment AS sa WHERE sa.subject_id = s.id) " +
+                "AND NOT EXISTS (SELECT 1 FROM " + S + "subject_alignment_proposal AS p WHERE p.subject_id = s.id)), " +
+                "ranked AS (SELECT s.id AS subject_id, i.identifier AS cfitem_id, " +
+                "ts_rank(to_tsvector('french', i.full_statement), plainto_tsquery('french', s.text), 2) AS rank " +
+                "FROM subject AS s JOIN " + CASE + "item AS i " +
+                "ON (cardinality(s.levels) = 0 OR jsonb_exists_any(i.education_levels, s.levels)) " +
+                "AND (cardinality(s.segments) = 0 OR split_part(i.human_coding_scheme, '.', 2) = ANY (s.segments)) " +
+                "JOIN " + CASE + "document AS d ON d.identifier = i.document_id AND d.published = true " +
+                "WHERE i.item_type NOT IN " + Sql.listPrepared(STRUCTURAL_TYPES.toArray()) + " " +
+                "AND NOT EXISTS (SELECT 1 FROM " + S + "subject_alignment_rejection AS r " +
+                "WHERE r.subject_id = s.id AND r.cfitem_id = i.identifier)), " +
+                "best AS (SELECT r.*, row_number() OVER w AS position, max(r.rank) OVER w AS top FROM ranked AS r " +
+                "WHERE r.rank > " + MIN_RANK + " WINDOW w AS (PARTITION BY r.subject_id ORDER BY r.rank DESC, r.cfitem_id)) " +
+                "INSERT INTO " + S + "subject_alignment_proposal (subject_id, cfitem_id, proposed_by) " +
+                "SELECT b.subject_id, b.cfitem_id, ? FROM best AS b " +
+                "WHERE b.position = 1 OR (b.position = 2 AND b.rank * 2 >= b.top) " +
+                "ON CONFLICT DO NOTHING RETURNING subject_id";
+    }
+
     /** Propose pour un sujet nouvellement publié les rattachements d'un autre (le sujet d'origine). */
     static void proposeAlignmentsOf(final SqlStatementsBuilder s, final Number subjectId, final Number fromSubjectId,
                                     final String userId, final String username) {
@@ -341,14 +385,15 @@ final class ProgrammeSql {
                 "ORDER BY p.proposed_at, s.id, i.human_coding_scheme";
     }
 
-    /** Valide (le rattachement est posé) ou refuse une proposition ; elle quitte la file dans les deux cas. */
+    /**
+     * Valide (le rattachement est posé) ou refuse une proposition ; elle quitte la file dans les deux cas.
+     * Un refus est retenu, pour que le rattachement assisté ne la repropose pas.
+     */
     static void decide(final SqlStatementsBuilder s, final Number subjectId, final String cfitemId, final boolean accept) {
-        if (accept) {
-            s.prepared("INSERT INTO " + S + "subject_alignment (subject_id, cfitem_id) " +
-                            "SELECT subject_id, cfitem_id FROM " + S + "subject_alignment_proposal " +
-                            "WHERE subject_id = ? AND cfitem_id = ? ON CONFLICT DO NOTHING",
-                    new JsonArray().add(subjectId).add(cfitemId));
-        }
+        s.prepared("INSERT INTO " + S + (accept ? "subject_alignment (subject_id, cfitem_id) " : "subject_alignment_rejection (subject_id, cfitem_id) ") +
+                        "SELECT subject_id, cfitem_id FROM " + S + "subject_alignment_proposal " +
+                        "WHERE subject_id = ? AND cfitem_id = ? ON CONFLICT DO NOTHING",
+                new JsonArray().add(subjectId).add(cfitemId));
         s.prepared("DELETE FROM " + S + "subject_alignment_proposal WHERE subject_id = ? AND cfitem_id = ?",
                 new JsonArray().add(subjectId).add(cfitemId));
     }
