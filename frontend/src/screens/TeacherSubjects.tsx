@@ -1,5 +1,4 @@
 import {
-  ActionBar,
   Alert,
   Button,
   Card,
@@ -32,6 +31,7 @@ import { ClassificationDialog, PublishToCatalogDialog } from '../components/Cata
 import { ConfirmModal } from '../components/ConfirmModal';
 import { FolderDialog } from '../components/FolderDialog';
 import { MoveDialog } from '../components/MoveDialog';
+import { SelectionActionBar } from '../components/SelectionActionBar';
 import {
   ExportMoodleDialog,
   ImportSubjectDialog,
@@ -485,7 +485,7 @@ export function TeacherSubjects() {
       {/* Barre d'actions sur la sélection — l'équivalent du « toaster » de l'ancienne IHM. Les
           actions qui ne valent que pour un seul élément ne s'affichent qu'alors. */}
       {selectionCount > 0 && (
-        <ActionBar>
+        <SelectionActionBar>
           {selectionCount === 1 && (
             <Button
               color="primary"
@@ -504,7 +504,7 @@ export function TeacherSubjects() {
           {onlyOneFolder && (
             <Button
               color="primary"
-              variant="outline"
+              variant="filled"
               onClick={() =>
                 setDialog({
                   kind: 'folder',
@@ -519,7 +519,7 @@ export function TeacherSubjects() {
           {onlySubject && atLeast(right, 'manager') && onlySubject.type !== 'simple' && (
             <Button
               color="primary"
-              variant="outline"
+              variant="filled"
               onClick={() => setDialog({ kind: 'properties', subject: onlySubject })}
             >
               {t('exercizer.instructer.toaster.property')}
@@ -529,7 +529,7 @@ export function TeacherSubjects() {
           {onlySubject && right === 'owner' && (
             <Button
               color="primary"
-              variant="outline"
+              variant="filled"
               onClick={() => setDialog({ kind: 'classify', subject: onlySubject })}
             >
               {t('exercizer.catalog.classify.title')}
@@ -538,7 +538,7 @@ export function TeacherSubjects() {
           {onlySubject && right === 'owner' && canPublish && (
             <Button
               color="primary"
-              variant="outline"
+              variant="filled"
               onClick={() => setDialog({ kind: 'publishCatalog', subject: onlySubject })}
             >
               {t('exercizer.catalog.publish.title')}
@@ -547,7 +547,7 @@ export function TeacherSubjects() {
           {onlySubject && atLeast(right, 'manager') && (
             <Button
               color="primary"
-              variant="outline"
+              variant="filled"
               isLoading={duplicate.isPending}
               onClick={() => duplicate.mutate(onlySubject.id)}
             >
@@ -557,7 +557,7 @@ export function TeacherSubjects() {
           {onlySubject && atLeast(right, 'manager') && (
             <Button
               color="primary"
-              variant="outline"
+              variant="filled"
               onClick={() => setDialog({ kind: 'share', subject: onlySubject })}
             >
               {t('exercizer.instructer.toaster.share')}
@@ -574,14 +574,14 @@ export function TeacherSubjects() {
           )}
           {/* Seul le propriétaire range un sujet : l'arborescence de dossiers est la sienne. */}
           {(noSubject || right === 'owner') && (
-            <Button color="primary" variant="outline" onClick={() => setDialog({ kind: 'move' })}>
+            <Button color="primary" variant="filled" onClick={() => setDialog({ kind: 'move' })}>
               {t('exercizer.instructer.toaster.move')}
             </Button>
           )}
           {onlySubject && atLeast(right, 'manager') && onlySubject.type !== 'simple' && (
             <Button
               color="primary"
-              variant="outline"
+              variant="filled"
               onClick={() => setDialog({ kind: 'export', subject: onlySubject })}
             >
               {t('exercizer.instructer.toaster.export')}
@@ -590,18 +590,18 @@ export function TeacherSubjects() {
           {onlySubject && (
             <Button
               color="primary"
-              variant="outline"
+              variant="filled"
               onClick={() => setDialog({ kind: 'print', subject: onlySubject })}
             >
               {t('exercizer.instructer.toaster.print')}
             </Button>
           )}
           {(noSubject || atLeast(right, 'manager')) && (
-            <Button color="danger" variant="outline" onClick={() => setDialog({ kind: 'remove' })}>
+            <Button color="primary" variant="filled" onClick={() => setDialog({ kind: 'remove' })}>
               {t('exercizer.instructer.toaster.delete')}
             </Button>
           )}
-        </ActionBar>
+        </SelectionActionBar>
       )}
 
       {dialog?.kind === 'newSubject' && (

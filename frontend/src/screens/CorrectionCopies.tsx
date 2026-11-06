@@ -1,5 +1,4 @@
 import {
-  ActionBar,
   Alert,
   Badge,
   Button,
@@ -41,6 +40,7 @@ import {
 import { ConfirmModal } from '../components/ConfirmModal';
 import { RecipientsDialog } from '../components/RecipientsDialog';
 import { ReminderDialog } from '../components/ReminderDialog';
+import { SelectionActionBar } from '../components/SelectionActionBar';
 import { canCorrectAsTeacher, copyStateColorClass, copyStateKey } from '../copies';
 import { automaticCorrection } from '../correction';
 import {
@@ -581,7 +581,7 @@ export function CorrectionCopies({ subjectScheduledId }: { subjectScheduledId: n
       )}
 
       {selected.length > 0 && !showStats && (
-        <ActionBar>
+        <SelectionActionBar>
           {isSimple && (
             <Button color="primary" variant="filled" onClick={downloadSelected}>
               {t('exercizer.downloads')}
@@ -601,20 +601,20 @@ export function CorrectionCopies({ subjectScheduledId }: { subjectScheduledId: n
             {t('exercizer.reminder.raise')}
           </Button>
           {canExclude && (
-            <Button color="danger" variant="outline" onClick={() => setDialog({ kind: 'exclude' })}>
+            <Button color="primary" variant="filled" onClick={() => setDialog({ kind: 'exclude' })}>
               {t('exercizer.exclude')}
             </Button>
           )}
           {!isSimple && anyUnsubmitted && (
             <Button
               color="primary"
-              variant="outline"
+              variant="filled"
               onClick={() => setDialog({ kind: 'considerSubmitted' })}
             >
               {t('exercizer.consider.submitted')}
             </Button>
           )}
-        </ActionBar>
+        </SelectionActionBar>
       )}
 
       {dialog?.kind === 'exclude' && (

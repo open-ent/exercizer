@@ -1,5 +1,4 @@
 import {
-  ActionBar,
   Alert,
   Button,
   Card,
@@ -25,6 +24,7 @@ import {
   simpleCopiesZipUrl,
 } from '../api';
 import { RecipientsDialog } from '../components/RecipientsDialog';
+import { SelectionActionBar } from '../components/SelectionActionBar';
 import { matchesDueDateRange, matchesTitle } from '../copies';
 import { automaticCorrection, AutomaticCorrection } from '../correction';
 import {
@@ -288,7 +288,7 @@ function ArchivedList() {
       )}
 
       {selected.length > 0 && (
-        <ActionBar>
+        <SelectionActionBar>
           <Button
             color="primary"
             variant="filled"
@@ -298,7 +298,7 @@ function ArchivedList() {
           >
             {t('exercizer.export')}
           </Button>
-        </ActionBar>
+        </SelectionActionBar>
       )}
 
       {recipients && (
@@ -552,7 +552,7 @@ function ArchivedCopies({ subjectScheduledId }: { subjectScheduledId: number }) 
       )}
 
       {isSimple && selected.length > 0 && (
-        <ActionBar>
+        <SelectionActionBar>
           <Button
             color="primary"
             variant="filled"
@@ -567,7 +567,7 @@ function ArchivedCopies({ subjectScheduledId }: { subjectScheduledId: number }) 
           >
             {t('exercizer.downloads')}
           </Button>
-        </ActionBar>
+        </SelectionActionBar>
       )}
 
       {exporting && (
