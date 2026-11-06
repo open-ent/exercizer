@@ -264,6 +264,19 @@ public class SubjectExporter {
         this.writeCommon(grainData.getString("title"), grainData.getString("statement"), "html");
         this.writeDefaultGrade(grainData);
         this.writeAnswer("","0");
+        // Réponse de départ (un schéma à compléter…) et corrigé : Moodle a leurs équivalents,
+        // le modèle de réponse de l'élève et les informations pour le correcteur.
+        final JsonObject customData = Utils.getOrElse(grainData.getJsonObject("custom_data"), new JsonObject());
+        this.writeHtmlTag("responsetemplate", customData.getString("starting_answer"));
+        this.writeHtmlTag("graderinfo", customData.getString("model_answer"));
+    }
+
+    private void writeHtmlTag(final String tag, final String html) throws XMLStreamException {
+        if (StringUtils.isEmpty(html)) return;
+        this.xsw.writeStartElement(tag);
+        this.xsw.writeAttribute("format", "html");
+        this.writeText(html);
+        this.xsw.writeEndElement();
     }
 
     private void writeMultiAnswer(final JsonObject grainData) throws XMLStreamException {

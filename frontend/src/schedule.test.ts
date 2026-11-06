@@ -184,6 +184,27 @@ describe('initialCopyData', () => {
     });
   });
 
+  it('part de la réponse de départ d’une réponse ouverte, sans jamais recopier le corrigé', () => {
+    const start = '<p>Complète le schéma.<img class="custom-image" src="/workspace/document/depart"></p>';
+    const data = initialCopyData(
+      grain({
+        id: 1,
+        grain_type_id: GRAIN.OPEN_ANSWER,
+        grain_data: {
+          custom_data: { starting_answer: start, model_answer: '<p>Le schéma complet</p>' },
+        },
+      }),
+    );
+    expect(data).toEqual({ filled_answer: start, starting_answer: start });
+    expect(JSON.stringify(data)).not.toContain('schéma complet');
+  });
+
+  it('laisse vide une réponse ouverte sans réponse de départ', () => {
+    expect(initialCopyData(grain({ id: 1, grain_type_id: GRAIN.OPEN_ANSWER }))).toEqual({
+      filled_answer: '',
+    });
+  });
+
   it('prépare autant de champs que de réponses attendues', () => {
     const data = initialCopyData(
       grain({

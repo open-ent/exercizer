@@ -625,6 +625,16 @@ export interface GrainCustomData {
   title?: string;
   /** Type 4 (réponse simple). */
   correct_answer?: string;
+  /**
+   * Type 5 (réponse ouverte) : la réponse de DÉPART, en HTML — un schéma à compléter, une image
+   * à annoter… Recopiée dans la copie de l'élève à la distribution (cf. `schedule.ts`).
+   */
+  starting_answer?: string;
+  /**
+   * Type 5 : le corrigé de l'enseignant, en HTML. Il reste dans le grain : la passation ne le
+   * charge jamais, il n'apparaît qu'avec le corrigé d'une copie rendue.
+   */
+  model_answer?: string;
   /** Types 6, 7, 8, 9 : les réponses, dans une forme propre au type (cf. GrainAnswer). */
   correct_answer_list?: GrainAnswer[];
   /** Types 6 à 9 : « aucune erreur admise » — tout ou rien plutôt qu'un score partiel. */
@@ -670,6 +680,8 @@ export interface GrainScheduled {
 export interface GrainCustomCopyData {
   /** Types 4 (réponse simple) et 5 (réponse ouverte, en HTML). */
   filled_answer?: string;
+  /** Type 5 : la réponse de départ, gardée pour que l'élève puisse y revenir. */
+  starting_answer?: string;
   /** Types 6, 7, 8, 9 : les réponses de l'élève, dans la forme propre au type. */
   filled_answer_list?: GrainAnswer[];
   /** Type 8 : les étiquettes encore disponibles (colonne de droite, mélangée). */

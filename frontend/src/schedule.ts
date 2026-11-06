@@ -206,8 +206,13 @@ export function initialCopyData(grain: Grain, random: () => number = Math.random
 
   switch (grain.grain_type_id) {
     case GRAIN.SIMPLE_ANSWER:
-    case GRAIN.OPEN_ANSWER:
       return { filled_answer: '' };
+
+    case GRAIN.OPEN_ANSWER:
+      // L'élève part de la réponse de départ (un schéma à compléter…), jamais du corrigé.
+      return data.starting_answer
+        ? { filled_answer: data.starting_answer, starting_answer: data.starting_answer }
+        : { filled_answer: '' };
 
     case GRAIN.MULTIPLE_ANSWERS:
       // Autant de champs vides que de réponses attendues.

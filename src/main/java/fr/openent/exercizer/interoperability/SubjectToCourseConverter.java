@@ -130,6 +130,13 @@ public class SubjectToCourseConverter {
             return fillMultipleAnswers(question, customData);
         }
         if ("open_answer".equals(type)) {
+            // Le modèle commun n'a ni réponse de départ ni corrigé de réponse ouverte : on le dit.
+            if (!customData.getString("starting_answer", "").isEmpty()
+                    || !customData.getString("model_answer", "").isEmpty()) {
+                report.dropped("exercizer.openanswer.start.not.exportable",
+                        "La réponse de départ et le corrigé de la réponse ouverte de " + location
+                                + " ne sont pas exportés : la question l'est sans eux.", location);
+            }
             return question.type(QuestionType.ESSAY);
         }
         if ("association".equals(type)) {

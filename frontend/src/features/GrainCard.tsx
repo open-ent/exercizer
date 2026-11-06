@@ -224,7 +224,7 @@ export function GrainCard({
           ) : grain.grain_type_id === GRAIN.SIMPLE_ANSWER ? (
             <SimpleAnswerEditor customData={customData} onChange={patchCustom} />
           ) : grain.grain_type_id === GRAIN.OPEN_ANSWER ? (
-            <OpenAnswerEditor />
+            <OpenAnswerEditor customData={customData} onChange={patchCustom} />
           ) : grain.grain_type_id === GRAIN.MULTIPLE_ANSWERS ? (
             <MultipleAnswerEditor customData={customData} onChange={patchCustom} />
           ) : grain.grain_type_id === GRAIN.QCM ? (

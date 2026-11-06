@@ -1,7 +1,8 @@
-import { Alert, Checkbox, FormControl, Input } from '@open-ent/react';
-import { useId } from 'react';
+import { Alert, Button, Checkbox, FormControl, Input } from '@open-ent/react';
+import { useId, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
+import { ConfirmModal } from '../../components/ConfirmModal';
 import { GRAIN } from '../../grains';
 import { GrainAnswer, GrainCustomCopyData } from '../../types';
 import { RichTextEditor } from '../RichTextEditor';
@@ -87,16 +88,53 @@ function SimpleAnswerField({ data, onChange, readOnly }: FieldProps) {
   );
 }
 
-/** Réponse ouverte : du texte riche, corrigé à la main par l'enseignant. */
+/**
+ * Réponse ouverte : du texte riche, corrigé à la main par l'enseignant. Elle peut partir d'une
+ * réponse de départ (un schéma à compléter…), à laquelle l'élève peut revenir.
+ */
 function OpenAnswerField({ data, onChange, readOnly }: FieldProps) {
   const { t } = useTranslation(['exercizer', 'common']);
+  // L'éditeur ne lit son contenu qu'au montage : on le remonte pour y remettre le départ.
+  const [revision, setRevision] = useState(0);
+  const [isConfirming, setIsConfirming] = useState(false);
+  const canRestart = !readOnly && !!data.starting_answer && data.filled_answer !== data.starting_answer;
+
+  const restart = () => {
+    onChange({ ...data, filled_answer: data.starting_answer });
+    setRevision((value) => value + 1);
+    setIsConfirming(false);
+  };
+
   return (
-    <RichTextEditor
-      content={data.filled_answer}
-      mode={readOnly ? 'read' : 'edit'}
-      placeholder={t('exercizer.grain.answer.info')}
-      onChange={readOnly ? undefined : (filled_answer) => onChange({ ...data, filled_answer })}
-    />
+    <div className="d-flex flex-column gap-8">
+      {/* La clé est sur un conteneur, pas sur l'éditeur : tiptap déplace des éléments de l'éditeur
+          (bulles) hors de leur parent, et React lèverait `removeChild` en les retirant un à un. */}
+      <div key={revision}>
+        <RichTextEditor
+          content={data.filled_answer}
+          mode={readOnly ? 'read' : 'edit'}
+          placeholder={t('exercizer.grain.answer.info')}
+          onChange={readOnly ? undefined : (filled_answer) => onChange({ ...data, filled_answer })}
+        />
+      </div>
+      {canRestart && (
+        <div>
+          <Button color="tertiary" variant="ghost" onClick={() => setIsConfirming(true)}>
+            {t('exercizer.grain.openanswer.restart')}
+          </Button>
+        </div>
+      )}
+      {isConfirming && (
+        <ConfirmModal
+          title={t('exercizer.grain.openanswer.restart')}
+          confirmLabel={t('exercizer.grain.openanswer.restart.confirm')}
+          onConfirm={restart}
+          onClose={() => setIsConfirming(false)}
+        >
+          {t('exercizer.grain.openanswer.restart.body')}
+        </ConfirmModal>
+      )}
+    </div>
   );
 }
 

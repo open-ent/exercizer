@@ -584,8 +584,15 @@ function hasAnswer(grainCopy: GrainCopy): boolean {
   if (!data) return false;
   switch (grainCopy.grain_type_id) {
     case GRAIN.SIMPLE_ANSWER:
-    case GRAIN.OPEN_ANSWER:
       return !!data.filled_answer && data.filled_answer.trim() !== '' && data.filled_answer !== '<p></p>';
+    case GRAIN.OPEN_ANSWER:
+      // Une réponse laissée telle que la réponse de départ (schéma à compléter…) n'est pas répondue.
+      return (
+        !!data.filled_answer &&
+        data.filled_answer.trim() !== '' &&
+        data.filled_answer !== '<p></p>' &&
+        data.filled_answer !== data.starting_answer
+      );
     case GRAIN.QCM:
       return (data.filled_answer_list ?? []).some((answer) => answer.isChecked);
     case GRAIN.MULTIPLE_ANSWERS:

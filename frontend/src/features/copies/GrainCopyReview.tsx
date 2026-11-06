@@ -200,6 +200,18 @@ export function ExpectedAnswers({
     );
   }
 
+  // Réponse ouverte : le corrigé est un contenu riche (un schéma complété…), rendu tel quel.
+  if (grainTypeId === GRAIN.OPEN_ANSWER) {
+    if (!data.model_answer) return null;
+    return (
+      <section className="mt-8">
+        <p className="form-label mb-4">{t('exercizer.grain.correction')}</p>
+        {/* Produit par l'éditeur du socle, comme la réponse de l'élève (cf. AnswerReview). */}
+        <div dangerouslySetInnerHTML={{ __html: data.model_answer }} />
+      </section>
+    );
+  }
+
   const lines: string[] = (() => {
     switch (grainTypeId) {
       case GRAIN.SIMPLE_ANSWER:
