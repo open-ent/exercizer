@@ -113,6 +113,7 @@
   "exercizer.drop.help": "Drag and drop a file from your device or click browse",
   "exercizer.drop.help2": "Drop the file",
   "exercizer.drop.help3": "Drag and drop a file from your device or click browse (Accepted files: PNG, JPEG)",
+  "library.file.choose": "Browse",
   "exercizer.drop.limit5": "Drop your files from your device or click browse",
   "exercizer.duplicate": "Duplicate",
   "exercizer.edit": "Edit",
