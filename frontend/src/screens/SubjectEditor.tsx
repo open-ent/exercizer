@@ -1,4 +1,5 @@
-import { Alert, Button, Checkbox, EmptyScreen, Heading, LoadingScreen } from '@open-ent/react';
+import { Alert, Button, Checkbox, EmptyScreen, Heading, IconButton, LoadingScreen } from '@open-ent/react';
+import { IconEdit } from '@open-ent/react/icons';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useCallback, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -21,6 +22,7 @@ import {
   updateSection,
 } from '../api';
 import { ConfirmModal } from '../components/ConfirmModal';
+import { SubjectPropertiesDialog } from '../components/SubjectDialogs';
 import { GrainCard } from '../features/GrainCard';
 import { GrainOrganizer } from '../features/GrainOrganizer';
 import { SectionHeader } from '../features/SectionHeader';
@@ -87,6 +89,7 @@ export function SubjectEditor() {
   const [sectionToRemove, setSectionToRemove] = useState<Section | null>(null);
   const [removeWithGrains, setRemoveWithGrains] = useState(false);
   const [scheduling, setScheduling] = useState(false);
+  const [editingProperties, setEditingProperties] = useState(false);
 
   const grainsKey = useMemo(() => ['exercizer', 'grains', subjectId], [subjectId]);
   const sectionsKey = useMemo(() => ['exercizer', 'sections', subjectId], [subjectId]);
@@ -411,9 +414,19 @@ export function SubjectEditor() {
         </Alert>
       )}
       <div className="d-flex flex-wrap align-items-center justify-content-between gap-16 mb-24">
-        <Heading level="h2" headingStyle="h4" className="m-0">
-          {subject.title}
-        </Heading>
+        <div className="d-flex align-items-center gap-8">
+          <Heading level="h2" headingStyle="h4" className="m-0">
+            {subject.title}
+          </Heading>
+          <IconButton
+            aria-label={t('exercizer.edit')}
+            title={t('exercizer.edit')}
+            color="tertiary"
+            variant="ghost"
+            icon={<IconEdit />}
+            onClick={() => setEditingProperties(true)}
+          />
+        </div>
         <div className="d-flex flex-wrap gap-8">
           {/* Le témoin d'enregistrement remplace le bouton absent : sans lui, rien ne dirait que
               la frappe est partie — ni qu'elle ne l'est pas encore. */}
@@ -620,6 +633,17 @@ export function SubjectEditor() {
             </small>
           )}
         </ConfirmModal>
+      )}
+
+      {editingProperties && (
+        <SubjectPropertiesDialog
+          subject={subject}
+          onClose={() => setEditingProperties(false)}
+          onSaved={() => {
+            void queryClient.invalidateQueries({ queryKey: ['exercizer', 'subjects'] });
+            setEditingProperties(false);
+          }}
+        />
       )}
     </div>
   );
