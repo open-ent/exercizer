@@ -673,7 +673,7 @@ export function PrintDialog({ subject, onClose }: { subject: Subject; onClose: (
           variant="filled"
           onClick={() => {
             window.open(
-              `/exercizer?ui=react#/subject/print/${subject.id}?responses=${responses}`,
+              `/exercizer#/subject/print/${subject.id}?responses=${responses}`,
               '_blank',
             );
             onClose();

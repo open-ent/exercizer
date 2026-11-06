@@ -65,19 +65,11 @@ Les dix types s'éditent, se répondent, se relisent et s'impriment : énoncé (
   vivait dans un service en mémoire).
 - **Tri des tableaux de copies** : les copies sans valeur vont toujours en fin de liste.
 
-## Arbitrage entre les deux interfaces
+## Interface servie
 
-`ExercizerController#view` choisit la vue, par priorité décroissante :
-
-1. `?ui=react|angular` — dérogation ponctuelle, **non mémorisée** (vérification, support) ;
-2. la **préférence usager** `exercizerUi`, lue directement sur le nœud `UserAppConf` du graphe ;
-3. la conf `frontend-ui` du module, alimentée par **`EXERCIZER_FRONTEND_UI`** (variable propre à
-   ce module, isolée de `FRONTEND_UI_DEFAULT` que huit modules partagent). Défaut : `angular`.
-
-Deux bandeaux font découvrir la bascule et s'effacent — l'invitation sur l'ancienne IHM
-(`public/ui-switch.js`, JavaScript natif hors de l'application AngularJS) et le retour sur la
-nouvelle (`src/features/UiSwitchBanner.tsx`). Le réglage **durable** vit ailleurs : page
-`/dashboard/account/settings` du dashboard, liste `RENEWED_INTERFACES`.
+`ExercizerController#view` sert **toujours** l'interface React (`exercizer-react.html`) : la
+bascule vers l'ancienne interface AngularJS a été retirée. Un `?ui=` hérité d'anciens liens est
+ignoré.
 
 ## Développement
 
@@ -225,7 +217,7 @@ Chapitre → Activités de LearnHouse). Règles pures dans `sections.ts` :
 - unitaires : `pnpm test` — toutes les règles listées plus haut ;
 - de bout en bout, depuis la racine du dépôt :
   ```bash
-  npx playwright test tests/exercizer-react.spec.ts tests/exercizer-ui-switch.spec.ts \
+  npx playwright test tests/exercizer-react.spec.ts \
     tests/exercizer-subject-editor.spec.ts tests/exercizer-copy.spec.ts \
     tests/exercizer-schedule.spec.ts tests/exercizer-sections.spec.ts --project=chromium
   ```

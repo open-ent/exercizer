@@ -2,15 +2,6 @@
    Toute couleur vient des jetons `--openent-*` du bootstrap chargé au runtime : le module suit
    ainsi le thème de l'établissement sans feuille de styles parallèle. */
 
-/* Bandeau de bascule d'interface, posé en bas de l'écran sans recouvrir le contenu utile. */
-.exercizer-ui-switch {
-  position: sticky;
-  bottom: var(--openent-spacing-16, 1rem);
-  z-index: 10;
-  margin-top: var(--openent-spacing-24, 1.5rem);
-  background: var(--openent-white);
-}
-
 /* Grand format (sql/043) : la passation des jeunes élèves. Le socle n'a pas d'échelle de texte
    au-delà de `fs-1` ; on agrandit donc tout l'écran d'un cran, champs et cases compris, et on
    donne aux cibles la taille d'un doigt d'enfant. 1rem = 10px (`--openent-root-font-size`). */

@@ -168,7 +168,8 @@ export function Catalog() {
 
   const savePreference = useMutation({
     mutationFn: (next: UiPreference) => setUiPreference(next),
-    // Réécrite ENTIÈRE : on remet le résultat en cache (cf. UiSwitchBanner).
+    // Réécrite ENTIÈRE : on remet le résultat en cache, sinon une seconde écriture repartirait
+    // de la version d'avant et effacerait la première.
     onSuccess: (_data, next) => queryClient.setQueryData(['exercizer', 'ui-preference'], next),
   });
 

@@ -15,7 +15,6 @@ import { useTranslation } from 'react-i18next';
 
 import { getPublicConf, getServerNow } from '../api';
 import { setLanguage } from '../locale';
-import { UiSwitchBanner } from '../features/UiSwitchBanner';
 import { isCatalogAudience } from '../catalog';
 import { WORKFLOW } from '../rights';
 import { Unauthorized } from '../components/Unauthorized';
@@ -196,8 +195,6 @@ export function Root() {
       )}
 
       {clockReliable ? <Outlet /> : <Unauthorized text={t('exercizer.error.date')} />}
-
-      <UiSwitchBanner />
     </Layout>
   );
 }
