@@ -1,4 +1,15 @@
-import { Alert, Badge, Button, Checkbox, FormControl, Input, Label, SearchBar } from '@open-ent/react';
+import {
+  Alert,
+  Badge,
+  Button,
+  Checkbox,
+  FormControl,
+  IconButton,
+  Input,
+  Label,
+  SearchBar,
+} from '@open-ent/react';
+import { IconClose } from '@open-ent/react/icons';
 import { useQuery } from '@tanstack/react-query';
 import { useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -201,19 +212,20 @@ export function RecipientPicker({
       {(groups.length > 0 || namedUsers.length > 0) && (
         <section>
           <p className="form-label mb-4">{t('exercizer.scheduled.subject.to')}</p>
-          <ul className="list-unstyled d-flex flex-wrap gap-8">
+          <ul className="list-unstyled d-flex flex-wrap gap-8 mb-0">
             {groups.map((group) => (
               <li key={group._id}>
                 <Badge variant={{ type: 'chip' }}>
                   {group.name}
-                  <button
-                    type="button"
-                    className="btn btn-sm btn-ghost btn-danger ms-4"
+                  <IconButton
+                    icon={<IconClose width={16} height={16} />}
+                    color="tertiary"
+                    variant="ghost"
+                    size="sm"
+                    className="ms-8 p-0"
                     aria-label={`${t('exercizer.remove')} ${group.name}`}
                     onClick={() => removeGroup(group)}
-                  >
-                    ×
-                  </button>
+                  />
                 </Badge>
               </li>
             ))}
@@ -221,14 +233,15 @@ export function RecipientPicker({
               <li key={user._id}>
                 <Badge variant={{ type: 'chip' }}>
                   {user.name}
-                  <button
-                    type="button"
-                    className="btn btn-sm btn-ghost btn-danger ms-4"
+                  <IconButton
+                    icon={<IconClose width={16} height={16} />}
+                    color="tertiary"
+                    variant="ghost"
+                    size="sm"
+                    className="ms-8 p-0"
                     aria-label={`${t('exercizer.remove')} ${user.name}`}
                     onClick={() => removeUser(user)}
-                  >
-                    ×
-                  </button>
+                  />
                 </Badge>
               </li>
             ))}
@@ -240,7 +253,10 @@ export function RecipientPicker({
       {groupMembers.length > 0 && (
         <section>
           <p className="form-label mb-4">{t('exercizer.exclude')}</p>
-          <ul className="list-unstyled d-flex flex-column gap-4" style={{ maxHeight: '14rem', overflowY: 'auto' }}>
+          <ul
+            className="list-unstyled d-flex flex-column gap-4 mb-0"
+            style={{ maxHeight: '14rem', overflowY: 'auto' }}
+          >
             {groupMembers.map((user) => (
               <li key={`${user.groupId}-${user._id}`}>
                 <Checkbox
