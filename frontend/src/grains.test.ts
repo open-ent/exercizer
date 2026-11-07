@@ -4,6 +4,7 @@ import {
   byOrder,
   cleanGrainData,
   computedMaxScore,
+  convertGrainData,
   defaultCustomData,
   duplicatedTitle,
   GRAIN,
@@ -316,5 +317,125 @@ describe('libellés', () => {
     expect(grainDisplayName(grain({ id: 1, grain_data: { title: 'Q1' } }), 'QCM')).toBe('Q1');
     expect(grainDisplayName(grain({ id: 1, grain_data: { title: '' } }), 'QCM')).toBe('QCM');
     expect(grainDisplayName(grain({ id: 1, grain_data: {} }), 'QCM')).toBe('QCM');
+  });
+});
+
+describe('convertGrainData', () => {
+  const common = {
+    title: 'Capitales',
+    max_score: 2,
+    statement: '<p>Quelle est la capitale ?</p>',
+    answer_hint: 'Une ville',
+    answer_explanation: 'Paris',
+  };
+  const qcm: GrainData = {
+    ...common,
+    custom_data: {
+      correct_answer_list: [
+        { text: 'Paris', isChecked: true },
+        { text: 'Lyon', isChecked: false },
+        { text: '', isChecked: false },
+      ],
+      no_error_allowed: true,
+      multipleAnswers: false,
+    },
+  };
+
+  it('garde les champs communs à toute question', () => {
+    const { data } = convertGrainData(GRAIN.QCM, GRAIN.MULTIPLE_ANSWERS, qcm);
+    expect(data).toMatchObject(common);
+  });
+
+  it("QCM → réponses multiples : les textes restent, la coche est perdue", () => {
+    const { data, lost } = convertGrainData(GRAIN.QCM, GRAIN.MULTIPLE_ANSWERS, qcm);
+    expect(data.custom_data?.correct_answer_list).toEqual([{ text: 'Paris' }, { text: 'Lyon' }]);
+    expect(data.custom_data?.no_error_allowed).toBe(true);
+    expect(lost).toBe(true);
+  });
+
+  it('réponses multiples → QCM : rien de coché, rien de perdu', () => {
+    const { data, lost } = convertGrainData(GRAIN.MULTIPLE_ANSWERS, GRAIN.QCM, {
+      custom_data: { correct_answer_list: [{ text: 'a' }, { text: 'b' }] },
+    });
+    expect(data.custom_data?.correct_answer_list).toEqual([
+      { text: 'a', isChecked: false },
+      { text: 'b', isChecked: false },
+    ]);
+    expect(data.custom_data?.multipleAnswers).toBe(false);
+    expect(lost).toBe(false);
+  });
+
+  it('réponse simple → QCM : la réponse devient la proposition cochée', () => {
+    const { data, lost } = convertGrainData(GRAIN.SIMPLE_ANSWER, GRAIN.QCM, {
+      custom_data: { correct_answer: 'Paris' },
+    });
+    expect(data.custom_data?.correct_answer_list).toEqual([{ text: 'Paris', isChecked: true }]);
+    expect(lost).toBe(false);
+  });
+
+  it('QCM → réponse simple : la réponse cochée, les autres perdues', () => {
+    const { data, lost } = convertGrainData(GRAIN.QCM, GRAIN.SIMPLE_ANSWER, qcm);
+    expect(data.custom_data).toEqual({ correct_answer: 'Paris' });
+    expect(lost).toBe(true);
+  });
+
+  it("association → ordre → association : la colonne droite ne survit pas à l'aller", () => {
+    const association: GrainData = {
+      custom_data: {
+        correct_answer_list: [
+          { text_left: 'chat', text_right: 'cat' },
+          { text_left: 'chien', text_right: 'dog' },
+        ],
+      },
+    };
+    const order = convertGrainData(GRAIN.ASSOCIATION, GRAIN.ORDER_BY, association);
+    expect(order.lost).toBe(true);
+    expect(order.data.custom_data?.correct_answer_list).toEqual([
+      { text: 'chat', order_by: 1 },
+      { text: 'chien', order_by: 2 },
+    ]);
+    const back = convertGrainData(GRAIN.ORDER_BY, GRAIN.ASSOCIATION, order.data);
+    expect(back.data.custom_data?.correct_answer_list).toEqual([
+      { text_left: 'chat', text_right: '' },
+      { text_left: 'chien', text_right: '' },
+    ]);
+    expect(back.data.custom_data?.show_left_column).toBe(true);
+  });
+
+  it("mise en ordre : lue dans l'ordre attendu, pas dans celui du tableau", () => {
+    const { data } = convertGrainData(GRAIN.ORDER_BY, GRAIN.MULTIPLE_ANSWERS, {
+      custom_data: {
+        correct_answer_list: [
+          { text: 'deux', order_by: 2 },
+          { text: 'un', order_by: 1 },
+        ],
+      },
+    });
+    expect(data.custom_data?.correct_answer_list).toEqual([{ text: 'un' }, { text: 'deux' }]);
+  });
+
+  it("question ↔ énoncé : l'énoncé change de place", () => {
+    const toStatement = convertGrainData(GRAIN.OPEN_ANSWER, GRAIN.STATEMENT, common);
+    expect(toStatement.data.statement).toBeUndefined();
+    expect(toStatement.data.custom_data?.statement).toBe(common.statement);
+    expect(toStatement.lost).toBe(false);
+    const back = convertGrainData(GRAIN.STATEMENT, GRAIN.SIMPLE_ANSWER, toStatement.data);
+    expect(back.data.statement).toBe(common.statement);
+    expect(back.data.custom_data).toEqual({ correct_answer: '' });
+  });
+
+  it('les zones et le corrigé d\'une réponse ouverte sont signalés perdus', () => {
+    expect(
+      convertGrainData(GRAIN.TEXT_TO_FILL, GRAIN.QCM, {
+        custom_data: { zones: [{ answer: 'x' }], options: [] },
+      }).lost,
+    ).toBe(true);
+    expect(
+      convertGrainData(GRAIN.OPEN_ANSWER, GRAIN.QCM, { custom_data: { model_answer: '<p>x</p>' } })
+        .lost,
+    ).toBe(true);
+    const toZones = convertGrainData(GRAIN.QCM, GRAIN.TEXT_TO_FILL, qcm);
+    expect(toZones.lost).toBe(true);
+    expect(toZones.data.custom_data).toEqual(defaultCustomData(GRAIN.TEXT_TO_FILL));
   });
 });

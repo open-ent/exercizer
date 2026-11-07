@@ -1,6 +1,6 @@
 import { useTranslation } from 'react-i18next';
 
-import { preferredRank } from '../grains';
+import { GRAIN, preferredRank } from '../grains';
 import { GrainType } from '../types';
 import { GrainTypeIcon } from './GrainTypeIcon';
 
@@ -12,18 +12,30 @@ import { GrainTypeIcon } from './GrainTypeIcon';
  *
  * Chaque choix est un BOUTON, pas une tuile cliquable : on parcourt donc la grille au clavier, ce
  * que l'ancienne IHM ne permettait pas.
+ *
+ * Sert aussi à CHANGER le type d'un grain déjà décidé (`currentTypeId`) : on y retire le type
+ * actuel et le SCORM (un paquet se dépose, une question ne s'y convertit pas), et on y ajoute
+ * l'énoncé, qu'une question peut redevenir.
  */
 export function GrainTypePicker({
   grainTypes,
+  currentTypeId,
   onPick,
 }: {
   grainTypes: GrainType[];
+  currentTypeId?: number;
   onPick: (grainTypeId: number) => void;
 }) {
   const { t } = useTranslation(['exercizer', 'common']);
 
   const choices = grainTypes
-    .filter((type) => type.is_in_list)
+    .filter((type) =>
+      currentTypeId === undefined
+        ? type.is_in_list
+        : (type.is_in_list || type.id === GRAIN.STATEMENT) &&
+          type.id !== currentTypeId &&
+          type.id !== GRAIN.SCORM,
+    )
     .sort((a, b) => preferredRank(a.id) - preferredRank(b.id));
 
   return (

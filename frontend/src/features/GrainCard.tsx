@@ -1,8 +1,12 @@
-import { Alert, Button, FormControl, Input, Label, TextArea } from '@open-ent/react';
+import { Alert, Button, FormControl, Input, Label, Modal, TextArea } from '@open-ent/react';
+import { useId, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
+import { ConfirmModal } from '../components/ConfirmModal';
 import {
+  convertGrainData,
   GRAIN,
+  isScorm,
   isZoneType,
   isQuestion,
   isUndecided,
@@ -28,6 +32,8 @@ export interface GrainCardProps {
   onChange: (grain: Grain) => void;
   /** L'enseignant a choisi le type d'un grain neuf : enregistré tout de suite. */
   onPickType: (grain: Grain, grainTypeId: number) => void;
+  /** L'enseignant change le type d'un grain déjà décidé : contenu converti, enregistré tout de suite. */
+  onChangeType: (grain: Grain, grainTypeId: number) => void;
   onDuplicate: (grain: Grain) => void;
   onRemove: (grain: Grain) => void;
   /**
@@ -54,6 +60,7 @@ export function GrainCard({
   grainTypes,
   onChange,
   onPickType,
+  onChangeType,
   onDuplicate,
   onRemove,
   sectionTargets,
@@ -62,6 +69,21 @@ export function GrainCard({
   const { t } = useTranslation(['exercizer', 'common']);
   const type = grainTypes.find((item) => item.id === grain.grain_type_id);
   const typeName = type ? t(type.public_name) : '';
+  const changeTypeId = useId();
+  const [choosingType, setChoosingType] = useState(false);
+  /** Type choisi dont la conversion perdrait du contenu : en attente de confirmation. */
+  const [lossyTypeId, setLossyTypeId] = useState<number | null>(null);
+  // Un paquet SCORM ne se convertit pas, et un grain illisible ne se réécrit pas.
+  const canChangeType = !isScorm(grain.grain_type_id) && !grain.unreadable;
+
+  const chooseType = (grainTypeId: number) => {
+    setChoosingType(false);
+    if (convertGrainData(grain.grain_type_id, grainTypeId, grain.grain_data).lost) {
+      setLossyTypeId(grainTypeId);
+    } else {
+      onChangeType(grain, grainTypeId);
+    }
+  };
 
   const patchData = (patch: Partial<GrainData>) =>
     onChange({ ...grain, grain_data: { ...grain.grain_data, ...patch } });
@@ -89,6 +111,17 @@ export function GrainCard({
           {/* Le numéro ne compte que les QUESTIONS : intercaler un énoncé ne décale rien. */}
           {isQuestion(grain.grain_type_id) && (
             <small className="text-muted">{questionNumber(grain, grains)}</small>
+          )}
+          {canChangeType && (
+            <Button
+              className="ms-auto"
+              color="tertiary"
+              variant="ghost"
+              size="sm"
+              onClick={() => setChoosingType(true)}
+            >
+              {t('exercizer.grain.type.change')}
+            </Button>
           )}
         </header>
       )}
@@ -292,6 +325,34 @@ export function GrainCard({
           {t('exercizer.remove')}
         </Button>
       </footer>
+
+      {choosingType && (
+        <Modal id={changeTypeId} isOpen onModalClose={() => setChoosingType(false)} size="lg" scrollable>
+          <Modal.Header onModalClose={() => setChoosingType(false)}>
+            {t('exercizer.grain.type.change.title')}
+          </Modal.Header>
+          <Modal.Body>
+            <GrainTypePicker
+              grainTypes={grainTypes}
+              currentTypeId={grain.grain_type_id}
+              onPick={chooseType}
+            />
+          </Modal.Body>
+        </Modal>
+      )}
+      {lossyTypeId !== null && (
+        <ConfirmModal
+          title={t('exercizer.grain.type.change.title')}
+          confirmLabel={t('exercizer.grain.type.change.confirm')}
+          onClose={() => setLossyTypeId(null)}
+          onConfirm={() => {
+            onChangeType(grain, lossyTypeId);
+            setLossyTypeId(null);
+          }}
+        >
+          <p>{t('exercizer.grain.type.change.lost')}</p>
+        </ConfirmModal>
+      )}
     </article>
   );
 }

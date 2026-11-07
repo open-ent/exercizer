@@ -37,6 +37,7 @@ import {
 import {
   byOrder,
   cleanGrainData,
+  convertGrainData,
   defaultGrainData,
   GRAIN,
   moveGrain,
@@ -303,6 +304,27 @@ export function SubjectEditor() {
     await saveGrain(next);
   };
 
+  /**
+   * Changement du type d'un grain déjà décidé : ce qui peut l'être est repris (cf.
+   * `convertGrainData`), et c'est enregistré tout de suite, comme le choix initial.
+   *
+   * ⚠ Une frappe encore en attente de ce grain partirait APRÈS, avec l'ancien type, et défairait
+   * le changement : on vide d'abord l'enregistrement différé.
+   */
+  const changeType = async (grain: Grain, grainTypeId: number) => {
+    await grainSave.flush().catch(() => undefined);
+    // Relu dans le cache : la liste a pu bouger pendant le vidage.
+    const current = queryClient.getQueryData<Grain[]>(grainsKey) ?? grains;
+    const latest = current.find((item) => item.id === grain.id) ?? grain;
+    const next: Grain = {
+      ...latest,
+      grain_type_id: grainTypeId,
+      grain_data: convertGrainData(latest.grain_type_id, grainTypeId, latest.grain_data).data,
+    };
+    setGrains(current.map((item) => (item.id === grain.id ? next : item)));
+    await saveGrain(next);
+  };
+
   // ── Sections ───────────────────────────────────────────────────────────────
 
   /**
@@ -395,6 +417,7 @@ export function SubjectEditor() {
         grainTypes={grainTypes}
         onChange={onChange}
         onPickType={pickType}
+        onChangeType={changeType}
         onDuplicate={duplicate.mutate}
         onRemove={setToRemove}
         sectionTargets={sectionTargets}

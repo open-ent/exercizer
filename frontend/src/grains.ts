@@ -339,3 +339,112 @@ export function grainDisplayName(grain: Grain, publicName: string): string {
   const title = grain.grain_data?.title;
   return title && title.length > 0 ? title : publicName;
 }
+
+/** Les types dont la réponse est une LISTE (`correct_answer_list`) : multiples, QCM, association, ordre. */
+const LIST_TYPES: readonly number[] = [
+  GRAIN.MULTIPLE_ANSWERS,
+  GRAIN.QCM,
+  GRAIN.ASSOCIATION,
+  GRAIN.ORDER_BY,
+];
+
+/** Une réponse ramenée à la forme commune des types à réponses, le temps d'un changement de type. */
+interface PortableAnswer {
+  text: string;
+  /** Réponse attendue : coche du QCM, ou réponse d'un type où toutes sont attendues. */
+  checked: boolean;
+  /** Colonne de droite d'une association, qu'aucun autre type ne sait porter. */
+  right?: string;
+}
+
+function portableAnswers(grainTypeId: number, custom: GrainCustomData): PortableAnswer[] {
+  if (grainTypeId === GRAIN.SIMPLE_ANSWER) {
+    return custom.correct_answer ? [{ text: custom.correct_answer, checked: true }] : [];
+  }
+  if (!LIST_TYPES.includes(grainTypeId)) return [];
+  const answers = custom.correct_answer_list ?? [];
+  if (grainTypeId === GRAIN.ASSOCIATION) {
+    return answers
+      .filter((answer) => answer.text_left || answer.text_right)
+      .map((answer) =>
+        answer.text_left
+          ? { text: answer.text_left, checked: true, right: answer.text_right ?? '' }
+          : { text: answer.text_right ?? '', checked: true },
+      );
+  }
+  // Une mise en ordre se lit dans l'ordre attendu, pas dans celui du tableau.
+  const ordered =
+    grainTypeId === GRAIN.ORDER_BY
+      ? [...answers].sort((a, b) => (a.order_by ?? 0) - (b.order_by ?? 0))
+      : answers;
+  return ordered
+    .filter((answer) => !!answer.text)
+    .map((answer) => ({
+      text: answer.text!,
+      checked: grainTypeId === GRAIN.QCM ? !!answer.isChecked : true,
+    }));
+}
+
+/**
+ * Le contenu d'un grain dont l'enseignant change le type — sans tout lui faire ressaisir.
+ *
+ * Le titre, le barème, l'énoncé, l'aide, l'explication et les documents sont communs à toutes les
+ * questions : ils restent. Les réponses passent d'un type à liste à l'autre (et depuis ou vers une
+ * réponse simple) autant que le type d'arrivée sait les porter. Le reste — zones, réponse de départ
+ * et corrigé d'une réponse ouverte — n'a pas d'équivalent : on repart du contenu d'un grain neuf.
+ *
+ * `lost` dit si quelque chose de propre à l'ancien type ne survit pas (une réponse, la coche d'un
+ * QCM, la colonne droite d'une association, une zone…) : l'éditeur demande alors confirmation.
+ */
+export function convertGrainData(
+  fromTypeId: number,
+  toTypeId: number,
+  data: GrainData,
+): { data: GrainData; lost: boolean } {
+  const custom = data.custom_data ?? {};
+  const answers = portableAnswers(fromTypeId, custom);
+  const fromQcmWithChecks = fromTypeId === GRAIN.QCM && answers.some((answer) => answer.checked);
+  const hasRight = answers.some((answer) => !!answer.right);
+
+  let lost =
+    (fromTypeId === GRAIN.OPEN_ANSWER && !!(custom.starting_answer || custom.model_answer)) ||
+    (isZoneType(fromTypeId) && ((custom.zones?.length ?? 0) > 0 || (custom.options?.length ?? 0) > 0));
+
+  // L'énoncé d'un grain de type 3 vit dans `custom_data`, celui d'une question à plat.
+  const common: GrainData = { ...data };
+  delete common.statement;
+  const statement = fromTypeId === GRAIN.STATEMENT ? statementOf(data) : (data.statement ?? '');
+
+  let next: GrainCustomData = defaultCustomData(toTypeId);
+  if (toTypeId === GRAIN.SIMPLE_ANSWER) {
+    const expected = answers.find((answer) => answer.checked) ?? answers[0];
+    if (expected) next = { correct_answer: expected.text };
+    lost ||= answers.length > 1 || hasRight;
+  } else if (LIST_TYPES.includes(toTypeId) && answers.length > 0) {
+    const keepsChecks = fromTypeId === GRAIN.QCM || fromTypeId === GRAIN.SIMPLE_ANSWER;
+    const list: GrainAnswer[] =
+      toTypeId === GRAIN.QCM
+        ? answers.map((answer) => ({ text: answer.text, isChecked: keepsChecks && answer.checked }))
+        : toTypeId === GRAIN.ASSOCIATION
+          ? answers.map((answer) => ({ text_left: answer.text, text_right: answer.right ?? '' }))
+          : toTypeId === GRAIN.ORDER_BY
+            ? renumberOrderAnswers(answers.map((answer) => ({ text: answer.text })))
+            : answers.map((answer) => ({ text: answer.text }));
+    next = {
+      ...next,
+      correct_answer_list: list,
+      no_error_allowed: !!custom.no_error_allowed,
+      ...(toTypeId === GRAIN.QCM && {
+        multipleAnswers: list.filter((answer) => answer.isChecked).length > 1,
+      }),
+    };
+    lost ||= (fromQcmWithChecks && toTypeId !== GRAIN.QCM) || (hasRight && toTypeId !== GRAIN.ASSOCIATION);
+  } else {
+    lost ||= answers.length > 0;
+  }
+
+  if (toTypeId === GRAIN.STATEMENT) {
+    return { data: { ...common, custom_data: { ...next, statement } }, lost };
+  }
+  return { data: { ...common, statement, custom_data: next }, lost };
+}
