@@ -30,9 +30,15 @@ export function useDebouncedSave<T>(
   failed: boolean;
   /** Renvoie ce qui a échoué ; relance l'erreur si ça échoue encore. */
   retry: () => Promise<void>;
+  /**
+   * Abandonne ce qui est en attente ou en échec, sans l'envoyer, puis attend la fin de ce qui est
+   * déjà parti — « Annuler les modifications » ne doit pas être doublé par une frappe en vol.
+   */
+  cancel: () => Promise<void>;
 } {
   const timers = useRef(new Map<string | number, number>());
   const values = useRef(new Map<string | number, T>());
+  const inflight = useRef(new Set<Promise<unknown>>());
   const [pending, setPending] = useState(false);
   // Valeurs dont l'enregistrement a échoué, gardées pour `retry`.
   const failures = useRef(new Map<string | number, T>());
@@ -48,8 +54,10 @@ export function useDebouncedSave<T>(
     timers.current.delete(key);
     setPending(timers.current.size > 0);
     if (value === undefined) return;
+    const saving = saveRef.current(value);
+    inflight.current.add(saving);
     try {
-      await saveRef.current(value);
+      await saving;
       failures.current.delete(key);
       setFailed(failures.current.size > 0);
     } catch (error) {
@@ -57,6 +65,8 @@ export function useDebouncedSave<T>(
       if (!values.current.has(key)) failures.current.set(key, value);
       setFailed(failures.current.size > 0);
       throw error;
+    } finally {
+      inflight.current.delete(saving);
     }
   }, []);
 
@@ -92,6 +102,16 @@ export function useDebouncedSave<T>(
     await Promise.all(entries.map(([key]) => run(key)));
   }, [run]);
 
+  const cancel = useCallback(async () => {
+    for (const timer of timers.current.values()) window.clearTimeout(timer);
+    timers.current.clear();
+    values.current.clear();
+    failures.current.clear();
+    setPending(false);
+    setFailed(false);
+    await Promise.allSettled([...inflight.current]);
+  }, []);
+
   // Fermer l'onglet avec des modifications non enregistrées (en attente ou échouées) : le navigateur demande confirmation.
   useEffect(() => {
     if (!pending && !failed) return;
@@ -119,7 +139,7 @@ export function useDebouncedSave<T>(
     };
   }, []);
 
-  return { schedule, flush, pending, failed, retry };
+  return { schedule, flush, pending, failed, retry, cancel };
 }
 
 export default useDebouncedSave;

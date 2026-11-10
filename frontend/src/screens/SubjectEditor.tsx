@@ -1,7 +1,7 @@
 import { Alert, Button, Checkbox, EmptyScreen, Heading, IconButton, LoadingScreen } from '@open-ent/react';
 import { IconEdit } from '@open-ent/react/icons';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 
@@ -25,6 +25,7 @@ import { ConfirmModal } from '../components/ConfirmModal';
 import { SubjectPropertiesDialog } from '../components/SubjectDialogs';
 import { GrainCard } from '../features/GrainCard';
 import { GrainOrganizer } from '../features/GrainOrganizer';
+import { RevertSummary } from '../features/RevertSummary';
 import { SectionHeader } from '../features/SectionHeader';
 import { ExternalResources, ReuseGrains } from '../features/SubjectEditorPanels';
 import { SaveStatus } from '../features/SaveStatus';
@@ -45,6 +46,7 @@ import {
   sanitizeScore,
 } from '../grains';
 import { useDebouncedSave } from '../hooks/useDebouncedSave';
+import { diffSnapshot, EditorSnapshot, isEmptyDiff, revertToSnapshot } from '../revert';
 import {
   EditorGroup,
   flattenGroups,
@@ -65,7 +67,9 @@ import { Grain, Section } from '../types';
  *
  * Il n'y a pas de bouton « Enregistrer » : chaque grain part de lui-même peu après la frappe,
  * comme dans l'IHM AngularJS. Le bouton « Enregistrer et quitter » ne fait donc que CHASSER ce
- * qui reste en attente avant de revenir au tableau de bord.
+ * qui reste en attente avant de revenir au tableau de bord. « Annuler les modifications », lui,
+ * remet le sujet tel qu'il était à l'ouverture de l'éditeur, après en avoir énuméré les
+ * changements (cf. `revert.ts`).
  *
  * Sujet à SECTIONS (sql/039, sur le modèle Chapitre → Activités de LearnHouse) : le sommaire de
  * gauche devient un arbre sections → grains, et l'éditeur n'ouvre qu'une section à la fois (ou
@@ -91,6 +95,10 @@ export function SubjectEditor() {
   const [removeWithGrains, setRemoveWithGrains] = useState(false);
   const [scheduling, setScheduling] = useState(false);
   const [editingProperties, setEditingProperties] = useState(false);
+  const [confirmingRevert, setConfirmingRevert] = useState(false);
+  const [revertError, setRevertError] = useState(false);
+  // Le sujet tel qu'à l'ouverture de l'éditeur, pour « Annuler les modifications » (cf. `revert.ts`).
+  const [snapshot, setSnapshot] = useState<(EditorSnapshot & { subjectId: number }) | null>(null);
 
   const grainsKey = useMemo(() => ['exercizer', 'grains', subjectId], [subjectId]);
   const sectionsKey = useMemo(() => ['exercizer', 'sections', subjectId], [subjectId]);
@@ -109,6 +117,9 @@ export function SubjectEditor() {
     queryKey: grainsKey,
     queryFn: () => getGrains(subject!),
     enabled: !!subject,
+    // Toujours relu à l'ouverture, même frais en cache : c'est sur cette lecture que se prend
+    // l'image d'ouverture d'« Annuler les modifications ».
+    refetchOnMount: 'always',
   });
 
   // Les sujets de la bibliothèque n'ont pas de route de sections : ils restent à plat.
@@ -116,6 +127,7 @@ export function SubjectEditor() {
     queryKey: sectionsKey,
     queryFn: () => getSections(subjectId),
     enabled: !!subject && !subject.is_library_subject,
+    refetchOnMount: 'always',
   });
 
   /**
@@ -127,6 +139,17 @@ export function SubjectEditor() {
   const sections = useMemo(() => sectionsQuery.data ?? [], [sectionsQuery.data]);
   const withSections = sections.length > 0;
   const groups = useMemo(() => groupBySection(grains, sections), [grains, sections]);
+
+  // L'image d'ouverture se prend sur la PREMIÈRE lecture du serveur, pas sur le cache d'une visite
+  // précédente qu'elle va remplacer.
+  const loaded =
+    !!subject &&
+    grainsQuery.isFetchedAfterMount &&
+    grainsQuery.isSuccess &&
+    (subject.is_library_subject || (sectionsQuery.isFetchedAfterMount && sectionsQuery.isSuccess));
+  useEffect(() => {
+    if (loaded && snapshot?.subjectId !== subjectId) setSnapshot({ subjectId, grains, sections });
+  }, [loaded, snapshot, subjectId, grains, sections]);
 
   const setGrains = useCallback(
     (next: Grain[]) => queryClient.setQueryData(grainsKey, next),
@@ -389,6 +412,49 @@ export function SubjectEditor() {
     navigate('/dashboard/teacher');
   };
 
+  const openingState = snapshot?.subjectId === subjectId ? snapshot : null;
+  const changes = useMemo(
+    () => (openingState ? diffSnapshot(openingState, grains, sections) : null),
+    [openingState, grains, sections],
+  );
+
+  const revert = useMutation({
+    mutationFn: async () => {
+      // Plus rien ne doit partir derrière la restauration : on abandonne l'attente, puis on relit le
+      // serveur — c'est lui qu'on rétablit, pas l'écran (une frappe revenue à l'identique avant
+      // l'envoi laisserait sinon en base la version intermédiaire).
+      await Promise.all([grainSave.cancel(), sectionSave.cancel()]);
+      await refresh();
+      await revertToSnapshot(
+        { createGrain, updateGrain, removeGrains, createSection, updateSection, removeSection, saveStructure },
+        subjectId,
+        openingState!,
+        queryClient.getQueryData<Grain[]>(grainsKey) ?? [],
+        queryClient.getQueryData<Section[]>(sectionsKey) ?? [],
+      );
+    },
+    onSuccess: async () => {
+      await Promise.all([refresh(), queryClient.invalidateQueries({ queryKey: ['exercizer', 'subjects'] })]);
+      navigate('/dashboard/teacher');
+    },
+    // Restauration partielle : on montre le sujet tel qu'il est, et « Annuler les modifications »
+    // reste là pour finir le travail (la différence est recalculée).
+    onError: async () => {
+      setConfirmingRevert(false);
+      setRevertError(true);
+      await refresh();
+    },
+  });
+
+  const discardChanges = async () => {
+    if (changes && !isEmptyDiff(changes)) {
+      setConfirmingRevert(true);
+      return;
+    }
+    await Promise.all([grainSave.cancel(), sectionSave.cancel()]);
+    navigate('/dashboard/teacher');
+  };
+
   if (subjectsQuery.isLoading || typesQuery.isLoading) {
     return <LoadingScreen position={false} />;
   }
@@ -436,6 +502,11 @@ export function SubjectEditor() {
           {t('exercizer.error')}
         </Alert>
       )}
+      {revertError && (
+        <Alert type="danger" isDismissible onClose={() => setRevertError(false)} className="mb-16">
+          {t('exercizer.revert.error')}
+        </Alert>
+      )}
       <div className="d-flex flex-wrap align-items-center justify-content-between gap-16 mb-24">
         <div className="d-flex align-items-center gap-8">
           <Heading level="h2" headingStyle="h4" className="m-0">
@@ -460,6 +531,16 @@ export function SubjectEditor() {
             onClick={() => navigate(`/subject/copy/preview/perform/${subject.id}/`)}
           >
             {t('exercizer.preview')}
+          </Button>
+          {/* Tout est déjà enregistré : annuler, c'est revenir au sujet tel qu'à l'ouverture. */}
+          <Button
+            color="tertiary"
+            variant="ghost"
+            disabled={!openingState}
+            isLoading={revert.isPending}
+            onClick={discardChanges}
+          >
+            {t('exercizer.revert')}
           </Button>
           <Button color="primary" variant="outline" onClick={leave}>
             {t('exercizer.back.subject')}
@@ -618,6 +699,26 @@ export function SubjectEditor() {
             navigate(`/dashboard/teacher/correction/${scheduledId}`);
           }}
         />
+      )}
+
+      {confirmingRevert && changes && openingState && (
+        <ConfirmModal
+          title={t('exercizer.revert')}
+          confirmLabel={t('exercizer.revert')}
+          cancelLabel={t('exercizer.revert.keep')}
+          isLoading={revert.isPending}
+          onClose={() => setConfirmingRevert(false)}
+          onConfirm={() => revert.mutate()}
+        >
+          <RevertSummary
+            diff={changes}
+            grainsBefore={openingState.grains}
+            grainsNow={grains}
+            sectionsBefore={openingState.sections}
+            sectionsNow={sections}
+            grainTypes={grainTypes}
+          />
+        </ConfirmModal>
       )}
 
       {toRemove && (

@@ -11,6 +11,7 @@ import { useTranslation } from 'react-i18next';
 export function ConfirmModal({
   title,
   confirmLabel,
+  cancelLabel,
   isLoading,
   children,
   onConfirm,
@@ -18,6 +19,8 @@ export function ConfirmModal({
 }: {
   title: string;
   confirmLabel?: string;
+  /** Quand « Annuler » prêterait à confusion avec l'action elle-même. */
+  cancelLabel?: string;
   isLoading?: boolean;
   children: ReactNode;
   onConfirm: () => void;
@@ -31,7 +34,7 @@ export function ConfirmModal({
       <Modal.Body>{children}</Modal.Body>
       <Modal.Footer>
         <Button color="tertiary" variant="ghost" onClick={onClose}>
-          {t('exercizer.cancel')}
+          {cancelLabel ?? t('exercizer.cancel')}
         </Button>
         <Button color="danger" variant="filled" isLoading={isLoading} onClick={onConfirm}>
           {confirmLabel ?? t('exercizer.remove')}
