@@ -9,9 +9,10 @@ export class CompareStringHelper {
         var result = false;
         
         if (typeof string1 !=='undefined' && typeof string2 !== 'undefined' && string1 && string2) {
+            // typographic apostrophes count as the keyboard one (same rule as compareAnswers in frontend/src/correction.ts);
             // remove all space and zero-width characters
-            string1 = latinise(string1).replace(/[\u200B\u200C\s]/g, '').toLowerCase();
-            string2 = latinise(string2).replace(/[\u200B\u200C\s]/g, '').toLowerCase();
+            string1 = latinise(string1).replace(/[\u2019\u2018\u02BC]/g, "'").replace(/[\u200B\u200C\s]/g, '').toLowerCase();
+            string2 = latinise(string2).replace(/[\u2019\u2018\u02BC]/g, "'").replace(/[\u200B\u200C\s]/g, '').toLowerCase();
            
             result = string1 === string2;
         }

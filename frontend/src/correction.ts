@@ -16,6 +16,9 @@ import { GRAIN, sanitizeScore } from './grains';
 import { latinise } from './latinise';
 import { GrainAnswer, GrainCustomCopyData, GrainCustomData, GrainZone } from './types';
 
+/** Les apostrophes typographiques, comptées comme l'apostrophe du clavier. */
+const APOSTROPHES = /[’‘ʼ]/g;
+
 /**
  * Deux réponses sont-elles la même ? Casse, espaces, caractères de largeur nulle et caractères
  * latins étendus sont ignorés — `CompareStringHelper.compare`.
@@ -23,11 +26,17 @@ import { GrainAnswer, GrainCustomCopyData, GrainCustomData, GrainZone } from './
  * ⚠ Une chaîne VIDE (ou absente) ne vaut jamais une autre, pas même une autre chaîne vide : c'est
  * le `string1 && string2` de l'original. Une question sans réponse attendue est donc toujours
  * comptée fausse.
+ *
+ * Écart volontaire avec l'original : les apostrophes typographiques (’ ‘ ʼ) valent l'apostrophe du
+ * clavier ('). Sans cela, « qu’il » attendu refusait « qu'il » tapé au clavier, et l'inverse sur un
+ * téléphone qui tape ’ de lui-même. `CompareStringHelper` de l'IHM AngularJS fait la même chose,
+ * pour que la note ne dépende pas de l'interface.
  */
 export function compareAnswers(a: string | null | undefined, b: string | null | undefined): boolean {
   if (!a || !b) return false;
   const normalise = (value: string) =>
     latinise(value)
+      .replace(APOSTROPHES, "'")
       .replace(/[​‌\s]/g, '')
       .toLowerCase();
   return normalise(a) === normalise(b);

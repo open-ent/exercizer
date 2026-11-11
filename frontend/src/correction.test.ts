@@ -24,6 +24,13 @@ describe('compareAnswers', () => {
     expect(compareAnswers('Ø', 'o')).toBe(true);
   });
 
+  it("compte les apostrophes typographiques comme l'apostrophe du clavier", () => {
+    expect(compareAnswers('qu’il vienne', "qu'il vienne")).toBe(true);
+    expect(compareAnswers("l'altitude", 'l’altitude')).toBe(true);
+    expect(compareAnswers('aujourd‘hui', 'aujourdʼhui')).toBe(true);
+    expect(compareAnswers("qu'il", 'quil')).toBe(false);
+  });
+
   it('ignore les caractères de largeur nulle', () => {
     expect(compareAnswers('Pa​ris', 'Paris')).toBe(true);
   });
