@@ -5,7 +5,7 @@ import { useTranslation } from 'react-i18next';
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
 
 import illuExercizer from '@images/emptyscreen/illu-exercizer.svg';
-import { getGrains, getSubjects, listSubjectFiles } from '../api';
+import { getGrains, getSections, getSubjects, listSubjectFiles } from '../api';
 import { automaticCorrection, AutomaticCorrection, copyScores } from '../correction';
 import { AnswerFields } from '../features/copies/AnswerFields';
 import {
@@ -14,6 +14,7 @@ import {
   GrainCopyStatement,
 } from '../features/copies/GrainCopyHeader';
 import { GrainCopyReview } from '../features/copies/GrainCopyReview';
+import { SectionedReview } from '../features/copies/SectionedReview';
 import { RichTextEditor } from '../features/RichTextEditor';
 import {
   byOrder,
@@ -25,9 +26,19 @@ import {
   sanitizeScore,
   statementOf,
 } from '../grains';
+import { mediaLabels, playableHtml } from '../media';
 import { atLeast, subjectRight } from '../rights';
 import { initialCopyData } from '../schedule';
-import { Grain, GrainCopy, GrainCustomCopyData, GrainScheduled, Subject } from '../types';
+import { groupCopiesBySection } from '../sections';
+import {
+  Grain,
+  GrainCopy,
+  GrainCustomCopyData,
+  GrainScheduled,
+  ScheduledSection,
+  Section,
+  Subject,
+} from '../types';
 import { CopySummary } from './ViewCopy';
 
 /**
@@ -71,6 +82,19 @@ const asReference = (grains: Grain[]): GrainScheduled[] =>
     grain_data: grain.grain_data,
   }));
 
+/**
+ * Les sections du sujet, vues comme des sections distribuées : dans l'aperçu, une copie de grain
+ * pointe vers le grain lui-même (`grain_scheduled_id` = `grain.id`).
+ */
+const asScheduledSections = (sections: Section[], grains: Grain[]): ScheduledSection[] =>
+  sections.map((section) => ({
+    id: section.id,
+    title: section.title,
+    description: section.description,
+    order_by: section.order_by,
+    grain_scheduled_ids: grains.filter((grain) => grain.section_id === section.id).map((grain) => grain.id),
+  }));
+
 /** Ce que l'aperçu de la passation transmet à l'aperçu de la correction. */
 interface PreviewState {
   grainCopies?: GrainCopy[];
@@ -87,10 +111,22 @@ function usePreviewSubject() {
     queryFn: () => getGrains(subject as Subject),
     enabled: !!subject && subject.type !== 'simple',
   });
+  // Même clé que l'éditeur : l'aperçu montre les parties telles qu'on vient de les modifier.
+  // Les sujets de la bibliothèque n'ont pas de route de sections : ils restent à plat.
+  const sectionsQuery = useQuery({
+    queryKey: ['exercizer', 'sections', subjectId],
+    queryFn: () => getSections(subjectId),
+    enabled: !!subject && subject.type !== 'simple' && !subject.is_library_subject,
+  });
+  const grains = useMemo(() => grainsQuery.data ?? [], [grainsQuery.data]);
   return {
     subject,
-    grains: useMemo(() => grainsQuery.data ?? [], [grainsQuery.data]),
-    isLoading: subjectsQuery.isLoading || grainsQuery.isLoading,
+    grains,
+    sections: useMemo(
+      () => asScheduledSections(sectionsQuery.data ?? [], grains),
+      [sectionsQuery.data, grains],
+    ),
+    isLoading: subjectsQuery.isLoading || grainsQuery.isLoading || sectionsQuery.isLoading,
     // Un sujet partagé en LECTURE se regarde, mais ne s'édite pas : pas de retour à l'éditeur.
     canEdit: !!subject && atLeast(subjectRight(subject, user), 'contrib'),
   };
@@ -118,7 +154,7 @@ function Missing() {
 export function PreviewPerformCopy() {
   const { t } = useTranslation(['exercizer', 'common']);
   const navigate = useNavigate();
-  const { subject, grains, isLoading, canEdit } = usePreviewSubject();
+  const { subject, grains, sections, isLoading, canEdit } = usePreviewSubject();
   const [grainCopies, setGrainCopies] = useState<GrainCopy[]>([]);
   const [index, setIndex] = useState(0);
 
@@ -131,6 +167,15 @@ export function PreviewPerformCopy() {
   if (!subject) return <Missing />;
 
   const current = grainCopies[index];
+  const groups = groupCopiesBySection(grainCopies, sections);
+  // Comme la passation en mode question : l'intertitre rappelle la partie, et sa consigne
+  // accompagne la première question de la partie.
+  const currentGroup = current
+    ? groups.find((group) => group.grains.some((item) => item.id === current.id))
+    : undefined;
+  const currentSection = currentGroup?.section ?? null;
+  const showSectionDescription =
+    !!currentSection?.description && currentGroup?.grains[0]?.id === current?.id;
   const onAnswerChange = (next: GrainCustomCopyData) =>
     setGrainCopies((list) =>
       list.map((item) =>
@@ -182,29 +227,63 @@ export function PreviewPerformCopy() {
       ) : (
         <div className="grid gap-24">
           <aside className="g-col-12 g-col-lg-3">
-            <nav aria-label={t('exercizer.rank')}>
-              <ol className="list-unstyled d-flex flex-column gap-4">
-                {grainCopies.map((grainCopy, position) => (
-                  <li key={grainCopy.id}>
+            <nav aria-label={t('exercizer.rank')} className="d-flex flex-column gap-16">
+              {groups.map((group) => (
+                <div key={group.section?.id ?? 'ungrouped'}>
+                  {group.section && (
                     <button
                       type="button"
-                      className={`btn btn-sm w-100 text-start ${
-                        position === index ? 'btn-filled btn-secondary' : 'btn-ghost btn-tertiary'
-                      }`}
-                      aria-current={position === index ? 'step' : undefined}
-                      onClick={() => setIndex(position)}
+                      className="btn btn-ghost btn-tertiary btn-sm w-100 text-start fw-bold"
+                      onClick={() => setIndex(grainCopies.indexOf(group.grains[0]))}
                     >
-                      {isQuestion(grainCopy.grain_type_id)
-                        ? `${copyQuestionNumber(grainCopy, grainCopies)}) ${grainCopy.grain_copy_data.title ?? ''}`
-                        : (grainCopy.grain_copy_data.title ?? '')}
+                      <span className="text-truncate">{group.section.title}</span>
                     </button>
-                  </li>
-                ))}
-              </ol>
+                  )}
+                  <ol
+                    className={`list-unstyled d-flex flex-column gap-4 ${group.section ? 'ps-16' : ''}`}
+                  >
+                    {group.grains.map((grainCopy) => {
+                      const position = grainCopies.indexOf(grainCopy);
+                      return (
+                        <li key={grainCopy.id}>
+                          <button
+                            type="button"
+                            className={`btn btn-sm w-100 text-start ${
+                              position === index
+                                ? 'btn-filled btn-secondary'
+                                : 'btn-ghost btn-tertiary'
+                            }`}
+                            aria-current={position === index ? 'step' : undefined}
+                            onClick={() => setIndex(position)}
+                          >
+                            {isQuestion(grainCopy.grain_type_id)
+                              ? `${copyQuestionNumber(grainCopy, grainCopies)}) ${grainCopy.grain_copy_data.title ?? ''}`
+                              : grainCopy.grain_copy_data.title || t('exercizer.statement')}
+                          </button>
+                        </li>
+                      );
+                    })}
+                  </ol>
+                </div>
+              ))}
             </nav>
           </aside>
 
           <section className="g-col-12 g-col-lg-9">
+            {currentSection && (
+              <header className="mb-16">
+                <Heading level="h3" headingStyle="h5" className="mb-8">
+                  {currentSection.title}
+                </Heading>
+                {showSectionDescription && (
+                  <div
+                    dangerouslySetInnerHTML={{
+                      __html: playableHtml(currentSection.description, mediaLabels(t)),
+                    }}
+                  />
+                )}
+              </header>
+            )}
             <article className="card p-16">
               <GrainCopyHeader grainCopy={current} grainCopies={grainCopies} showHint />
               <GrainCopyStatement grainCopy={current} />
@@ -245,7 +324,7 @@ export function PreviewViewCopy() {
   const { t } = useTranslation(['exercizer', 'common']);
   const navigate = useNavigate();
   const location = useLocation();
-  const { subject, grains, isLoading } = usePreviewSubject();
+  const { subject, grains, sections, isLoading } = usePreviewSubject();
 
   const answered = (location.state as PreviewState | null)?.grainCopies;
   const reference = useMemo(() => asReference(grains), [grains]);
@@ -325,8 +404,10 @@ export function PreviewViewCopy() {
             grainCopies={grainCopies}
             corrections={corrections}
           />
-          <div className="d-flex flex-column gap-24 mt-24">
-            {grainCopies.map((grainCopy) => (
+          <SectionedReview
+            grainCopies={grainCopies}
+            sections={sections}
+            renderGrain={(grainCopy) => (
               <GrainCopyReview
                 key={grainCopy.id}
                 grainCopy={grainCopy}
@@ -336,8 +417,8 @@ export function PreviewViewCopy() {
                 mode="student"
                 alwaysShowCorrection
               />
-            ))}
-          </div>
+            )}
+          />
         </>
       )}
     </div>

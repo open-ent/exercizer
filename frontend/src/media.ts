@@ -11,6 +11,8 @@
  * correction. Ce module rend ces médias jouables, et dit au papier ce qu'il ne peut pas jouer.
  */
 
+import katex from 'katex';
+
 
 /** Le nom accessible des lecteurs, que l'IHM traduit ; le défaut est celui du français. */
 export interface MediaLabels {
@@ -62,8 +64,8 @@ const labelOf = (media: Element, labels: MediaLabels): string =>
   media.tagName === 'AUDIO' ? labels.audio : labels.video;
 
 /**
- * Le HTML prêt à l'affichage hors de l'éditeur : débarrassé de ce qui s'exécute, et ses médias
- * équipés de leur lecteur.
+ * Le HTML prêt à l'affichage hors de l'éditeur : débarrassé de ce qui s'exécute, ses médias
+ * équipés de leur lecteur et ses formules mises en forme.
  *
  * `preload="metadata"` plutôt que le défaut du navigateur : un sujet qui porte dix dictées ne
  * doit pas en télécharger dix avant que l'élève n'en lance une. Un nom accessible est posé sur
@@ -85,7 +87,41 @@ export function playableHtml(
     // Une vidéo déposée en pleine résolution déborderait de la colonne de la question.
     if (media.tagName === 'VIDEO') (media as HTMLElement).style.maxWidth = '100%';
   });
+  renderFormulas(root);
   return root.innerHTML;
+}
+
+/** Même découpage que l'extension Mathematics de l'éditeur : un `$…$` dans un nœud texte. */
+const FORMULA = /\$([^$]*)\$/g;
+
+/**
+ * Les formules restent du texte `$…$` dans le HTML enregistré : l'éditeur du socle les rend à la
+ * volée (KaTeX, sortie MathML, sans feuille de style ni police), on fait de même ici. Comme dans
+ * l'éditeur, rien n'est rendu dans un bloc de code.
+ */
+function renderFormulas(root: HTMLElement): void {
+  const walker = root.ownerDocument.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+  const texts: Text[] = [];
+  while (walker.nextNode()) texts.push(walker.currentNode as Text);
+
+  for (const text of texts) {
+    const value = text.data;
+    if (!value.includes('$') || text.parentElement?.closest('pre, code')) continue;
+    const fragment = root.ownerDocument.createDocumentFragment();
+    let last = 0;
+    for (const match of value.matchAll(FORMULA)) {
+      if (!match[1]) continue;
+      fragment.append(value.slice(last, match.index));
+      const formula = root.ownerDocument.createElement('span');
+      formula.className = 'math-formula';
+      formula.innerHTML = katex.renderToString(match[1], { output: 'mathml', throwOnError: false });
+      fragment.append(formula);
+      last = match.index + match[0].length;
+    }
+    if (last === 0) continue;
+    fragment.append(value.slice(last));
+    text.replaceWith(fragment);
+  }
 }
 
 /**

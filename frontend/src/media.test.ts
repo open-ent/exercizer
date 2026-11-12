@@ -98,3 +98,17 @@ describe('présence d’un média', () => {
     expect(hasMedia(undefined)).toBe(false);
   });
 });
+
+describe('formules d’un énoncé', () => {
+  it('met en forme les `$…$` en MathML, et laisse le texte autour', () => {
+    const html = playableHtml('<p>Calculer <strong>$\\sum_{i=1}^{n} x_i$</strong> pour 3 $ ou 4 $</p>');
+    expect(html).toContain('<strong><span class="math-formula"><span class="katex"><math');
+    expect(html).toContain('<msubsup><mo>∑</mo>');
+    expect(html).toContain('</strong> pour 3 <span class="math-formula">');
+  });
+
+  it('ne lit pas le LaTeX comme du HTML, et ne rend rien dans un bloc de code', () => {
+    expect(playableHtml('<p>$a &lt; b$</p>')).toContain('<mo>&lt;</mo>');
+    expect(playableHtml('<pre><code>$x$</code></pre>')).toBe('<pre><code>$x$</code></pre>');
+  });
+});
