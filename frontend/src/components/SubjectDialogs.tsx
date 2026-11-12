@@ -207,16 +207,9 @@ export function NewSubjectDialog({
     onError: () => setError(t('exercizer.error')),
   });
 
+  // La création assistée d'abord : c'est le parcours par défaut, mis en avant (la première carte).
+  // Le sujet à rendre ferme la marche : il renvoie vers Casier.
   const choices = [
-    {
-      key: 'simple',
-      title: t('exercizer.choose.simple.title'),
-      info: t('exercizer.choose.simple.info'),
-      action: t('exercizer.choose.simple.button'),
-      onClick: () => {
-        window.location.href = '/rack';
-      },
-    },
     ...(canGenerate
       ? [
           {
@@ -228,6 +221,13 @@ export function NewSubjectDialog({
           },
         ]
       : []),
+    {
+      key: 'interactive',
+      title: t('exercizer.choose.interactive.title'),
+      info: t('exercizer.choose.interactive.info'),
+      action: t('exercizer.create'),
+      onClick: () => setStep('subject'),
+    },
     ...(canDigitize
       ? [
           {
@@ -240,11 +240,13 @@ export function NewSubjectDialog({
         ]
       : []),
     {
-      key: 'interactive',
-      title: t('exercizer.choose.interactive.title'),
-      info: t('exercizer.choose.interactive.info'),
-      action: t('exercizer.create'),
-      onClick: () => setStep('subject'),
+      key: 'simple',
+      title: t('exercizer.choose.simple.title'),
+      info: t('exercizer.choose.simple.info'),
+      action: t('exercizer.choose.simple.button'),
+      onClick: () => {
+        window.location.href = '/rack';
+      },
     },
   ];
 
@@ -263,10 +265,12 @@ export function NewSubjectDialog({
         )}
         {step === 'choose' ? (
           <div className="grid gap-16">
-            {choices.map((choice) => (
+            {choices.map((choice, index) => (
               <Card
                 key={choice.key}
-                className={`g-col-12 ${choices.length === 3 ? 'g-col-md-4' : 'g-col-md-6'}`}
+                className={`g-col-12 ${choices.length === 3 ? 'g-col-md-4' : 'g-col-md-6'}${
+                  index === 0 ? ' border-2 border-primary bg-primary-200' : ''
+                }`}
                 isSelectable={false}
                 isClickable={false}
               >
@@ -277,7 +281,11 @@ export function NewSubjectDialog({
                     </Heading>
                     <p className="mb-0">{choice.info}</p>
                     <div>
-                      <Button color="primary" variant="outline" onClick={choice.onClick}>
+                      <Button
+                        color="primary"
+                        variant={index === 0 ? 'filled' : 'outline'}
+                        onClick={choice.onClick}
+                      >
                         {choice.action}
                       </Button>
                     </div>
