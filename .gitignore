@@ -36,3 +36,4 @@ edifice
 !/src/main/resources/public/assets/
 !/src/main/resources/public/template/
 !/src/main/resources/public/ts/
+deployment/catalog-seed
