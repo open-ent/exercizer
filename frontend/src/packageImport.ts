@@ -51,6 +51,40 @@ export interface PackageAnalysis {
   selected?: number;
   levels?: string[];
   disciplines?: string[];
+  /** Images citées par les grains (`src="<id>"`), à déposer dans l'espace documentaire. */
+  assets?: PackageAsset[];
+}
+
+export interface PackageAsset {
+  /** La chaîne qui figure dans le HTML des grains, à remplacer par l'adresse du fichier. */
+  id: string;
+  fileName: string;
+  mimeType: string;
+  /** Contenu en base 64. */
+  data: string;
+}
+
+/** Le contenu d'une image de l'analyse, prêt à afficher ou à déposer. */
+export function assetBlob(asset: PackageAsset): Blob {
+  const binary = atob(asset.data);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+  return new Blob([bytes], { type: asset.mimeType });
+}
+
+/**
+ * Remplace, dans tous les champs des grains, chaque identifiant d'image par son adresse. Les plus
+ * longs d'abord : un identifiant peut en prolonger un autre (`a.png` / `a.png.old`).
+ */
+export function replaceAssetRefs(grains: ImportedGrain[], links: Map<string, string>): ImportedGrain[] {
+  if (links.size === 0) return grains;
+  let json = JSON.stringify(grains);
+  [...links.keys()]
+    .sort((a, b) => b.length - a.length)
+    .forEach((id) => {
+      json = json.split(id).join(links.get(id) ?? '');
+    });
+  return JSON.parse(json) as ImportedGrain[];
 }
 
 /** Un refus du serveur, porteur de sa clé i18n (`exercizer.import.format.unknown`…). */

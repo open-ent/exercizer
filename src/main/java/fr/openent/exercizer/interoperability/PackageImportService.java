@@ -124,12 +124,16 @@ public class PackageImportService {
         CourseFormat format = CourseFormats.detect(file);
         if (format != null) {
             ConversionReport report = new ConversionReport();
-            // Les binaires ne sont pas lus : à ce stade on ne crée que des grains, et le rattachement
-            // des fichiers au sujet n'est pas en place. Les citer serait mentir.
-            ReadOptions options = ReadOptions.DEFAULT.copy().limits(limits).includeBinaries(false);
+            // Les binaires sont lus : les images citées par les énoncés (une archive Moodle les cite
+            // par @@PLUGINFILE@@) partent avec l'analyse, et le navigateur les dépose dans l'espace
+            // documentaire à la création (cf. embedImages). Sans elles, les énoncés arrivaient avec
+            // des images cassées.
+            ReadOptions options = ReadOptions.DEFAULT.copy().limits(limits).includeBinaries(true);
             Course course = CourseFormats.read(file, format, options, report);
             try {
-                return fromCourse(format.id(), format.label(), course, report);
+                Converted converted = fromCourse(format.id(), format.label(), course, report);
+                embedImages(course, converted, report);
+                return converted;
             } finally {
                 course.close();
             }
@@ -153,6 +157,65 @@ public class PackageImportService {
     private Converted fromCourse(String formatId, String label, Course course, ConversionReport report) {
         JsonObject payload = new CourseToSubjectConverter(report).toImportPayload(course);
         return new Converted(formatId, payload, analysis(formatId, label, course, payload, report));
+    }
+
+    /** Une image au-delà ne part pas dans l'analyse : elle est signalée, l'énoncé reste lisible. */
+    private static final long MAX_IMAGE_BYTES = 5L * 1024 * 1024;
+    private static final long MAX_IMAGES_BYTES = 30L * 1024 * 1024;
+
+    /**
+     * Joint à l'analyse les images citées par les grains : {@code assets: [{id, fileName,
+     * mimeType, data}]}, {@code data} en base 64. {@code id} est la chaîne qui figure dans le HTML
+     * des grains ({@code src="<id>"}), à remplacer par l'adresse obtenue au dépôt.
+     */
+    private void embedImages(Course course, Converted converted, ConversionReport report) {
+        if (converted.payload() == null || course.assets().isEmpty()) {
+            return;
+        }
+        String grains = converted.payload().getJsonArray("grains").encode();
+        JsonArray embedded = new JsonArray();
+        long total = 0;
+        int skipped = 0;
+        for (fr.tech.openent.interoperability.model.Asset asset : course.assets().values()) {
+            if (asset.id() == null || !grains.contains(asset.id())) {
+                continue;
+            }
+            String mime = asset.mimeType() == null ? "" : asset.mimeType();
+            if (!mime.startsWith("image/") || asset.content() == null) {
+                skipped++;
+                continue;
+            }
+            try (java.io.InputStream in = asset.content().open()) {
+                java.io.ByteArrayOutputStream out = new java.io.ByteArrayOutputStream();
+                byte[] buffer = new byte[8192];
+                int read;
+                long size = 0;
+                while ((read = in.read(buffer)) > 0) {
+                    size += read;
+                    if (size > MAX_IMAGE_BYTES || total + size > MAX_IMAGES_BYTES) {
+                        throw new IOException("too large");
+                    }
+                    out.write(buffer, 0, read);
+                }
+                total += size;
+                embedded.add(new JsonObject()
+                        .put("id", asset.id())
+                        .put("fileName", asset.fileName())
+                        .put("mimeType", mime)
+                        .put("data", java.util.Base64.getEncoder().encodeToString(out.toByteArray())));
+            } catch (IOException e) {
+                skipped++;
+            }
+        }
+        if (skipped > 0) {
+            report.degraded("exercizer.assets.skipped",
+                    skipped + " fichier(s) cité(s) par les énoncés ne sont pas repris (type autre "
+                            + "qu'image, ou trop volumineux) : ils apparaîtront manquants.", null);
+            converted.analysis().put("fidelity", report.fidelity()).put("notices", notices(report));
+        }
+        if (!embedded.isEmpty()) {
+            converted.analysis().put("assets", embedded);
+        }
     }
 
     private Converted convertOeip(Path file, int item) throws IOException {

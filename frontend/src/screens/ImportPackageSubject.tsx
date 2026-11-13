@@ -24,6 +24,7 @@ import { GRAIN } from '../grains';
 import { allImages, applyImageLinks, ImportedGrain, MoodleXmlError, parseMoodleXml } from '../moodleImport';
 import {
   analysePackage,
+  assetBlob,
   classificationFromCodes,
   ConversionNotice,
   htmlToText,
@@ -33,6 +34,7 @@ import {
   PackageAnalysis,
   PackageImportError,
   previewGrains,
+  replaceAssetRefs,
   sortNotices,
   suggestedTitle,
 } from '../packageImport';
@@ -101,7 +103,9 @@ export function ImportPackageSubject() {
   const [dragging, setDragging] = useState(false);
   const [file, setFile] = useState<File | null>(null);
   const [analysis, setAnalysis] = useState<PackageAnalysis | null>(null);
+  // Les grains montrés (images en liens locaux) et ceux à créer (identifiants d'images).
   const [grains, setGrains] = useState<ImportedGrain[]>([]);
+  const [rawGrains, setRawGrains] = useState<ImportedGrain[]>([]);
   const [showResponses, setShowResponses] = useState(true);
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
@@ -116,7 +120,14 @@ export function ImportPackageSubject() {
   const analyse = useMutation({
     mutationFn: async ({ picked, item }: { picked: File; item: number }) => {
       const result = await analysePackage(picked, item);
-      if (result.format !== 'moodle-xml') return { result, grains: normaliseGrains(result.preview?.grains ?? []) };
+      if (result.format !== 'moodle-xml') {
+        const converted = normaliseGrains(result.preview?.grains ?? []);
+        // Les images citées sont montrées depuis le poste ; elles ne sont déposées qu'à la création.
+        const local = new Map(
+          (result.assets ?? []).map((asset) => [asset.id, URL.createObjectURL(assetBlob(asset))] as const),
+        );
+        return { result, grains: replaceAssetRefs(converted, local), raw: converted };
+      }
       // Banque Moodle XML : l'aperçu et le bilan viennent de l'importeur du navigateur.
       const local = await moodleXmlPreview(picked, truefalse, false);
       const notices: ConversionNotice[] = local.unsupported.map((name) => ({
@@ -132,11 +143,13 @@ export function ImportPackageSubject() {
           counts: { ...result.counts, questions: local.total, grains: local.grains.length },
         } as PackageAnalysis,
         grains: local.grains,
+        raw: local.grains,
       };
     },
-    onSuccess: ({ result, grains: converted }, { picked }) => {
+    onSuccess: ({ result, grains: converted, raw }, { picked }) => {
       setAnalysis(result);
       setGrains(converted);
+      setRawGrains(raw);
       setTitle(suggestedTitle(result, picked.name));
       // La description d'un sujet se saisit en texte : celle d'un paquet peut être du HTML.
       setDescription(htmlToText(result.preview?.subject?.description));
@@ -169,10 +182,24 @@ export function ImportPackageSubject() {
 
   const create = useMutation({
     mutationFn: async () => {
-      const toCreate =
-        analysis?.format === 'moodle-xml'
-          ? (await moodleXmlPreview(file!, truefalse, true)).grains
-          : grains;
+      let toCreate: ImportedGrain[];
+      if (analysis?.format === 'moodle-xml') {
+        toCreate = (await moodleXmlPreview(file!, truefalse, true)).grains;
+      } else {
+        // Chaque image citée est déposée dans l'espace documentaire ; un dépôt qui échoue ne fait
+        // pas échouer l'import, l'image manque simplement (comme pour Moodle XML).
+        const links = new Map<string, string>();
+        await Promise.all(
+          (analysis?.assets ?? []).map(async (asset) => {
+            try {
+              links.set(asset.id, `/workspace/document/${await uploadWorkspaceImage(assetBlob(asset), asset.fileName)}`);
+            } catch {
+              links.set(asset.id, '');
+            }
+          }),
+        );
+        toCreate = replaceAssetRefs(rawGrains, links);
+      }
       const imported = await importSubject(
         { title: title.trim(), description: description || undefined, folder_id: folderId },
         toCreate,
@@ -216,6 +243,7 @@ export function ImportPackageSubject() {
     setFile(null);
     setAnalysis(null);
     setGrains([]);
+    setRawGrains([]);
     setCreated(null);
     setError(null);
   };

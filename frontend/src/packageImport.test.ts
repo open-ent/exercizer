@@ -6,6 +6,7 @@ import {
   htmlToText,
   normaliseGrains,
   previewGrains,
+  replaceAssetRefs,
   sortNotices,
   suggestedTitle,
 } from './packageImport';
@@ -69,5 +70,24 @@ describe('import depuis un autre format', () => {
     expect(grain.grain_data.answer_explanation).toBe('« que » est le COD.');
     expect(htmlToText('<p>Un</p><p>Deux</p>')).toBe('Un\nDeux');
     expect(htmlToText('texte simple')).toBe('texte simple');
+  });
+
+  it('remplace les identifiants d’images par leur adresse, les plus longs d’abord', () => {
+    const [grain] = replaceAssetRefs(
+      [
+        {
+          grain_type_id: 7,
+          order_by: 0,
+          grain_data: {
+            statement: '<img src="moodle/q/1/a.png"><img src="moodle/q/1/a.png.old">',
+          },
+        },
+      ],
+      new Map([
+        ['moodle/q/1/a.png', '/workspace/document/A'],
+        ['moodle/q/1/a.png.old', '/workspace/document/B'],
+      ]),
+    );
+    expect(grain.grain_data.statement).toBe('<img src="/workspace/document/A"><img src="/workspace/document/B">');
   });
 });

@@ -87,16 +87,15 @@ public class CourseToSubjectConverter {
 
     private void appendSection(Section section, List<JsonObject> grains, Course course) {
         // Le titre d'une section n'a pas de porteur propre dans un sujet : il devient un énoncé,
-        // ce qui préserve le découpage visible du cours d'origine.
-        StringBuilder heading = new StringBuilder();
-        if (section.title() != null && !section.title().isEmpty()) {
-            heading.append("<h2>").append(escape(section.title())).append("</h2>");
-        }
-        if (section.summaryHtml() != null && !section.summaryHtml().isEmpty()) {
-            heading.append(section.summaryHtml());
-        }
-        if (heading.length() > 0) {
-            grains.add(statementGrain(section.title(), heading.toString()));
+        // ce qui préserve le découpage visible du cours d'origine. Une section sans vrai nom
+        // (« 0 », « Section 3 » — Moodle numérote la section d'en-tête) n'en produit pas : un grain
+        // « 0 » vide ouvrait le sujet.
+        String title = meaningfulSectionTitle(section.title());
+        String summary = blankToNull(section.summaryHtml());
+        if (summary != null) {
+            grains.add(statementGrain(title, summary));
+        } else if (title != null && !section.activities().isEmpty()) {
+            grains.add(statementGrain(title, "<h2>" + escape(title) + "</h2>"));
         }
 
         for (Activity activity : section.activities()) {
@@ -133,21 +132,34 @@ public class CourseToSubjectConverter {
             return;
         }
 
+        // Le titre du grain s'affiche déjà au-dessus de l'énoncé (résumé, passation, impression) :
+        // le recopier en tête du contenu le montrait deux fois.
+        String title = activityTitle(activity);
         StringBuilder body = new StringBuilder();
-        if (activity.title() != null && !activity.title().isEmpty()) {
-            body.append("<h3>").append(escape(activity.title())).append("</h3>");
+        String content = activity.contentHtml();
+        if (content != null && title != null && isDerivedTitle(activity)) {
+            // Le titre vient de l'intertitre qui ouvre le contenu : le laisser l'afficherait deux
+            // fois, au-dessus de l'énoncé et en tête de celui-ci.
+            java.util.regex.Matcher heading = FIRST_HEADING.matcher(content);
+            if (heading.find() && content.substring(0, heading.start()).trim().isEmpty()
+                    && title.equals(oneLine(fr.openent.exercizer.utils.PlainText.fromHtml(heading.group(1))))) {
+                content = content.substring(heading.end());
+            }
         }
-        if (activity.contentHtml() != null && !activity.contentHtml().isEmpty()) {
-            body.append(activity.contentHtml());
+        if (content != null && !content.trim().isEmpty()) {
+            body.append(content.trim());
         }
         if (activity.type() == ActivityType.URL && activity.url() != null) {
             body.append("<p><a href=\"").append(escapeAttribute(activity.url())).append("\">")
                     .append(escape(activity.url())).append("</a></p>");
         }
 
-        // Un contenu sans question devient un énoncé ; avec des questions, il sert de chapeau.
+        // Un contenu sans question devient un énoncé ; avec des questions, il sert de chapeau. Un
+        // test sans présentation garde son titre comme séparateur.
         if (body.length() > 0) {
-            grains.add(statementGrain(activity.title(), body.toString()));
+            grains.add(statementGrain(title, body.toString()));
+        } else if (title != null && !activity.questions().isEmpty()) {
+            grains.add(statementGrain(title, "<h2>" + escape(title) + "</h2>"));
         }
 
         for (Question question : activity.questions()) {
@@ -320,7 +332,11 @@ public class CourseToSubjectConverter {
         }
 
         JsonArray zones = new JsonArray();
-        boolean withChoices = false;
+        // Un seul type de saisie par grain : liste déroulante si TOUS les trous proposent des
+        // leurres, saisie libre sinon (un cloze Moodle mêle souvent réponse courte et choix ; une
+        // liste d'un seul choix donnerait la réponse). Même règle que l'import Moodle XML du
+        // navigateur.
+        boolean allChoices = true;
         int zoneIndex = 0;
         for (java.util.Map.Entry<Integer, List<Answer>> gap : byGap.entrySet()) {
             String marker = "[[" + gap.getKey() + "]]";
@@ -362,7 +378,7 @@ public class CourseToSubjectConverter {
                                 + "seule « " + plainText(best.textHtml()) + " » est retenue.", question.id());
                 options = new JsonArray().add(plainText(best.textHtml()));
             }
-            withChoices |= hasDistractor;
+            allChoices &= hasDistractor;
             zones.add(new JsonObject()
                     .put("id", zoneIndex)
                     .put("answer", plainText(best.textHtml()))
@@ -382,15 +398,83 @@ public class CourseToSubjectConverter {
                 .put("htmlContent", html)
                 .put("zones", zones)
                 .put("options", new JsonArray())
-                // « list » : le trou propose une liste déroulante, dès qu'un trou porte des
-                // leurres ; sinon l'élève tape la réponse (« text »). Une liste d'un seul choix
-                // donnerait la réponse.
-                .put("answersType", withChoices ? "list" : "text");
+                .put("answersType", allChoices ? "list" : "text");
+        if (!allChoices) {
+            for (int i = 0; i < zones.size(); i++) {
+                zones.getJsonObject(i).put("options", new JsonArray());
+            }
+        }
         JsonObject data = data(question, customData, zones.size());
         // Pour ce type, l'énoncé vit dans custom_data.htmlContent : le laisser aussi dans
         // grain_data.statement l'afficherait deux fois.
         data.remove("statement");
         return grain(GrainType.TEXT_TO_FILL, data);
+    }
+
+    // ------------------------------------------------------------------ titres
+
+    private static final java.util.regex.Pattern NUMBERED_SECTION =
+            java.util.regex.Pattern.compile("^(section|topic|thème|semaine|week)?\\s*\\d*$",
+                    java.util.regex.Pattern.CASE_INSENSITIVE);
+    private static final java.util.regex.Pattern FIRST_HEADING =
+            java.util.regex.Pattern.compile("<h[1-6][^>]*>(.*?)</h[1-6]>",
+                    java.util.regex.Pattern.CASE_INSENSITIVE | java.util.regex.Pattern.DOTALL);
+
+    /** Le nom d'une section, ou {@code null} s'il n'est qu'un numéro attribué par la plateforme. */
+    static String meaningfulSectionTitle(String title) {
+        String value = blankToNull(title);
+        if (value == null || NUMBERED_SECTION.matcher(value.trim()).matches()) {
+            return null;
+        }
+        return value.trim();
+    }
+
+    /**
+     * Le titre d'une activité.
+     *
+     * <p>Une étiquette Moodle ({@code label}) n'a pas de nom propre : Moodle lui en fabrique un avec
+     * le début de son texte, coupé et terminé par « ... » (« Bienvenue !\nVous vous apprêtez à
+     * suivre ce cours ... »), auquel une duplication ajoute « (copie) ». Repris tel quel, ce
+     * titre tronqué remplissait le résumé du sujet. On prend à la place le premier intertitre du
+     * contenu, entier, sinon sa première phrase.</p>
+     */
+    static String activityTitle(Activity activity) {
+        String title = blankToNull(activity.title());
+        if (!isDerivedTitle(activity)) {
+            return title == null ? null : title.trim();
+        }
+        String html = activity.contentHtml();
+        if (html != null) {
+            java.util.regex.Matcher heading = FIRST_HEADING.matcher(html);
+            if (heading.find()) {
+                String text = oneLine(fr.openent.exercizer.utils.PlainText.fromHtml(heading.group(1)));
+                if (!text.isEmpty()) {
+                    return text;
+                }
+            }
+            String text = oneLine(fr.openent.exercizer.utils.PlainText.fromHtml(html));
+            if (!text.isEmpty()) {
+                int end = text.indexOf(". ");
+                String sentence = end > 0 ? text.substring(0, end + 1) : text;
+                return sentence.length() <= 120 ? sentence : sentence.substring(0, 120).replaceAll("\\s+\\S*$", "") + "…";
+            }
+        }
+        return title == null ? null : oneLine(title.replace("...", "").replace("(copie)", ""));
+    }
+
+    /** Le nom de l'activité est-il fabriqué par la plateforme à partir de son texte ? */
+    private static boolean isDerivedTitle(Activity activity) {
+        String title = blankToNull(activity.title());
+        return "label".equals(activity.sourceType())
+                || (title != null && title.replace(" (copie)", "").trim().endsWith("..."));
+    }
+
+    private static String oneLine(String text) {
+        return text == null ? "" : text.replaceAll("\\s+", " ").trim();
+    }
+
+    private static String blankToNull(String value) {
+        return value == null || value.trim().isEmpty() ? null : value;
     }
 
     // ------------------------------------------------------------------ utilitaires

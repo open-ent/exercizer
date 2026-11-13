@@ -273,4 +273,43 @@ public class CourseToSubjectConverterTest {
         assertTrue(payload.getJsonArray("grains").encode().contains("Nitrile"));
         course.close();
     }
+
+    @Test
+    public void une_section_sans_nom_ne_produit_pas_de_grain_et_une_etiquette_garde_son_intertitre() {
+        Course course = new Course().title("Basket");
+        Section header = new Section().id("s0").title("0").order(0);
+        header.addActivity(new Activity().id("l1").type(ActivityType.PAGE).sourceType("label")
+                .title("Bienvenue !\nVous vous apprêtez à suivre ce cours ... (copie)")
+                .contentHtml("<h2><span style=\"color:red\">Bienvenue !</span></h2><p>Vous vous apprêtez à suivre ce cours.</p>"));
+        header.addActivity(new Activity().id("l2").type(ActivityType.PAGE).sourceType("label")
+                .title("Sans intertitre...").contentHtml("<p>Première phrase. Deuxième phrase.</p>"));
+        course.addSection(header);
+        JsonArray grains = new CourseToSubjectConverter(new ConversionReport()).toImportPayload(course).getJsonArray("grains");
+        assertEquals(2, grains.size());
+        JsonObject first = grains.getJsonObject(0).getJsonObject("grain_data");
+        assertEquals("Bienvenue !", first.getString("title"));
+        // L'intertitre devenu titre n'est plus répété en tête de l'énoncé.
+        assertEquals("<p>Vous vous apprêtez à suivre ce cours.</p>",
+                first.getJsonObject("custom_data").getString("statement"));
+        assertEquals("Première phrase.", grains.getJsonObject(1).getJsonObject("grain_data").getString("title"));
+    }
+
+    @Test
+    public void un_cloze_qui_mele_saisie_et_choix_se_saisit() {
+        Course course = new Course().title("Cloze");
+        Section section = new Section().id("s").title("Section 1");
+        Activity quiz = new Activity().id("q").type(ActivityType.QUIZ).title("Test");
+        quiz.addQuestion(new Question().id("c").type(QuestionType.CLOZE).title("Contact")
+                .promptHtml("<p>Une [[1]], puis une [[2]].</p>")
+                .addAnswer(new Answer().gap(1).textHtml("faute").fraction(1d))
+                .addAnswer(new Answer().gap(2).textHtml("Lancer-franc").fraction(0d))
+                .addAnswer(new Answer().gap(2).textHtml("Remise en jeu").fraction(1d)));
+        section.addActivity(quiz);
+        course.addSection(section);
+        JsonArray grains = new CourseToSubjectConverter(new ConversionReport()).toImportPayload(course).getJsonArray("grains");
+        JsonObject cloze = grainOfType(grains, GrainType.TEXT_TO_FILL, 0).getJsonObject("grain_data").getJsonObject("custom_data");
+        assertEquals("text", cloze.getString("answersType"));
+        assertEquals("Remise en jeu", cloze.getJsonArray("zones").getJsonObject(1).getString("answer"));
+        assertEquals(0, cloze.getJsonArray("zones").getJsonObject(1).getJsonArray("options").size());
+    }
 }

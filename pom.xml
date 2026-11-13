@@ -45,7 +45,7 @@
           produit un modèle de cours neutre ; la projection vers les grains vit ici, exercizer
           étant seul à connaître son schéma.
         -->
-        <openentInteroperabilityVersion>1.3.0</openentInteroperabilityVersion>
+        <openentInteroperabilityVersion>1.4.0</openentInteroperabilityVersion>
         <junitVersion>4.13.2</junitVersion>
         <explorerVersion>2.5.9</explorerVersion>
     </properties>
