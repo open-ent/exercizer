@@ -406,7 +406,8 @@ public class CourseToSubjectConverter {
         if (question.generalFeedbackHtml() != null && !question.generalFeedbackHtml().isEmpty()) {
             // L'explication est du TEXTE dans exercizer (zone de texte dans les deux éditeurs,
             // affichage tel quel à la correction) : du balisage y apparaîtrait littéralement.
-            data.put("answer_explanation", plainText(question.generalFeedbackHtml()));
+            data.put("answer_explanation", fr.openent.exercizer.utils.PlainText.fromHtml(
+                    question.generalFeedbackHtml()));
         }
         if (customData != null) {
             data.put("custom_data", customData);

@@ -81,7 +81,9 @@ def _with(title, question, score, hint, explanation, custom):
     if hint:
         data["answer_hint"] = hint
     if explanation:
-        data["answer_explanation"] = f"<p>{explanation}</p>"
+        # Du TEXTE : l'explication est une zone de texte dans les éditeurs d'exercizer et
+        # s'affiche telle quelle à la correction — un <p> y apparaîtrait à l'élève.
+        data["answer_explanation"] = explanation
     return data
 
 

@@ -1,5 +1,6 @@
 package fr.openent.exercizer.interoperability;
 
+import fr.openent.exercizer.utils.PlainText;
 import fr.tech.openent.interoperability.model.ConversionReport;
 import io.vertx.core.json.DecodeException;
 import io.vertx.core.json.JsonArray;
@@ -258,7 +259,7 @@ public final class OeipSubjectReader {
             grains.add(new JsonObject()
                     .put("grain_type_id", ((Number) type).longValue())
                     .put("order_by", order++)
-                    .put("grain_data", data));
+                    .put("grain_data", PlainText.normaliseExplanation(((JsonObject) data).copy())));
         }
         if (grains.isEmpty()) {
             report.dropped("exercizer.oeip.subject.empty",

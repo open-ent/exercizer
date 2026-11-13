@@ -49,6 +49,7 @@ public class OeipImportTest {
                                         new JsonObject().put("statement", "<p>Consigne</p>"))))
                         .add(new JsonObject().put("grain_type_id", 4).put("order_by", 2)
                                 .put("grain_data", new JsonObject().put("max_score", 1)
+                                        .put("answer_explanation", "<p>« que » est le COD.</p>")
                                         .put("custom_data", new JsonObject().put("correct_answer", "prises"))))
                         .add(new JsonObject().put("grain_type_id", 13).put("order_by", 3)
                                 .put("grain_data", new JsonObject())));
@@ -143,6 +144,9 @@ public class OeipImportTest {
         assertEquals(2, grains.size());
         assertEquals(0, (int) grains.getJsonObject(0).getInteger("order_by"));
         assertEquals("partial", converted.analysis().getString("fidelity"));
+        // L'explication HTML d'un pack arrive en texte.
+        assertEquals("« que » est le COD.",
+                grains.getJsonObject(1).getJsonObject("grain_data").getString("answer_explanation"));
     }
 
     @Test

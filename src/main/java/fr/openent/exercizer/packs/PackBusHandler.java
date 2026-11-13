@@ -1,5 +1,6 @@
 package fr.openent.exercizer.packs;
 
+import fr.openent.exercizer.utils.PlainText;
 import fr.wseduc.webutils.Either;
 import io.vertx.core.Handler;
 import io.vertx.core.eventbus.Message;
@@ -169,7 +170,8 @@ public class PackBusHandler implements Handler<Message<JsonObject>> {
             final JsonObject grain = (JsonObject) o;
             s.prepared("INSERT INTO " + S + "grain (subject_id, grain_type_id, order_by, grain_data) VALUES (?, ?, ?, ?)",
                     new JsonArray().add(id).add(grain.getInteger("grain_type_id")).add(grain.getInteger("order_by"))
-                            .add(grain.getJsonObject("grain_data", new JsonObject()).encode()));
+                            // L'explication est du texte dans exercizer : un pack peut l'avoir mise en HTML.
+                            .add(PlainText.normaliseExplanation(grain.getJsonObject("grain_data", new JsonObject()).copy()).encode()));
         }
         insertByCode(s, id, "subject_level", "level_id", "subject_lesson_level", document.getJsonArray("levels"));
         insertByCode(s, id, "subject_discipline", "discipline_id", "subject_lesson_type", document.getJsonArray("disciplines"));
