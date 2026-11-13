@@ -39,12 +39,13 @@
         <mongodb-helper.version>3.1.1</mongodb-helper.version>
         <vertxCronTimerVersion>3.0.0</vertxCronTimerVersion>
         <!--
-          Lecture des formats de cours du marché (open-ent/interoperability) : SCORM 1.2/2004,
-          sauvegardes Moodle, banque de questions Moodle XML, exports LearnHouse. La bibliothèque
+          Lecture des formats de cours du marché (open-ent/interoperability) : SCORM 1.2/2004, cmi5,
+          sauvegardes Moodle, banque de questions Moodle XML, QTI 2.x/3.0, Common Cartridge (1.3.0),
+          exports LearnHouse. La bibliothèque
           produit un modèle de cours neutre ; la projection vers les grains vit ici, exercizer
           étant seul à connaître son schéma.
         -->
-        <openentInteroperabilityVersion>1.2.0</openentInteroperabilityVersion>
+        <openentInteroperabilityVersion>1.3.0</openentInteroperabilityVersion>
         <junitVersion>4.13.2</junitVersion>
         <explorerVersion>2.5.9</explorerVersion>
     </properties>

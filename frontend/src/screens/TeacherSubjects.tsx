@@ -612,6 +612,9 @@ export function TeacherSubjects() {
           onDigitize={() =>
             navigate(`/subject/digitize${currentFolderId ? `?folder=${currentFolderId}` : ''}`)
           }
+          onImportPackage={() =>
+            navigate(`/subject/import${currentFolderId ? `?folder=${currentFolderId}` : ''}`)
+          }
           onCreated={(subject) => {
             refresh();
             navigate(`/subject/edit/${subject.id}/`);

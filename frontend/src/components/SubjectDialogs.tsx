@@ -160,12 +160,15 @@ export function NewSubjectDialog({
   onCreated,
   onGenerate,
   onDigitize,
+  onImportPackage,
 }: {
   folderId: number | null;
   onClose: () => void;
   onCreated: (subject: Subject) => void;
   onGenerate: () => void;
   onDigitize: () => void;
+  /** Créer le sujet à partir d'un fichier d'une autre plateforme (Moodle, QTI, OEIP…). */
+  onImportPackage?: () => void;
 }) {
   const { t } = useTranslation(['exercizer', 'common']);
   const id = useId();
@@ -236,6 +239,18 @@ export function NewSubjectDialog({
             info: t('exercizer.choose.digitize.info'),
             action: t('exercizer.choose.digitize.button'),
             onClick: onDigitize,
+          },
+        ]
+      : []),
+    // Même droit que la numérisation : le sujet est créé par la route d'import.
+    ...(canDigitize && onImportPackage
+      ? [
+          {
+            key: 'import-package',
+            title: t('exercizer.choose.package.title'),
+            info: t('exercizer.choose.package.info'),
+            action: t('exercizer.choose.package.button'),
+            onClick: onImportPackage,
           },
         ]
       : []),

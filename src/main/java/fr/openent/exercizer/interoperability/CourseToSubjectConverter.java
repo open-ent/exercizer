@@ -174,7 +174,20 @@ public class CourseToSubjectConverter {
             case TRUE_FALSE:
                 return qcmGrain(question);
             case SHORT_ANSWER:
+                return shortAnswerGrain(question);
             case NUMERICAL:
+                for (Answer answer : question.answers()) {
+                    if (answer.isCorrect() && answer.tolerance() > 0d) {
+                        // exercizer compare le texte de la réponse : une marge d'erreur ne se
+                        // représente pas. L'élève devra taper la valeur exacte.
+                        report.degraded("exercizer.numerical.tolerance",
+                                "La question numérique de " + location + " admet une marge de "
+                                        + answer.tolerance() + " : seule la valeur exacte « "
+                                        + plainText(answer.textHtml()) + " » sera acceptée.",
+                                question.id());
+                        break;
+                    }
+                }
                 return shortAnswerGrain(question);
             case ESSAY:
                 return openAnswerGrain(question);
@@ -289,27 +302,70 @@ public class CourseToSubjectConverter {
      */
     private JsonObject clozeGrain(Question question, String location) {
         String html = question.promptHtml() == null ? "" : question.promptHtml();
-        JsonArray zones = new JsonArray();
-        int zoneIndex = 0;
 
+        // Les propositions sont regroupées par trou, dans l'ordre de leur première apparition :
+        // un trou peut en porter plusieurs (la bonne réponse et ses leurres, ou plusieurs formes
+        // acceptées). Les traiter une à une créait un second trou pour un marqueur déjà remplacé.
+        java.util.Map<Integer, List<Answer>> byGap = new java.util.LinkedHashMap<Integer, List<Answer>>();
         for (Answer answer : question.answers()) {
             if (answer.gap() <= 0) {
                 continue;
             }
-            String marker = "[[" + answer.gap() + "]]";
+            List<Answer> answers = byGap.get(answer.gap());
+            if (answers == null) {
+                answers = new ArrayList<Answer>();
+                byGap.put(answer.gap(), answers);
+            }
+            answers.add(answer);
+        }
+
+        JsonArray zones = new JsonArray();
+        boolean withChoices = false;
+        int zoneIndex = 0;
+        for (java.util.Map.Entry<Integer, List<Answer>> gap : byGap.entrySet()) {
+            String marker = "[[" + gap.getKey() + "]]";
             if (!html.contains(marker)) {
                 // La proposition désigne un trou que l'énoncé ne contient pas : la placer
                 // arbitrairement changerait l'exercice.
                 report.degraded("exercizer.cloze.gap.missing",
-                        "Le texte à trous de " + location + " cite un trou numéro " + answer.gap()
+                        "Le texte à trous de " + location + " cite un trou numéro " + gap.getKey()
                                 + " absent de son énoncé : cette proposition est ignorée.",
                         question.id());
                 continue;
             }
-            JsonArray options = new JsonArray().add(plainText(answer.textHtml()));
+            Answer best = null;
+            JsonArray options = new JsonArray();
+            boolean hasDistractor = false;
+            for (Answer answer : gap.getValue()) {
+                if (best == null || answer.fraction() > best.fraction()) {
+                    best = answer;
+                }
+                if (!answer.isCorrect()) {
+                    hasDistractor = true;
+                }
+                String text = plainText(answer.textHtml());
+                if (!options.contains(text)) {
+                    options.add(text);
+                }
+            }
+            if (!best.isCorrect()) {
+                report.dropped("exercizer.cloze.no.answer",
+                        "Le trou " + gap.getKey() + " de " + location + " n'a aucune bonne réponse : "
+                                + "il n'est pas repris.", question.id());
+                continue;
+            }
+            if (!hasDistractor && options.size() > 1) {
+                // Plusieurs formes acceptées et aucun leurre : exercizer n'attend qu'une
+                // réponse par trou, la mieux notée est retenue.
+                report.degraded("exercizer.cloze.alternatives",
+                        "Le trou " + gap.getKey() + " de " + location + " accepte plusieurs réponses : "
+                                + "seule « " + plainText(best.textHtml()) + " » est retenue.", question.id());
+                options = new JsonArray().add(plainText(best.textHtml()));
+            }
+            withChoices |= hasDistractor;
             zones.add(new JsonObject()
                     .put("id", zoneIndex)
-                    .put("answer", plainText(answer.textHtml()))
+                    .put("answer", plainText(best.textHtml()))
                     .put("options", options));
             html = html.replace(marker, String.format(FILL_ZONE, zoneIndex));
             zoneIndex++;
@@ -326,9 +382,10 @@ public class CourseToSubjectConverter {
                 .put("htmlContent", html)
                 .put("zones", zones)
                 .put("options", new JsonArray())
-                // « list » : le trou propose une liste déroulante. « drag » exige des leurres
-                // communs que nos sources ne distinguent pas toujours.
-                .put("answersType", "list");
+                // « list » : le trou propose une liste déroulante, dès qu'un trou porte des
+                // leurres ; sinon l'élève tape la réponse (« text »). Une liste d'un seul choix
+                // donnerait la réponse.
+                .put("answersType", withChoices ? "list" : "text");
         JsonObject data = data(question, customData, zones.size());
         // Pour ce type, l'énoncé vit dans custom_data.htmlContent : le laisser aussi dans
         // grain_data.statement l'afficherait deux fois.
@@ -347,7 +404,9 @@ public class CourseToSubjectConverter {
         data.put("max_score", question.defaultMark() > 0d
                 ? question.defaultMark() : (double) Math.max(fallbackScore, 1));
         if (question.generalFeedbackHtml() != null && !question.generalFeedbackHtml().isEmpty()) {
-            data.put("answer_explanation", question.generalFeedbackHtml());
+            // L'explication est du TEXTE dans exercizer (zone de texte dans les deux éditeurs,
+            // affichage tel quel à la correction) : du balisage y apparaîtrait littéralement.
+            data.put("answer_explanation", plainText(question.generalFeedbackHtml()));
         }
         if (customData != null) {
             data.put("custom_data", customData);

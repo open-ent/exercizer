@@ -21,6 +21,7 @@ const SimpleSubjectEditor = lazy(() => import('./screens/SimpleSubjectEditor'));
 const GenerateSubject = lazy(() => import('./screens/GenerateSubject'));
 // Porte pdf.js et tesseract.js (chargés à la demande, au premier document déposé).
 const DigitizeSubject = lazy(() => import('./screens/DigitizeSubject'));
+const ImportPackageSubject = lazy(() => import('./screens/ImportPackageSubject'));
 const PerformCopy = lazy(() => import('./screens/PerformCopy'));
 const PerformSimpleCopy = lazy(() => import('./screens/PerformSimpleCopy'));
 const ViewCopy = lazy(() => import('./screens/ViewCopy'));
@@ -114,6 +115,9 @@ export const routes: RouteObject[] = [
       { path: 'subject/generate', element: teacher(<GenerateSubject />) },
       // Numériser un devoir (PDF, scan, photo) : IHM React seule, `?folder=<id>` pour le dossier.
       { path: 'subject/digitize', element: teacher(<DigitizeSubject />) },
+      // Créer un sujet depuis un autre format (Moodle, GIFT, QTI, Common Cartridge, OEIP…) :
+      // IHM React seule, `?folder=<id>` pour le dossier.
+      { path: 'subject/import', element: teacher(<ImportPackageSubject />) },
 
       // ── Parcours ──────────────────────────────────────────────────────────
       { path: 'subject-sequence/list', element: teacher(<SubjectSequenceList />) },

@@ -202,7 +202,8 @@ public class CourseToSubjectConverterTest {
         assertEquals("magma", zones.getJsonObject(0).getString("answer"));
         assertEquals(0, (int) zones.getJsonObject(0).getInteger("id"));
         assertEquals("cratère", zones.getJsonObject(1).getString("answer"));
-        assertEquals("list", customData.getString("answersType"));
+        // Aucun leurre : une liste déroulante d'un seul choix donnerait la réponse, l'élève la tape.
+        assertEquals("text", customData.getString("answersType"));
 
         // L'énoncé vit dans htmlContent : le laisser aussi dans statement l'afficherait deux fois.
         assertNull(data.getString("statement"));

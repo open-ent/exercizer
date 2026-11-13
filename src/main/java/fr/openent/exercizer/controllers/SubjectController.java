@@ -194,20 +194,32 @@ public class SubjectController extends ControllerHelper {
 	}
 
 	/**
-	 * Dépôt d'un cours produit par une autre plateforme : SCORM, Moodle, LearnHouse.
+	 * Dépôt d'un cours produit par une autre plateforme : Moodle (XML, sauvegarde .mbz, GIFT,
+	 * Aiken), QTI, Common Cartridge, OEIP, SCORM, cmi5, LearnHouse.
 	 *
 	 * Le format est reconnu au CONTENU du fichier, jamais à son extension.
+	 *
+	 * Paramètres : {@code item} (rang du sujet retenu dans un paquet qui en porte plusieurs —
+	 * OEIP), et, avec {@code apply=true}, ce que l'enseignant a saisi : {@code title},
+	 * {@code folderId}, {@code largeDisplay}.
 	 *
 	 * Par défaut la requête est un ESSAI À BLANC : elle rend l'analyse et le rapport de fidélité
 	 * sans rien créer. C'est la doctrine déjà retenue pour l'import OEIP — l'enseignant voit ce
 	 * qui serait perdu avant de décider. Passer `apply=true` crée réellement le sujet.
 	 *
-	 * Le droit réutilisé est celui de l'import de sujet : cette route est une autre porte vers la
-	 * même action, elle n'a pas à en exiger un nouveau.
+	 * Le droit exigé est celui de l'import de sujet ({@link #IMPORT_ACTION}), vérifié ICI : un droit
+	 * de workflow est attaché à la MÉTHODE ({@code SubjectController|importPackage}) et non à son
+	 * libellé, si bien qu'un {@code @SecuredAction("exercizer.subject.import")} sur cette méthode
+	 * créait une action qu'aucun rôle ne porte — 401 pour tous, enseignants compris. La route est
+	 * donc ouverte aux seuls authentifiés, et l'action d'import existante est contrôlée à la main
+	 * (même schéma que la création assistée).
 	 */
+	/** L'action de workflow « exercizer.subject.import », telle que les rôles la portent. */
+	static final String IMPORT_ACTION = SubjectController.class.getName() + "|importSubjectGrains";
+
 	@Post("/subject/import-package")
-	@ApiDoc("Imports a course from a SCORM, Moodle or LearnHouse package.")
-	@SecuredAction("exercizer.subject.import")
+	@ApiDoc("Imports a subject from Moodle (XML, .mbz, GIFT, Aiken), QTI, Common Cartridge, OEIP, SCORM, cmi5 or LearnHouse.")
+	@SecuredAction(value = "", type = ActionType.AUTHENTICATED)
 	public void importPackage(final HttpServerRequest request) {
 		UserUtils.getUserInfos(eb, request, new Handler<UserInfos>() {
 			@Override
@@ -217,11 +229,17 @@ public class SubjectController extends ControllerHelper {
 					unauthorized(request);
 					return;
 				}
+				if (user.getAuthorizedActions() == null || user.getAuthorizedActions().stream()
+						.noneMatch(action -> IMPORT_ACTION.equals(action.getName()))) {
+					unauthorized(request);
+					return;
+				}
 				final boolean apply = "true".equals(request.params().get("apply"));
+				final int item = intParam(request.params().get("item"), 0);
 				receiveUpload(request, new Handler<String>() {
 					@Override
 					public void handle(final String path) {
-						convertAndMaybeApply(request, user, path, apply);
+						convertAndMaybeApply(request, user, path, apply, item);
 					}
 				});
 			}
@@ -239,31 +257,71 @@ public class SubjectController extends ControllerHelper {
 		final String path = System.getProperty("java.io.tmpdir") + java.io.File.separator
 				+ "exercizer-import-" + java.util.UUID.randomUUID().toString();
 		request.setExpectMultipart(true);
-		final java.util.concurrent.atomic.AtomicBoolean received =
-				new java.util.concurrent.atomic.AtomicBoolean(false);
+		// La fin de la REQUÊTE ne dit pas que le fichier est écrit : l'écriture sur disque est
+		// asynchrone. Lire le fichier à ce moment-là donnait, pour un petit fichier envoyé d'un
+		// navigateur, un fichier vide ou tronqué — donc « format non reconnu ». On attend le futur
+		// rendu par streamToFileSystem.
+		final java.util.concurrent.atomic.AtomicReference<io.vertx.core.Future<Void>> written =
+				new java.util.concurrent.atomic.AtomicReference<io.vertx.core.Future<Void>>();
 		request.uploadHandler(new Handler<io.vertx.core.http.HttpServerFileUpload>() {
 			@Override
 			public void handle(io.vertx.core.http.HttpServerFileUpload upload) {
-				received.set(true);
-				upload.streamToFileSystem(path);
+				if (written.get() == null) {
+					written.set(upload.streamToFileSystem(path));
+				}
 			}
 		});
 		request.endHandler(new Handler<Void>() {
 			@Override
 			public void handle(Void event) {
-				if (!received.get()) {
+				final io.vertx.core.Future<Void> file = written.get();
+				if (file == null) {
 					badRequest(request, "exercizer.import.file.missing");
 					return;
 				}
-				handler.handle(path);
+				file.onComplete(done -> {
+					if (done.failed()) {
+						log.error("Paquet téléversé illisible", done.cause());
+						badRequest(request, "exercizer.import.file.missing");
+						return;
+					}
+					handler.handle(path);
+				});
 			}
 		});
 		request.resume();
 	}
 
+	private static int intParam(String value, int fallback) {
+		try {
+			return value == null ? fallback : Integer.parseInt(value.trim());
+		} catch (NumberFormatException e) {
+			return fallback;
+		}
+	}
+
+	/**
+	 * Ce que l'enseignant a saisi l'emporte sur ce que le paquet propose. Le dossier n'est repris
+	 * que s'il est un entier : la charge utile part telle quelle vers l'insertion.
+	 */
+	private static void applyOverrides(final JsonObject payload, final HttpServerRequest request) {
+		final JsonObject subject = payload.getJsonObject("subject");
+		final String title = request.params().get("title");
+		if (title != null && !title.trim().isEmpty()) {
+			subject.put("title", title.trim().length() > 255 ? title.trim().substring(0, 255) : title.trim());
+		}
+		final String folder = request.params().get("folderId");
+		if (folder != null && folder.matches("\\d{1,18}")) {
+			subject.put("folder_id", Long.parseLong(folder));
+		}
+		if ("true".equals(request.params().get("largeDisplay"))) {
+			subject.put("large_display", true);
+		}
+	}
+
 	private void convertAndMaybeApply(final HttpServerRequest request, final UserInfos user,
-			final String path, final boolean apply) {
-		packageImportService.convert(path).onComplete(result -> {
+			final String path, final boolean apply, final int item) {
+		packageImportService.convert(path, item).onComplete(result -> {
 			// Le fichier temporaire est effacé quoi qu'il arrive : un paquet refusé ne doit pas
 			// rester sur le disque du serveur.
 			vertx.fileSystem().delete(path, deleted -> {
@@ -286,6 +344,7 @@ public class SubjectController extends ControllerHelper {
 				return;
 			}
 
+			applyOverrides(converted.payload(), request);
 			subjectService.persistSubjectGrains(converted.payload(), user,
 					new Handler<Either<String, JsonObject>>() {
 						@Override
