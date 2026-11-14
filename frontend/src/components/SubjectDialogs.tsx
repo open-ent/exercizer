@@ -24,7 +24,9 @@ import { useTranslation } from 'react-i18next';
 import illuExercizer from '@images/emptyscreen/illu-exercizer.svg';
 import {
   createSubject,
-  exportMoodleUrl,
+  EXPORT_FORMATS,
+  ExportFormat,
+  exportSubject,
   importSubject,
   setClassification,
   updateSubject,
@@ -709,8 +711,12 @@ export function PrintDialog({ subject, onClose }: { subject: Subject; onClose: (
   );
 }
 
-/** Export d'un sujet interactif au format Moodle, avec ce que le format ne sait pas porter. */
-export function ExportMoodleDialog({
+/**
+ * Export d'un sujet interactif : choix du format d'échange (Moodle .mbz ou banque XML, SCORM, cmi5,
+ * xAPI, QTI, Common Cartridge, LearnHouse), puis téléchargement. Si la conversion a dû laisser
+ * quelque chose de côté, la modale reste ouverte pour le dire.
+ */
+export function ExportSubjectDialog({
   subject,
   onClose,
 }: {
@@ -719,30 +725,79 @@ export function ExportMoodleDialog({
 }) {
   const { t } = useTranslation(['exercizer', 'common']);
   const id = useId();
+  const [format, setFormat] = useState<ExportFormat>('moodle');
+  const [partial, setPartial] = useState<number | null>(null);
+
+  const mutation = useMutation({
+    mutationFn: () => exportSubject(subject, format),
+    onSuccess: ({ blob, fileName, fidelity, notices }) => {
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = fileName;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+      if (fidelity === 'partial') setPartial(notices);
+      else onClose();
+    },
+  });
+
   return (
     <Modal id={id} isOpen onModalClose={onClose} size="md">
       <Modal.Header onModalClose={onClose}>
-        {t('exercizer.export.title')} {subject.title} {t('exercizer.export.format')}
+        {t('exercizer.export.title')} {subject.title}
       </Modal.Header>
       <Modal.Body>
-        <p>{t('exercizer.export.desc')} :</p>
-        <ul className="mb-0">
-          {[1, 2, 3].map((n) => (
-            <li key={n}>{t(`exercizer.unsup.export.type${n}`)}</li>
+        <p>{t('exercizer.export.choose')}</p>
+        <div className="d-flex flex-column gap-8">
+          {EXPORT_FORMATS.map((f) => (
+            <Radio
+              key={f}
+              name={`${id}-format`}
+              value={f}
+              model={format}
+              label={t(`exercizer.export.format.${f}`)}
+              onChange={() => {
+                setFormat(f);
+                setPartial(null);
+                mutation.reset();
+              }}
+            />
           ))}
-        </ul>
+        </div>
+        {format === 'moodle-xml' && (
+          <Alert type="warning" className="mt-16">
+            {t('exercizer.export.desc')} :
+            <ul className="mb-0">
+              {[1, 2, 3].map((n) => (
+                <li key={n}>{t(`exercizer.unsup.export.type${n}`)}</li>
+              ))}
+            </ul>
+          </Alert>
+        )}
+        {partial !== null && (
+          <Alert type="info" className="mt-16">
+            {t('exercizer.export.partial', { count: partial })}
+          </Alert>
+        )}
+        {mutation.isError && (
+          <Alert type="danger" className="mt-16">
+            {t('exercizer.export.error')}
+          </Alert>
+        )}
       </Modal.Body>
       <Modal.Footer>
         <Button color="tertiary" variant="ghost" onClick={onClose}>
-          {t('exercizer.cancel')}
+          {partial !== null ? t('exercizer.close') : t('exercizer.cancel')}
         </Button>
         <Button
           color="primary"
           variant="filled"
-          onClick={() => {
-            window.location.href = exportMoodleUrl(subject);
-            onClose();
-          }}
+          isLoading={mutation.isPending}
+          disabled={mutation.isPending}
+          onClick={() => mutation.mutate()}
         >
           {t('exercizer.export.action')}
         </Button>

@@ -33,7 +33,7 @@ import { FolderDialog } from '../components/FolderDialog';
 import { MoveDialog } from '../components/MoveDialog';
 import { SelectionActionBar } from '../components/SelectionActionBar';
 import {
-  ExportMoodleDialog,
+  ExportSubjectDialog,
   ImportSubjectDialog,
   NewSubjectDialog,
   PrintDialog,
@@ -686,7 +686,7 @@ export function TeacherSubjects() {
       )}
 
       {dialog?.kind === 'export' && (
-        <ExportMoodleDialog
+        <ExportSubjectDialog
           subject={dialog.subject}
           onClose={() => {
             setDialog(null);

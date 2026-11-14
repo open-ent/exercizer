@@ -159,9 +159,53 @@ export const duplicateSubjectDeep = (subjectId: number) =>
     resourceId: String(subjectId),
   });
 
-/** Export d'un sujet interactif au format Moodle XML — une navigation, pas une requête. */
-export const exportMoodleUrl = (subject: Subject) =>
-  `/exercizer/subject/export-moodle/${subject.id}/${(subject.title ?? '').replace(/[^a-zA-Z0-9]/g, '')}`;
+/**
+ * Formats d'export d'un sujet, identifiants stables de `CourseFormat` (lib interoperability).
+ * `moodle` est la sauvegarde de cours (.mbz) ; `moodle-xml` la seule banque de questions.
+ */
+export const EXPORT_FORMATS = [
+  'moodle',
+  'moodle-xml',
+  'scorm12',
+  'scorm2004',
+  'cmi5',
+  'xapi',
+  'qti',
+  'imscc',
+  'learnhouse',
+] as const;
+export type ExportFormat = (typeof EXPORT_FORMATS)[number];
+
+/** Résultat d'un export : le fichier, son nom, et ce que la conversion a dû laisser de côté. */
+export interface ExportedSubject {
+  blob: Blob;
+  fileName: string;
+  fidelity: string | null;
+  notices: number;
+}
+
+/**
+ * Export d'un sujet vers un format d'échange (`GET /subject/:id/export/:format`). Une requête plutôt
+ * qu'une navigation : l'erreur reste dans la modale, et le rapport de fidélité (en-têtes
+ * `X-Conversion-*`) peut être montré à l'enseignant.
+ */
+export async function exportSubject(
+  subject: Subject,
+  format: ExportFormat,
+): Promise<ExportedSubject> {
+  const res = await fetch(`/exercizer/subject/${subject.id}/export/${format}`, {
+    credentials: 'same-origin',
+  });
+  if (!res.ok) throw new Error(`export ${format} : HTTP ${res.status}`);
+  const disposition = res.headers.get('Content-Disposition') ?? '';
+  const named = /filename="?([^"]+)"?/.exec(disposition)?.[1];
+  return {
+    blob: await res.blob(),
+    fileName: named ?? `${subject.title ?? 'sujet'}`,
+    fidelity: res.headers.get('X-Conversion-Fidelity'),
+    notices: Number(res.headers.get('X-Conversion-Notices') ?? 0),
+  };
+}
 
 /**
  * Crée un sujet AVEC ses grains — l'import d'un fichier Moodle.
