@@ -360,6 +360,23 @@ export function ImportPackageSubject() {
             />
             <p className="small text-gray-700 mt-16 mb-0">{t('exercizer.package.detection')}</p>
           </div>
+          {/* Ce qui ne passe pas d'une banque Moodle, à lire AVANT de déposer — replié : le bilan de
+              l'analyse nomme ensuite chaque question écartée ou simplifiée du fichier déposé. */}
+          <details className="mt-16" data-testid="import-package-limits">
+            <summary>{t('exercizer.package.limits')}</summary>
+            <ul className="small text-gray-700 mb-0 mt-8">
+              {[
+                'exercizer.package.limits.dropped',
+                'exercizer.import.info.cloze',
+                'exercizer.import.info.markers',
+                'exercizer.import.info.calculatedsimple',
+                'exercizer.import.info1',
+                'exercizer.import.info2',
+              ].map((key) => (
+                <li key={key}>{t(key)}</li>
+              ))}
+            </ul>
+          </details>
         </section>
       )}
 

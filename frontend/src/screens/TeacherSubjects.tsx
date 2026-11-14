@@ -34,7 +34,6 @@ import { MoveDialog } from '../components/MoveDialog';
 import { SelectionActionBar } from '../components/SelectionActionBar';
 import {
   ExportSubjectDialog,
-  ImportSubjectDialog,
   NewSubjectDialog,
   PrintDialog,
   ShareSubjectDialog,
@@ -69,7 +68,6 @@ type DialogState =
   | { kind: 'remove' }
   | { kind: 'schedule'; subject: Subject }
   | { kind: 'newSubject' }
-  | { kind: 'import' }
   | { kind: 'properties'; subject: Subject }
   | { kind: 'share'; subject: Subject }
   | { kind: 'print'; subject: Subject }
@@ -316,8 +314,16 @@ export function TeacherSubjects() {
               {t('exercizer.new.subject')}
             </Button>
             {canImport && (
-              <Button color="tertiary" variant="ghost" onClick={() => setDialog({ kind: 'import' })}>
-                {t('exercizer.import')}
+              // Même écran que la carte « Importer depuis un autre format » de « Nouveau sujet » :
+              // Moodle (XML, sauvegarde), GIFT, Aiken, QTI, Common Cartridge, OEIP, avec aperçu.
+              <Button
+                color="tertiary"
+                variant="ghost"
+                onClick={() =>
+                  navigate(`/subject/import${currentFolderId ? `?folder=${currentFolderId}` : ''}`)
+                }
+              >
+                {t('exercizer.choose.package.button')}
               </Button>
             )}
             <Button color="tertiary" variant="ghost" onClick={() => navigate('/dashboard/teacher/archive')}>
@@ -621,17 +627,6 @@ export function TeacherSubjects() {
             refresh();
             navigate(`/subject/edit/${subject.id}/`);
           }}
-        />
-      )}
-
-      {dialog?.kind === 'import' && (
-        <ImportSubjectDialog
-          folderId={currentFolderId}
-          onClose={() => setDialog(null)}
-          onImported={() =>
-            void queryClient.invalidateQueries({ queryKey: ['exercizer', 'subjects'] })
-          }
-          onOpen={(subject) => navigate(`/subject/edit/${subject.id}/`)}
         />
       )}
 
