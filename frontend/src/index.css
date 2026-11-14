@@ -74,3 +74,106 @@
   font-size: 3.2rem;
   font-weight: bold;
 }
+
+/* Frise des étapes d'un parcours linéaire (import d'un sujet) : pastilles numérotées reliées par
+   un trait, coche sur les étapes franchies, étape courante en couleur primaire. Le socle n'a pas
+   de composant « stepper ». */
+.exercizer-stepper {
+  display: flex;
+  align-items: flex-start;
+  margin: 0;
+  padding: 0;
+}
+.exercizer-stepper > li {
+  position: relative;
+  flex: 1 1 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.8rem;
+  text-align: center;
+  color: var(--openent-gray-700);
+}
+/* Le trait qui relie la pastille à la précédente ; plein quand l'étape est atteinte. */
+.exercizer-stepper > li + li::before {
+  content: '';
+  position: absolute;
+  top: 1.6rem;
+  right: calc(50% + 2.4rem);
+  left: calc(-50% + 2.4rem);
+  height: 0.2rem;
+  background: var(--openent-gray-400);
+}
+.exercizer-stepper > li.is-done::before,
+.exercizer-stepper > li.is-current::before {
+  background: var(--openent-success);
+}
+.exercizer-stepper-dot {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 3.2rem;
+  height: 3.2rem;
+  border-radius: 50%;
+  border: 0.2rem solid var(--openent-gray-400);
+  background: var(--openent-white);
+  font-weight: bold;
+}
+.exercizer-stepper > li.is-done .exercizer-stepper-dot {
+  background: var(--openent-success);
+  border-color: var(--openent-success);
+  color: var(--openent-white);
+}
+.exercizer-stepper > li.is-current .exercizer-stepper-dot {
+  background: var(--openent-primary);
+  border-color: var(--openent-primary);
+  color: var(--openent-white);
+  box-shadow: 0 0 0 0.4rem var(--openent-primary-200, var(--openent-gray-300));
+}
+.exercizer-stepper > li.is-current .exercizer-stepper-label {
+  font-weight: bold;
+  color: var(--openent-gray-800, inherit);
+}
+.exercizer-stepper > li.is-todo .exercizer-stepper-label {
+  color: var(--openent-gray-600);
+}
+
+/* Passation : sommaire et page (CopyNavigator). L'en-tête de l'ENT défile avec la page : le
+   sommaire peut donc se coller au haut de la fenêtre, et y défiler seul. */
+.exercizer-copy-nav {
+  position: sticky;
+  top: 1.6rem;
+  max-height: calc(100vh - 3.2rem);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding-right: 0.4rem;
+}
+.exercizer-copy-stage:focus {
+  outline: none;
+}
+/* Petit écran : la barre qui remplace le sommaire reste en haut de la fenêtre. */
+.exercizer-copy-bar {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+}
+.exercizer-copy-progress {
+  height: 0.4rem;
+  border-radius: 0.2rem;
+  background: var(--openent-gray-300);
+  overflow: hidden;
+}
+.exercizer-copy-progress > span {
+  display: block;
+  height: 100%;
+  background: var(--openent-primary);
+  transition: width 0.2s;
+}
+/* Texte de référence rappelé au-dessus d'une question. */
+.exercizer-reference {
+  border-left: 0.4rem solid var(--openent-primary);
+  background: var(--openent-gray-200);
+}
+.exercizer-reference > summary {
+  cursor: pointer;
+}

@@ -58,6 +58,8 @@ export interface DraftRegion {
 
 /** Pourquoi la relecture s'impose sur une question — clés i18n `exercizer.digitize.warning.*`. */
 export type DraftWarning =
+  /** Création assistée : réponse proposée par l'assistant, pas lue sur le document. */
+  | 'proposed'
   | 'answer'
   | 'checked'
   | 'pairs'

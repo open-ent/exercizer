@@ -210,9 +210,16 @@ export function NewSubjectDialog({
     onError: () => setError(t('exercizer.error')),
   });
 
-  // La création assistée d'abord : c'est le parcours par défaut, mis en avant (la première carte).
-  // Le sujet à rendre ferme la marche : il renvoie vers Casier.
+  // Le sujet interactif d'abord : c'est le parcours par défaut, mis en avant (la première carte).
+  // La création assistée suit ; le sujet à rendre ferme la marche : il renvoie vers Casier.
   const choices = [
+    {
+      key: 'interactive',
+      title: t('exercizer.choose.interactive.title'),
+      info: t('exercizer.choose.interactive.info'),
+      action: t('exercizer.create'),
+      onClick: () => setStep('subject'),
+    },
     ...(canGenerate
       ? [
           {
@@ -224,13 +231,6 @@ export function NewSubjectDialog({
           },
         ]
       : []),
-    {
-      key: 'interactive',
-      title: t('exercizer.choose.interactive.title'),
-      info: t('exercizer.choose.interactive.info'),
-      action: t('exercizer.create'),
-      onClick: () => setStep('subject'),
-    },
     ...(canDigitize
       ? [
           {

@@ -46,6 +46,7 @@ import { atLeast, lowestRight, subjectRight, WORKFLOW } from '../rights';
 import { ScheduleDialog } from './ScheduleDialog';
 import { Folder, Subject } from '../types';
 import { formatDate } from '../utils';
+import { AssistedGenerations } from '../components/AssistedGenerations';
 
 /** Les deux rangements de l'ancienne IHM : ses propres sujets, et ceux qu'on lui a partagés. */
 type SubjectScope = 'mine' | 'shared';
@@ -304,6 +305,7 @@ export function TeacherSubjects() {
       </aside>
 
       <section className="g-col-12 g-col-lg-9">
+        <AssistedGenerations />
         <div className="d-flex flex-wrap align-items-center justify-content-between gap-16 mb-16">
           <div className="d-flex align-items-center gap-8 flex-wrap">
             <Button
@@ -608,7 +610,7 @@ export function TeacherSubjects() {
         <NewSubjectDialog
           folderId={currentFolderId}
           onClose={() => setDialog(null)}
-          onGenerate={() => navigate('/subject/generate')}
+          onGenerate={() => navigate(`/subject/generate${currentFolderId ? `?folder=${currentFolderId}` : ''}`)}
           onDigitize={() =>
             navigate(`/subject/digitize${currentFolderId ? `?folder=${currentFolderId}` : ''}`)
           }

@@ -7,22 +7,31 @@ import {
   Heading,
   Input,
   Label,
+  Loading,
   LoadingScreen,
+  MediaLibrary,
   Select,
   TextArea,
+  useEdificeClient,
   useHasWorkflow,
+  useMediaLibrary,
 } from '@open-ent/react';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { useId, useMemo, useRef, useState } from 'react';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useEffect, useId, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 
 import {
+  AssistedGeneration,
   createSection,
+  deleteAssistedGeneration,
+  getAssistedGeneration,
   getGrains,
   importSubject,
   saveStructure,
+  startAssistedGeneration,
   updateSubject,
+  uploadWorkspaceDocument,
   uploadWorkspaceImage,
 } from '../api';
 import { Unauthorized } from '../components/Unauthorized';
@@ -43,6 +52,7 @@ import {
   type ReadPage,
   type ReadProgress,
 } from '@open-ent/react/digitize';
+import { assistedDraft, numberLines, pageImage } from '../assisted';
 import { GRAIN } from '../grains';
 import { WORKFLOW } from '../rights';
 
@@ -57,7 +67,15 @@ const TYPE_LABELS: Record<number, string> = {
   [GRAIN.TEXT_TO_FILL]: 'exercizer.grain.type.texttofill',
 };
 
-type Step = 'pick' | 'reading' | 'review';
+/** `launched`, `failed` : création assistée confiée au serveur, en cours ou en échec. */
+type Step = 'pick' | 'reading' | 'launched' | 'failed' | 'review';
+
+/** Ce que rend la médiathèque pour un document de l'espace documentaire. */
+interface WorkspaceDocument {
+  _id: string;
+  name?: string;
+  metadata?: { filename?: string; 'content-type'?: string };
+}
 
 /** Les paragraphes d'un élément, tels qu'on les édite : séparés par une ligne vide. */
 const joinParagraphs = (paragraphs: string[]) => paragraphs.join('\n\n');
@@ -73,18 +91,32 @@ const splitParagraphs = (text: string) => text.split(/\n\s*\n/).map((part) => pa
  * (`POST /subject/import`), puis les parties sont posées sur les questions créées.
  *
  * Rien ne quitte le poste tant que l'enseignant n'a pas validé : ni le document, ni son texte.
+ *
+ * Avec `assisted` (« Création assistée », route `subject/generate`), le découpage est confié à
+ * l'IA de la plateforme (`assisted.ts`), EN ARRIÈRE-PLAN : le texte lu, et l'image des pages,
+ * partent vers le serveur (`POST /assisted-generations`), qui interroge l'IA du dashboard et
+ * prévient l'enseignant par le fil d'actualité. L'écran passe aussitôt sur la génération
+ * (`subject/generate/:generationId`) : l'enseignant peut partir, ou attendre. Au retour, le devoir
+ * est relu depuis l'espace documentaire (pour les aperçus et les extraits) et le brouillon revient
+ * dans le même écran de relecture.
  */
-export function DigitizeSubject() {
-  const { t } = useTranslation(['exercizer', 'common']);
+export function DigitizeSubject({ assisted = false }: { assisted?: boolean }) {
+  const { t, i18n } = useTranslation(['exercizer', 'common']);
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [params] = useSearchParams();
-  const folderId = params.get('folder') ? Number(params.get('folder')) : null;
+  const { generationId: generationParam } = useParams();
+  const generationId = assisted && generationParam ? Number(generationParam) : null;
+  const [generationFolder, setGenerationFolder] = useState<number | null>(null);
+  const folderId = generationFolder ?? (params.get('folder') ? Number(params.get('folder')) : null);
   const canImport = useHasWorkflow(WORKFLOW.import) as boolean | undefined;
+  const canGenerate = useHasWorkflow(WORKFLOW.generate) as boolean | undefined;
   const id = useId();
   const input = useRef<HTMLInputElement>(null);
+  const { appCode } = useEdificeClient();
+  const { ref: mediaLibraryRef, ...mediaLibraryHandlers } = useMediaLibrary();
 
-  const [step, setStep] = useState<Step>('pick');
+  const [step, setStep] = useState<Step>(generationId !== null ? 'reading' : 'pick');
   const [file, setFile] = useState<File | null>(null);
   const [dragging, setDragging] = useState(false);
   const [progress, setProgress] = useState<ReadProgress | null>(null);
@@ -94,12 +126,46 @@ export function DigitizeSubject() {
   const [title, setTitle] = useState('');
   const [largeDisplay, setLargeDisplay] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  /** Création assistée : le devoir lu est confié au serveur. */
+  const [thinking, setThinking] = useState(false);
 
-  const read = async (picked: File) => {
+  /** Création assistée : le devoir lu est confié au serveur, qui la mène en arrière-plan. */
+  const launch = async (picked: File, workspaceId: string | null, result: Awaited<ReturnType<typeof readDocument>>) => {
+    const { sent, source } = numberLines(result.pages.flatMap((page) => page.lines));
+    if (!sent.length) throw new Error('exercizer.digitize.error.empty');
+    setThinking(true);
+    // Gardé dans l'espace documentaire : il sera relu au retour, pour les aperçus et les extraits.
+    const documentId = workspaceId ?? (await uploadWorkspaceDocument(picked, picked.name).catch(() => null));
+    let generation: AssistedGeneration;
+    try {
+      generation = await startAssistedGeneration({
+        title: picked.name.replace(/\.[^.]+$/, ''),
+        folderId,
+        documentId,
+        documentName: picked.name,
+        lines: sent,
+        // Ignorées par un modèle qui ne lit que du texte (la route du dashboard en décide).
+        images: result.pages.slice(0, 4).map((page) => ({ page: page.number, data: pageImage(page.canvas) })),
+        source,
+        figures: result.pages.flatMap((page) => page.figures),
+        locale: i18n.language,
+      });
+    } catch (cause) {
+      throw new Error(cause instanceof Error && cause.message === '429' ? 'exercizer.assisted.error.busy' : 'exercizer.assisted.error.start');
+    }
+    void queryClient.invalidateQueries({ queryKey: ['exercizer', 'assisted-generations'] });
+    navigate(`/subject/generate/${generation.id}`);
+  };
+
+  const read = async (picked: File, workspaceId: string | null = null) => {
     setError(null);
     setStep('reading');
     try {
       const result = await readDocument(picked, setProgress);
+      if (assisted) {
+        await launch(picked, workspaceId, result);
+        return;
+      }
       const built = buildDraft(
         result.pages.flatMap((page) => page.lines),
         result.pages.flatMap((page) => page.figures),
@@ -113,6 +179,7 @@ export function DigitizeSubject() {
       setTitle(built.title || picked.name.replace(/\.[^.]+$/, ''));
       setStep('review');
     } catch (cause) {
+      setThinking(false);
       // La cause technique (PDF illisible, moteur introuvable…) reste visible dans la console.
       console.error(`[exercizer] numérisation : ${cause instanceof Error ? cause.stack ?? cause.message : String(cause)}`);
       // La bibliothèque lève des clés `digitize.error.*` ; ce module a les siennes, préfixées.
@@ -127,10 +194,91 @@ export function DigitizeSubject() {
     }
   };
 
-  const pick = (picked: File | undefined | null) => {
+  const pick = (picked: File | undefined | null, workspaceId: string | null = null) => {
     if (!picked) return;
     setFile(picked);
-    void read(picked);
+    void read(picked, workspaceId);
+  };
+
+  /** Un document de l'espace documentaire : téléchargé, puis lu comme un fichier du poste. */
+  const pickFromWorkspace = async (document: WorkspaceDocument | undefined) => {
+    if (!document?._id) return;
+    setError(null);
+    try {
+      const response = await fetch(`/workspace/document/${document._id}`, { credentials: 'same-origin' });
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      const blob = await response.blob();
+      const name = document.metadata?.filename ?? document.name ?? document._id;
+      pick(new File([blob], name, { type: document.metadata?.['content-type'] || blob.type }), document._id);
+    } catch (cause) {
+      console.error(`[exercizer] espace documentaire : ${cause instanceof Error ? cause.message : String(cause)}`);
+      setError(t('exercizer.digitize.error.read'));
+    }
+  };
+
+  // ── Création assistée : la génération confiée au serveur ──────────────────────
+
+  const generation = useQuery({
+    queryKey: ['exercizer', 'assisted-generation', generationId],
+    queryFn: () => getAssistedGeneration(generationId as number),
+    enabled: generationId !== null,
+    // L'enseignant peut attendre sur la page : elle passe au brouillon dès qu'il est prêt.
+    refetchInterval: (query) => (query.state.data?.status === 'pending' ? 5000 : false),
+  });
+  const restored = useRef<number | null>(null);
+
+  useEffect(() => {
+    const current = generation.data;
+    if (!current) return;
+    if (current.status === 'pending') {
+      setStep('launched');
+      return;
+    }
+    if (current.status === 'error' || !current.draft) {
+      setStep('failed');
+      return;
+    }
+    if (restored.current === current.id) return;
+    restored.current = current.id;
+    void restore(current);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [generation.data]);
+
+  /** Le brouillon prêt : le devoir est relu (aperçus, extraits), puis le brouillon rejoué. */
+  const restore = async (current: AssistedGeneration) => {
+    setError(null);
+    setStep('reading');
+    setGenerationFolder(current.folder_id ?? null);
+    let reread: Awaited<ReturnType<typeof readDocument>> | null = null;
+    if (current.document_id) {
+      try {
+        const response = await fetch(`/workspace/document/${current.document_id}`, { credentials: 'same-origin' });
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        const blob = await response.blob();
+        const name = current.document_name ?? 'devoir';
+        setFile(new File([blob], name, { type: blob.type }));
+        reread = await readDocument(new File([blob], name, { type: blob.type }), setProgress);
+      } catch (cause) {
+        // Sans le document, le brouillon reste relisible : seuls les aperçus manquent.
+        console.error(`[exercizer] création assistée : document illisible, ${cause instanceof Error ? cause.message : String(cause)}`);
+      }
+    }
+    const built = assistedDraft(
+      current.draft as NonNullable<AssistedGeneration['draft']>,
+      current.input?.source ?? [],
+      current.input?.figures ?? [],
+    );
+    setPages(reread?.pages ?? []);
+    setTruncated(reread?.truncated ?? false);
+    setDraft(built);
+    setTitle(built.title || current.title || '');
+    setStep('review');
+  };
+
+  const restart = async () => {
+    if (generationId !== null) await deleteAssistedGeneration(generationId).catch(() => undefined);
+    void queryClient.invalidateQueries({ queryKey: ['exercizer', 'assisted-generations'] });
+    navigate('/subject/generate');
   };
 
   const create = useMutation({
@@ -175,7 +323,10 @@ export function DigitizeSubject() {
       }
       return subject;
     },
-    onSuccess: (subject) => {
+    onSuccess: async (subject) => {
+      // Le brouillon est devenu un sujet : la génération n'a plus lieu d'être.
+      if (generationId !== null) await deleteAssistedGeneration(generationId).catch(() => undefined);
+      void queryClient.invalidateQueries({ queryKey: ['exercizer', 'assisted-generations'] });
       void queryClient.invalidateQueries({ queryKey: ['exercizer', 'subjects'] });
       navigate(`/subject/edit/${subject.id}/`);
     },
@@ -208,8 +359,8 @@ export function DigitizeSubject() {
       },
     );
 
-  if (canImport === undefined) return <LoadingScreen position={false} />;
-  if (!canImport) return <Unauthorized text={t('exercizer.unauthorized')} />;
+  if (canImport === undefined || (assisted && canGenerate === undefined)) return <LoadingScreen position={false} />;
+  if (!canImport || (assisted && !canGenerate)) return <Unauthorized text={t('exercizer.unauthorized')} />;
 
   const leave = () => navigate('/dashboard/teacher');
 
@@ -217,7 +368,7 @@ export function DigitizeSubject() {
     <div className="mt-16">
       <div className="d-flex flex-wrap align-items-center justify-content-between gap-16 mb-24">
         <Heading level="h2" headingStyle="h4" className="m-0">
-          {t('exercizer.digitize.title')}
+          {t(assisted ? 'exercizer.choose.assist.title' : 'exercizer.digitize.title')}
         </Heading>
         <div className="d-flex flex-wrap gap-8">
           <Button color="tertiary" variant="ghost" onClick={leave}>
@@ -225,7 +376,12 @@ export function DigitizeSubject() {
           </Button>
           {step === 'review' && (
             <>
-              <Button color="tertiary" variant="outline" onClick={() => setStep('pick')} disabled={create.isPending}>
+              <Button
+                color="tertiary"
+                variant="outline"
+                onClick={() => (generationId !== null ? void restart() : setStep('pick'))}
+                disabled={create.isPending}
+              >
                 {t('exercizer.digitize.other')}
               </Button>
               <Button
@@ -253,12 +409,28 @@ export function DigitizeSubject() {
 
       {step === 'pick' && (
         <section className="card p-24">
-          <p>{t('exercizer.digitize.intro')}</p>
-          <ul>
-            <li>{t('exercizer.digitize.intro.pdf')}</li>
-            <li>{t('exercizer.digitize.intro.scan')}</li>
-            <li>{t('exercizer.digitize.intro.review')}</li>
-          </ul>
+          {assisted ? (
+            <Alert type="info" className="mb-24">
+              <Heading level="h3" headingStyle="h6" className="mb-8">
+                {t('exercizer.generate.howto.title')}
+              </Heading>
+              <ol className="mb-0 ps-16">
+                <li>{t('exercizer.generate.howto.step1')}</li>
+                <li>{t('exercizer.generate.howto.step2')}</li>
+                <li>{t('exercizer.generate.howto.step3')}</li>
+                <li>{t('exercizer.generate.howto.step4')}</li>
+              </ol>
+            </Alert>
+          ) : (
+            <>
+              <p>{t('exercizer.digitize.intro')}</p>
+              <ul>
+                <li>{t('exercizer.digitize.intro.pdf')}</li>
+                <li>{t('exercizer.digitize.intro.scan')}</li>
+                <li>{t('exercizer.digitize.intro.review')}</li>
+              </ul>
+            </>
+          )}
           <div
             className={`border border-2 rounded p-32 text-center ${dragging ? 'border-primary bg-primary-200' : 'border-dashed'}`}
             style={{ borderStyle: dragging ? 'solid' : 'dashed' }}
@@ -274,9 +446,14 @@ export function DigitizeSubject() {
             }}
           >
             <p className="mb-16 fst-italic">{t('exercizer.digitize.drop')}</p>
-            <Button color="primary" variant="filled" onClick={() => input.current?.click()}>
-              {t('exercizer.digitize.choose')}
-            </Button>
+            <div className="d-flex flex-wrap justify-content-center gap-8">
+              <Button color="primary" variant="filled" onClick={() => input.current?.click()}>
+                {t('exercizer.digitize.choose')}
+              </Button>
+              <Button color="primary" variant="outline" onClick={() => mediaLibraryRef.current?.show('attachment')}>
+                {t('exercizer.digitize.choose.workspace')}
+              </Button>
+            </div>
             <input
               ref={input}
               id={`${id}-file`}
@@ -291,25 +468,76 @@ export function DigitizeSubject() {
             />
             <p className="small text-gray-700 mt-16 mb-0">{t('exercizer.digitize.limits')}</p>
           </div>
-          <p className="small text-gray-700 mt-16 mb-0">{t('exercizer.digitize.privacy')}</p>
+          <p className="small text-gray-700 mt-16 mb-0">
+            {t(assisted ? 'exercizer.assisted.privacy' : 'exercizer.digitize.privacy')}
+          </p>
+          <MediaLibrary
+            appCode={appCode}
+            ref={mediaLibraryRef}
+            multiple={false}
+            visibility="protected"
+            {...mediaLibraryHandlers}
+            onSuccess={(result) => {
+              const picked = (Array.isArray(result) ? result[0] : result) as WorkspaceDocument | undefined;
+              mediaLibraryHandlers.onSuccess(result);
+              void pickFromWorkspace(picked);
+            }}
+          />
         </section>
       )}
 
-      {step === 'reading' && (
+      {generationId !== null && generation.isError && (
+        <Alert type="warning">{t('exercizer.assisted.notfound')}</Alert>
+      )}
+
+      {step === 'launched' && (
+        <section className="card p-24 text-center" role="status" aria-live="polite">
+          <Heading level="h3" headingStyle="h5" className="mb-16">
+            {t('exercizer.assisted.launched.title')}
+          </Heading>
+          {/* En ligne, pas `LoadingScreen` : son voile couvrirait la page qu'on invite à quitter. */}
+          <Loading isLoading className="justify-content-center" />
+          <p className="mt-16 mb-8">{t('exercizer.assisted.launched.info')}</p>
+          <p className="small text-gray-700 mb-16">{t('exercizer.genrete.timer')}</p>
+          <div>
+            <Button color="primary" variant="filled" onClick={leave}>
+              {t('exercizer.generate.out.button')}
+            </Button>
+          </div>
+        </section>
+      )}
+
+      {step === 'failed' && (
+        <section className="card p-24">
+          <Alert type="danger" className="mb-16">
+            {t('exercizer.assisted.error', { message: generation.data?.error || t('exercizer.error') })}
+          </Alert>
+          <Button color="primary" variant="filled" onClick={() => void restart()}>
+            {t('exercizer.assisted.restart')}
+          </Button>
+        </section>
+      )}
+
+      {step === 'reading' && !(generationId !== null && generation.isError) && (
         <section className="card p-24 text-center" role="status" aria-live="polite">
           <p className="fw-bold mb-8">{file?.name}</p>
-          <p className="mb-16">{progressLabel(progress, t)}</p>
-          {/* Le socle n'a pas de barre de progression : deux blocs aux couleurs du thème. */}
-          <div
-            className="mx-auto rounded-pill overflow-hidden bg-gray-300"
-            style={{ maxWidth: 480, height: 8 }}
-            role="progressbar"
-            aria-valuemin={0}
-            aria-valuemax={100}
-            aria-valuenow={Math.round(progressRatio(progress) * 100)}
-          >
-            <div className="h-100 bg-primary" style={{ width: `${progressRatio(progress) * 100}%`, transition: 'width .3s' }} />
-          </div>
+          <p className="mb-16">{thinking ? t('exercizer.assisted.progress') : progressLabel(progress, t)}</p>
+          {thinking ? (
+            // Le serveur ne dit pas où il en est : une attente, pas une barre qui resterait figée.
+            <Loading isLoading className="justify-content-center" />
+          ) : (
+            /* Le socle n'a pas de barre de progression : deux blocs aux couleurs du thème. */
+            <div
+              className="mx-auto rounded-pill overflow-hidden bg-gray-300"
+              style={{ maxWidth: 480, height: 8 }}
+              role="progressbar"
+              aria-valuemin={0}
+              aria-valuemax={100}
+              aria-valuenow={Math.round(progressRatio(progress) * 100)}
+            >
+              <div className="h-100 bg-primary" style={{ width: `${progressRatio(progress) * 100}%`, transition: 'width .3s' }} />
+            </div>
+          )}
         </section>
       )}
 
@@ -338,6 +566,11 @@ export function DigitizeSubject() {
                 sections: draft.sections.filter((section) => section.title !== null).length,
               })}
             </p>
+            {assisted && (
+              <Alert type="warning" className="mt-16">
+                {t('exercizer.assisted.review')}
+              </Alert>
+            )}
             {ocrPages > 0 && <Alert type="info" className="mt-16">{t('exercizer.digitize.ocr.notice', { count: ocrPages })}</Alert>}
             {truncated && <Alert type="warning" className="mt-16">{t('exercizer.digitize.truncated')}</Alert>}
             {incomplete.length > 0 && (

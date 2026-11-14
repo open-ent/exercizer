@@ -18,7 +18,6 @@ import { TeacherSubjects } from './screens/TeacherSubjects';
  */
 const SubjectEditor = lazy(() => import('./screens/SubjectEditor'));
 const SimpleSubjectEditor = lazy(() => import('./screens/SimpleSubjectEditor'));
-const GenerateSubject = lazy(() => import('./screens/GenerateSubject'));
 // Porte pdf.js et tesseract.js (chargés à la demande, au premier document déposé).
 const DigitizeSubject = lazy(() => import('./screens/DigitizeSubject'));
 const ImportPackageSubject = lazy(() => import('./screens/ImportPackageSubject'));
@@ -112,7 +111,8 @@ export const routes: RouteObject[] = [
         path: 'subject/create/simple/:folderId',
         element: teacher(<SimpleSubjectEditor mode="create" />),
       },
-      { path: 'subject/generate', element: teacher(<GenerateSubject />) },
+      { path: 'subject/generate', element: teacher(<DigitizeSubject key="assisted" assisted />) },
+      { path: 'subject/generate/:generationId', element: teacher(<DigitizeSubject key="assisted-generation" assisted />) },
       // Numériser un devoir (PDF, scan, photo) : IHM React seule, `?folder=<id>` pour le dossier.
       { path: 'subject/digitize', element: teacher(<DigitizeSubject />) },
       // Créer un sujet depuis un autre format (Moodle, GIFT, QTI, Common Cartridge, OEIP…) :

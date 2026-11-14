@@ -151,6 +151,8 @@ public class Exercizer extends BaseServer {
             addController(new GrainTypeController());
             addController(new SectionController());
             addController(new CatalogController());
+            // Création assistée en arrière-plan : le brouillon est demandé à l'IA du dashboard.
+            addController(new AssistedGenerationController(vertx, config));
             // Packs pédagogiques : sujets communs installés et ouverts par le module d'interopérabilité.
             vertx.eventBus().consumer(fr.openent.exercizer.packs.PackBusHandler.ADDRESS,
                     new fr.openent.exercizer.packs.PackBusHandler());

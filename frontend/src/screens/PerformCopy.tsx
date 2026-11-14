@@ -25,14 +25,16 @@ import {
   GrainCopyHeader,
   GrainCopyStatement,
 } from '../features/copies/GrainCopyHeader';
+import { CopyNavigator, ReferenceStatement } from '../features/copies/CopyNavigator';
 import { CopySummary } from '../features/copies/CopySummary';
 import { LargePerform } from '../features/copies/LargePerform';
 import { PilotageBanner, usePilotage } from '../features/PilotageBanner';
 import { SaveStatus } from '../features/SaveStatus';
 import { LoadError } from '../features/LoadError';
-import { copyQuestionNumber, GRAIN, isQuestion } from '../grains';
+import { isQuestion } from '../grains';
 import { useDebouncedSave } from '../hooks/useDebouncedSave';
-import { groupCopiesBySection, sectionProgress } from '../sections';
+import { hasAnswer } from '../navigation';
+import { groupCopiesBySection } from '../sections';
 import { copySummary, startsOnSummary } from '../summary';
 import { GrainCopy, GrainCustomCopyData, ScheduledSection, SubjectCopy } from '../types';
 import { formatDateTime } from '../utils';
@@ -445,127 +447,86 @@ export function PerformCopy() {
 
       {banners}
 
-      <div className="grid gap-24">
-        <aside className="g-col-12 g-col-lg-3">
-          <nav aria-label={t('exercizer.rank')} className="d-flex flex-column gap-16">
-            <button
-              type="button"
-              data-nav-summary
-              className={`btn btn-sm w-100 text-start ${showingSummary ? 'btn-filled btn-secondary' : 'btn-ghost btn-tertiary'}`}
-              aria-current={showingSummary ? 'step' : undefined}
-              onClick={() => setOnSummary(true)}
-            >
-              {t('exercizer.summary')}
-            </button>
-            {groups.map((group) => {
-              const progress = sectionProgress(group.grains, hasAnswer);
-              return (
-                <div key={group.section?.id ?? 'ungrouped'}>
-                  {group.section && (
-                    <button
-                      type="button"
-                      className="btn btn-ghost btn-tertiary btn-sm w-100 text-start fw-bold d-flex justify-content-between gap-8"
-                      onClick={() => goTo(pageOf(group.grains[0]))}
-                    >
-                      <span className="text-truncate">{group.section.title}</span>
-                      {progress.total > 0 && (
-                        <small
-                          className={progress.answered === progress.total ? 'text-success' : 'text-muted'}
-                          aria-label={`${progress.answered}/${progress.total} ${t('exercizer.copy.answered')}`}
-                        >
-                          {progress.answered}/{progress.total}
-                        </small>
-                      )}
-                    </button>
-                  )}
-                  <ol className={`list-unstyled d-flex flex-column gap-4 ${group.section ? 'ps-16' : ''}`}>
-                    {group.grains.map((grainCopy) => {
-                      const position = pageOf(grainCopy);
-                      const isCurrent = page.some((item) => item.id === grainCopy.id);
-                      return (
-                        <li key={grainCopy.id}>
-                          <button
-                            type="button"
-                            className={`btn btn-sm w-100 text-start ${
-                              isCurrent && !bySection ? 'btn-filled btn-secondary' : 'btn-ghost btn-tertiary'
-                            }`}
-                            aria-current={isCurrent ? 'step' : undefined}
-                            onClick={() => {
-                              goTo(position);
-                              if (bySection) scrollToGrainCopy(grainCopy);
-                            }}
-                          >
-                            {isQuestion(grainCopy.grain_type_id)
-                              ? `${copyQuestionNumber(grainCopy, grainCopies)}) ${grainCopy.grain_copy_data.title ?? ''}`
-                              : (grainCopy.grain_copy_data.title ?? '')}
-                            {isQuestion(grainCopy.grain_type_id) && hasAnswer(grainCopy) && (
-                              <span className="text-success ms-4" aria-hidden="true">
-                                ✓
-                              </span>
-                            )}
-                          </button>
-                        </li>
-                      );
-                    })}
-                  </ol>
-                </div>
-              );
-            })}
-          </nav>
-        </aside>
+      <CopyNavigator
+        groups={groups}
+        grainCopies={grainCopies}
+        currentIds={page.map((grainCopy) => grainCopy.id)}
+        highlight={!bySection}
+        onSelect={(grainCopy) => {
+          goTo(pageOf(grainCopy));
+          if (bySection) scrollToGrainCopy(grainCopy);
+        }}
+        hasAnswer={hasAnswer}
+        summary={{ current: showingSummary, onSelect: () => setOnSummary(true) }}
+        onPrevious={!showingSummary && index > 0 ? () => goTo(index - 1) : undefined}
+        onNext={
+          showingSummary
+            ? () => goTo(0)
+            : index < pages.length - 1
+              ? () => goTo(index + 1)
+              : undefined
+        }
+      >
+        {showingSummary ? (
+          <>
+            <CopySummary summary={summary} />
+            <div className="d-flex justify-content-end mt-16">{startButton}</div>
+          </>
+        ) : (
+          <>
+            {pageSection && (
+              <header className="mb-16">
+                <Heading level="h3" headingStyle="h5" className="mb-8">
+                  {pageSection.title}
+                </Heading>
+                {showSectionDescription && (
+                  <div
+                    dangerouslySetInnerHTML={{
+                      __html: playableHtml(pageSection.description, mediaLabels(t)),
+                    }}
+                  />
+                )}
+              </header>
+            )}
 
-        <section className="g-col-12 g-col-lg-9">
-          {showingSummary ? (
-            <>
-              <CopySummary summary={summary} />
-              <div className="d-flex justify-content-end mt-16">{startButton}</div>
-            </>
-          ) : (
-            <>
-          {pageSection && (
-            <header className="mb-16">
-              <Heading level="h3" headingStyle="h5" className="mb-8">
-                {pageSection.title}
-              </Heading>
-              {showSectionDescription && (
-                <div
-                  dangerouslySetInnerHTML={{
-                    __html: playableHtml(pageSection.description, mediaLabels(t)),
-                  }}
-                />
-              )}
-            </header>
-          )}
-
-          {page.map((grainCopy) => (
-            <article key={grainCopy.id} id={`grain-copy-${grainCopy.id}`} className="card p-16 mb-16">
-              {grainCopy.unreadable && (
-                <div data-unreadable>
-                  <Alert type="danger" className="mb-16">
-                  {t('exercizer.grain.unreadable', { defaultValue: "Cette question est illisible : vos réponses n'y seront pas enregistrées. Prévenez votre enseignant." })}
-                </Alert>
-                </div>
-              )}
-              <GrainCopyHeader grainCopy={grainCopy} grainCopies={grainCopies} showHint />
-              <GrainCopyStatement grainCopy={grainCopy} />
-              <GrainCopyDocuments grainCopy={grainCopy} />
-
-              <AnswerFields
-                grainTypeId={grainCopy.grain_type_id}
-                data={grainCopy.grain_copy_data.custom_copy_data ?? {}}
-                onChange={(next) => onAnswerChange(grainCopy, next)}
-                readOnly={(!canSubmit && !copy.is_training_copy) || pilotage.readOnly || !!grainCopy.unreadable}
+            {/* En mode section, les énoncés sont déjà sur la page : rien à rappeler. */}
+            {!bySection && page[0] && (
+              <ReferenceStatement
+                grainCopy={page[0]}
+                groupGrains={
+                  groups.find((group) => group.grains.some((item) => item.id === page[0].id))?.grains ?? []
+                }
               />
-            </article>
-          ))}
+            )}
 
-          <div className="d-flex justify-content-end gap-16 mt-16 flex-wrap">
-            {actions}
-          </div>
-            </>
-          )}
-        </section>
-      </div>
+            {page.map((grainCopy) => (
+              <article key={grainCopy.id} id={`grain-copy-${grainCopy.id}`} className="card p-16 mb-16">
+                {grainCopy.unreadable && (
+                  <div data-unreadable>
+                    <Alert type="danger" className="mb-16">
+                      {t('exercizer.grain.unreadable', { defaultValue: "Cette question est illisible : vos réponses n'y seront pas enregistrées. Prévenez votre enseignant." })}
+                    </Alert>
+                  </div>
+                )}
+                <GrainCopyHeader grainCopy={grainCopy} grainCopies={grainCopies} showHint />
+                <GrainCopyStatement grainCopy={grainCopy} />
+                <GrainCopyDocuments grainCopy={grainCopy} />
+
+                <AnswerFields
+                  grainTypeId={grainCopy.grain_type_id}
+                  data={grainCopy.grain_copy_data.custom_copy_data ?? {}}
+                  onChange={(next) => onAnswerChange(grainCopy, next)}
+                  readOnly={(!canSubmit && !copy.is_training_copy) || pilotage.readOnly || !!grainCopy.unreadable}
+                />
+              </article>
+            ))}
+
+            <div className="d-flex justify-content-end gap-16 mt-16 flex-wrap">
+              {actions}
+            </div>
+          </>
+        )}
+      </CopyNavigator>
 
       {confirmModal}
     </div>
@@ -581,36 +542,6 @@ function scrollToGrainCopy(grainCopy: GrainCopy) {
         ?.scrollIntoView({ behavior: 'smooth', block: 'start' }),
     50,
   );
-}
-
-/** Le grain a-t-il reçu une réponse ? Sert au décompte et à la pastille de la liste. */
-function hasAnswer(grainCopy: GrainCopy): boolean {
-  const data = grainCopy.grain_copy_data.custom_copy_data;
-  if (!data) return false;
-  switch (grainCopy.grain_type_id) {
-    case GRAIN.SIMPLE_ANSWER:
-      return !!data.filled_answer && data.filled_answer.trim() !== '' && data.filled_answer !== '<p></p>';
-    case GRAIN.OPEN_ANSWER:
-      // Une réponse laissée telle que la réponse de départ (schéma à compléter…) n'est pas répondue.
-      return (
-        !!data.filled_answer &&
-        data.filled_answer.trim() !== '' &&
-        data.filled_answer !== '<p></p>' &&
-        data.filled_answer !== data.starting_answer
-      );
-    case GRAIN.QCM:
-      return (data.filled_answer_list ?? []).some((answer) => answer.isChecked);
-    case GRAIN.MULTIPLE_ANSWERS:
-      return (data.filled_answer_list ?? []).some((answer) => !!answer.text);
-    case GRAIN.ASSOCIATION:
-      return (data.filled_answer_list ?? []).some((answer) => !!answer.text_right);
-    case GRAIN.ORDER_BY:
-      // Une mise en ordre a toujours une réponse : l'ordre initial en est une. On la considère
-      // répondue dès que l'élève a touché la copie — faute de mieux, dès qu'elle existe.
-      return (data.filled_answer_list ?? []).length > 0;
-    default:
-      return (data.zones ?? []).some((zone) => !!zone.answer);
-  }
 }
 
 export default PerformCopy;

@@ -13,13 +13,13 @@ import {
   GrainCopyHeader,
   GrainCopyStatement,
 } from '../features/copies/GrainCopyHeader';
+import { CopyNavigator, ReferenceStatement } from '../features/copies/CopyNavigator';
 import { GrainCopyReview } from '../features/copies/GrainCopyReview';
 import { SectionedReview } from '../features/copies/SectionedReview';
 import { RichTextEditor } from '../features/RichTextEditor';
 import {
   byOrder,
   computedMaxScore,
-  copyQuestionNumber,
   GRAIN,
   isQuestion,
   isUndecided,
@@ -27,6 +27,7 @@ import {
   statementOf,
 } from '../grains';
 import { mediaLabels, playableHtml } from '../media';
+import { hasAnswer } from '../navigation';
 import { atLeast, subjectRight } from '../rights';
 import { initialCopyData } from '../schedule';
 import { groupCopiesBySection } from '../sections';
@@ -225,89 +226,53 @@ export function PreviewPerformCopy() {
       {grainCopies.length === 0 || !current ? (
         <Alert type="warning">{t('exercizer.subject.empty')}</Alert>
       ) : (
-        <div className="grid gap-24">
-          <aside className="g-col-12 g-col-lg-3">
-            <nav aria-label={t('exercizer.rank')} className="d-flex flex-column gap-16">
-              {groups.map((group) => (
-                <div key={group.section?.id ?? 'ungrouped'}>
-                  {group.section && (
-                    <button
-                      type="button"
-                      className="btn btn-ghost btn-tertiary btn-sm w-100 text-start fw-bold"
-                      onClick={() => setIndex(grainCopies.indexOf(group.grains[0]))}
-                    >
-                      <span className="text-truncate">{group.section.title}</span>
-                    </button>
-                  )}
-                  <ol
-                    className={`list-unstyled d-flex flex-column gap-4 ${group.section ? 'ps-16' : ''}`}
-                  >
-                    {group.grains.map((grainCopy) => {
-                      const position = grainCopies.indexOf(grainCopy);
-                      return (
-                        <li key={grainCopy.id}>
-                          <button
-                            type="button"
-                            className={`btn btn-sm w-100 text-start ${
-                              position === index
-                                ? 'btn-filled btn-secondary'
-                                : 'btn-ghost btn-tertiary'
-                            }`}
-                            aria-current={position === index ? 'step' : undefined}
-                            onClick={() => setIndex(position)}
-                          >
-                            {isQuestion(grainCopy.grain_type_id)
-                              ? `${copyQuestionNumber(grainCopy, grainCopies)}) ${grainCopy.grain_copy_data.title ?? ''}`
-                              : grainCopy.grain_copy_data.title || t('exercizer.statement')}
-                          </button>
-                        </li>
-                      );
-                    })}
-                  </ol>
-                </div>
-              ))}
-            </nav>
-          </aside>
-
-          <section className="g-col-12 g-col-lg-9">
-            {currentSection && (
-              <header className="mb-16">
-                <Heading level="h3" headingStyle="h5" className="mb-8">
-                  {currentSection.title}
-                </Heading>
-                {showSectionDescription && (
-                  <div
-                    dangerouslySetInnerHTML={{
-                      __html: playableHtml(currentSection.description, mediaLabels(t)),
-                    }}
-                  />
-                )}
-              </header>
+        <CopyNavigator
+          groups={groups}
+          grainCopies={grainCopies}
+          currentIds={[current.id]}
+          onSelect={(grainCopy) => setIndex(grainCopies.indexOf(grainCopy))}
+          hasAnswer={hasAnswer}
+          onPrevious={index > 0 ? () => setIndex(index - 1) : undefined}
+          onNext={index < grainCopies.length - 1 ? () => setIndex(index + 1) : undefined}
+        >
+          {currentSection && (
+            <header className="mb-16">
+              <Heading level="h3" headingStyle="h5" className="mb-8">
+                {currentSection.title}
+              </Heading>
+              {showSectionDescription && (
+                <div
+                  dangerouslySetInnerHTML={{
+                    __html: playableHtml(currentSection.description, mediaLabels(t)),
+                  }}
+                />
+              )}
+            </header>
+          )}
+          {currentGroup && <ReferenceStatement grainCopy={current} groupGrains={currentGroup.grains} />}
+          <article className="card p-16">
+            <GrainCopyHeader grainCopy={current} grainCopies={grainCopies} showHint />
+            <GrainCopyStatement grainCopy={current} />
+            <GrainCopyDocuments grainCopy={current} />
+            <AnswerFields
+              grainTypeId={current.grain_type_id}
+              data={current.grain_copy_data.custom_copy_data ?? {}}
+              onChange={onAnswerChange}
+            />
+          </article>
+          <div className="d-flex justify-content-end gap-16 mt-16 flex-wrap">
+            {index > 0 && (
+              <Button color="tertiary" variant="ghost" onClick={() => setIndex(index - 1)}>
+                {t('exercizer.previous')}
+              </Button>
             )}
-            <article className="card p-16">
-              <GrainCopyHeader grainCopy={current} grainCopies={grainCopies} showHint />
-              <GrainCopyStatement grainCopy={current} />
-              <GrainCopyDocuments grainCopy={current} />
-              <AnswerFields
-                grainTypeId={current.grain_type_id}
-                data={current.grain_copy_data.custom_copy_data ?? {}}
-                onChange={onAnswerChange}
-              />
-            </article>
-            <div className="d-flex justify-content-end gap-16 mt-16 flex-wrap">
-              {index > 0 && (
-                <Button color="tertiary" variant="ghost" onClick={() => setIndex(index - 1)}>
-                  {t('exercizer.previous')}
-                </Button>
-              )}
-              {index < grainCopies.length - 1 && (
-                <Button color="primary" variant="filled" onClick={() => setIndex(index + 1)}>
-                  {t('exercizer.next')}
-                </Button>
-              )}
-            </div>
-          </section>
-        </div>
+            {index < grainCopies.length - 1 && (
+              <Button color="primary" variant="filled" onClick={() => setIndex(index + 1)}>
+                {t('exercizer.next')}
+              </Button>
+            )}
+          </div>
+        </CopyNavigator>
       )}
     </div>
   );

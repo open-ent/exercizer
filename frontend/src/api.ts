@@ -9,6 +9,9 @@
  * `XSRF-TOKEN`), sinon le filtre d'entcore répond 401 avant d'atteindre le contrôleur.
  */
 
+import type { FigureBand, SourceLine } from '@open-ent/react/digitize';
+
+import type { AssistedLine, AssistedResponse } from './assisted';
 import { PilotageState } from './pilotage';
 import {
   Alignment,
@@ -212,6 +215,56 @@ export const getPublicConf = async (): Promise<PublicConf> => {
  */
 export const generateSubject = (subjectId: number, fileId: string) =>
   send<unknown>('POST', '/exercizer/subject/generate', { fileId, id: subjectId });
+
+// ── Création assistée, en arrière-plan ───────────────────────────────────────
+
+/** Une création assistée : le serveur demande le brouillon à l'IA pendant que l'enseignant fait autre chose. */
+export interface AssistedGeneration {
+  id: number;
+  title: string | null;
+  document_name: string | null;
+  status: 'pending' | 'ready' | 'error';
+  error: string | null;
+  created: string;
+  modified: string;
+  folder_id?: number | null;
+  document_id?: string | null;
+  /** Les lignes lues (avec leurs coordonnées) et les figures, pour rejouer le brouillon. */
+  input?: { source: SourceLine[]; figures: FigureBand[] };
+  draft?: AssistedResponse | null;
+}
+
+/** Lance la génération et rend la main aussitôt ; 429 : trop de générations en cours. */
+export const startAssistedGeneration = (body: {
+  title: string;
+  folderId: number | null;
+  documentId: string | null;
+  documentName: string;
+  lines: AssistedLine[];
+  images: Array<{ page: number; data: string }>;
+  source: SourceLine[];
+  figures: FigureBand[];
+  locale?: string;
+}) => send<AssistedGeneration>('POST', '/exercizer/assisted-generations', body);
+
+export const listAssistedGenerations = () => get<AssistedGeneration[]>('/exercizer/assisted-generations');
+
+export const getAssistedGeneration = (id: number) => get<AssistedGeneration>(`/exercizer/assisted-generations/${id}`);
+
+export const deleteAssistedGeneration = (id: number) => sendVoid('DELETE', `/exercizer/assisted-generations/${id}`);
+
+/** Le devoir déposé depuis le poste est gardé dans l'espace documentaire, pour être relu au retour. */
+export const uploadWorkspaceDocument = async (blob: Blob, name: string): Promise<string> => {
+  const body = new FormData();
+  body.append('file', blob, name);
+  const res = await fetch('/workspace/document?protected=true&application=media-library', {
+    ...base,
+    method: 'POST',
+    headers: xsrfHeader(),
+    body,
+  });
+  return (await json<{ _id: string }>(res))._id;
+};
 
 // ── Ressources externes d'un sujet ────────────────────────────────────────────
 

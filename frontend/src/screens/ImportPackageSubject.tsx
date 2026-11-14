@@ -11,6 +11,7 @@ import {
   TextArea,
   useHasWorkflow,
 } from '@open-ent/react';
+import { IconCheck } from '@open-ent/react/icons';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useId, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -287,18 +288,16 @@ export function ImportPackageSubject() {
         </div>
       </div>
 
-      <ol className="d-flex flex-wrap gap-16 list-unstyled mb-24" aria-label={t('exercizer.package.steps')}>
+      <ol className="exercizer-stepper list-unstyled mb-24" aria-label={t('exercizer.package.steps')}>
         {STEPS.map((name, index) => {
           const current = STEPS.indexOf(step);
-          const state = index < current ? 'success' : index === current ? 'info' : 'warning';
+          const state = index < current ? 'is-done' : index === current ? 'is-current' : 'is-todo';
           return (
-            <li key={name} aria-current={index === current ? 'step' : undefined}>
-              <Badge
-                variant={{ type: 'content', level: state, background: index <= current }}
-                className={index === current ? 'fw-bold' : ''}
-              >
-                {index + 1}. {t(`exercizer.package.step.${name}`)}
-              </Badge>
+            <li key={name} className={state} aria-current={index === current ? 'step' : undefined}>
+              <span className="exercizer-stepper-dot" aria-hidden="true">
+                {index < current ? <IconCheck width={16} height={16} /> : index + 1}
+              </span>
+              <span className="exercizer-stepper-label">{t(`exercizer.package.step.${name}`)}</span>
             </li>
           );
         })}
