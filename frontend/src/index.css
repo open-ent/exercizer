@@ -194,3 +194,53 @@
 .exercizer-reference > summary {
   cursor: pointer;
 }
+
+/* Éditeur de sujet — barre d'actions collée en haut de la fenêtre au défilement (l'en-tête de
+   l'ENT défile avec la page). Fond plein : le contenu passe dessous sans transparaître. */
+.exercizer-editor-bar {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  background: var(--openent-body-bg, var(--openent-white));
+  border-bottom: 0.1rem solid var(--openent-gray-300);
+}
+
+/* Un grain : en-tête compact (type, titre, position, actions), corps repliable. Le cadre du bloc
+   en cours d'édition prend la couleur primaire — sélecteur redoublé, le thème neutralise la
+   bordure d'une `.card` seule. */
+.card.exercizer-grain {
+  overflow: visible;
+}
+.card.exercizer-grain.is-active {
+  border-color: var(--openent-primary);
+  box-shadow: 0 0 0 0.1rem var(--openent-primary);
+}
+.exercizer-grain-header {
+  border-bottom: 0.1rem solid var(--openent-gray-300);
+  background: var(--openent-gray-200);
+  border-radius: inherit;
+}
+.exercizer-grain-header:has(+ [hidden]) {
+  border-bottom: 0;
+}
+.exercizer-grain-title {
+  min-width: 16rem;
+}
+
+/* Plan du sujet : la ligne du grain en cours d'édition est surlignée ; les flèches de
+   déplacement ne s'affirment qu'au survol ou au clavier, pour ne pas charger la liste. */
+.exercizer-plan-row {
+  border-radius: 0.6rem;
+  border-left: 0.3rem solid transparent;
+}
+.exercizer-plan-row.is-active {
+  background: var(--openent-primary-200);
+  border-left-color: var(--openent-primary);
+}
+.exercizer-plan-moves {
+  opacity: 0.35;
+}
+.exercizer-plan-row:hover .exercizer-plan-moves,
+.exercizer-plan-row:focus-within .exercizer-plan-moves {
+  opacity: 1;
+}

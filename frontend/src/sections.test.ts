@@ -9,6 +9,7 @@ import {
   moveGrainToSection,
   moveSection,
   moveSectionTo,
+  placeGrainAfter,
   rankAtEndOf,
   sectionMaxScore,
   sectionProgress,
@@ -185,6 +186,30 @@ describe('moveGrainToSection', () => {
       [10, [2, 3, 1]],
       [20, [4]],
     ]);
+  });
+});
+
+describe('placeGrainAfter', () => {
+  it('range le grain juste après son ancre, dans la section de celle-ci', () => {
+    expect(ids(placeGrainAfter(groupBySection(grains, sections), 4, 2))).toEqual([
+      [null, [1]],
+      [10, [2, 4, 3]],
+      [20, []],
+    ]);
+  });
+
+  it('sans ancre, le place en tête de la section visée', () => {
+    expect(ids(placeGrainAfter(groupBySection(grains, sections), 1, null, 20))).toEqual([
+      [null, []],
+      [10, [2, 3]],
+      [20, [1, 4]],
+    ]);
+  });
+
+  it('ne touche à rien si le grain ou l’ancre est inconnu', () => {
+    const groups = groupBySection(grains, sections);
+    expect(placeGrainAfter(groups, 99, 2)).toBe(groups);
+    expect(placeGrainAfter(groups, 4, 99)).toBe(groups);
   });
 });
 

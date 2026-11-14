@@ -1,7 +1,16 @@
-import { Alert, Button, Checkbox, EmptyScreen, Heading, IconButton, LoadingScreen } from '@open-ent/react';
-import { IconEdit } from '@open-ent/react/icons';
+import {
+  Alert,
+  Button,
+  Checkbox,
+  Dropdown,
+  EmptyScreen,
+  Heading,
+  IconButton,
+  LoadingScreen,
+} from '@open-ent/react';
+import { IconEdit, IconOptions, IconPlus, IconSend, IconUndoAll } from '@open-ent/react/icons';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { Fragment, useCallback, useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 
@@ -55,6 +64,7 @@ import {
   moveGrainToSection,
   moveSection,
   moveSectionTo,
+  placeGrainAfter,
   rankAtEndOf,
   sectionMaxScore,
   structurePayload,
@@ -97,6 +107,16 @@ export function SubjectEditor() {
   const [editingProperties, setEditingProperties] = useState(false);
   const [confirmingRevert, setConfirmingRevert] = useState(false);
   const [revertError, setRevertError] = useState(false);
+  // Le grain en cours d'édition (encadré, surligné dans le plan) et les grains repliés.
+  const [activeId, setActiveId] = useState<number | null>(null);
+  const [collapsed, setCollapsed] = useState<ReadonlySet<number>>(new Set());
+  const toggleCollapsed = (grain: Grain) =>
+    setCollapsed((current) => {
+      const next = new Set(current);
+      if (next.has(grain.id)) next.delete(grain.id);
+      else next.add(grain.id);
+      return next;
+    });
   // Le sujet tel qu'à l'ouverture de l'éditeur, pour « Annuler les modifications » (cf. `revert.ts`).
   const [snapshot, setSnapshot] = useState<(EditorSnapshot & { subjectId: number }) | null>(null);
 
@@ -231,7 +251,15 @@ export function SubjectEditor() {
         ? null
         : focus;
 
-  const scrollToGrain = (grain: Grain) =>
+  const scrollToGrain = (grain: Grain) => {
+    setActiveId(grain.id);
+    // Un grain replié qu'on va voir se déplie.
+    setCollapsed((current) => {
+      if (!current.has(grain.id)) return current;
+      const next = new Set(current);
+      next.delete(grain.id);
+      return next;
+    });
     // Après le rendu de la section qu'on vient d'ouvrir.
     window.setTimeout(
       () =>
@@ -240,6 +268,7 @@ export function SubjectEditor() {
           ?.scrollIntoView({ behavior: 'smooth', block: 'start' }),
       50,
     );
+  };
 
   // ── Structure ──────────────────────────────────────────────────────────────
 
@@ -287,6 +316,41 @@ export function SubjectEditor() {
         await queryClient.invalidateQueries({ queryKey: grainsKey });
       } else {
         setGrains([...grains, grain]);
+      }
+      scrollToGrain(grain);
+    },
+  });
+
+  /**
+   * « Insérer un bloc ici » : un grain neuf, encore indécis (énoncé ou question ?), juste après
+   * `anchor`. Le serveur ne sait créer qu'en fin de sujet ou de section : on crée là, puis on
+   * déplace — par la structure sur un sujet à sections, rang par rang sinon.
+   */
+  const insertAfter = useMutation({
+    mutationFn: async (anchor: Grain) => {
+      const section_id = withSections ? (anchor.section_id ?? null) : null;
+      const grain = {
+        subject_id: subjectId,
+        grain_type_id: GRAIN.CHOOSE,
+        order_by: withSections ? rankAtEndOf(groups, section_id) : nextOrder(grains),
+        section_id,
+        grain_data: defaultGrainData(GRAIN.CHOOSE),
+      };
+      const created = await createGrain(grain);
+      return { ...grain, id: created.id } as Grain;
+    },
+    onSuccess: async (grain, anchor) => {
+      if (withSections) {
+        await queryClient.invalidateQueries({ queryKey: grainsKey });
+        const fresh = queryClient.getQueryData<Grain[]>(grainsKey) ?? [];
+        await applyGroups(placeGrainAfter(groupBySection(fresh, sections), grain.id, anchor.id));
+      } else {
+        const list = byOrder([...grains, grain]);
+        const from = list.findIndex((item) => item.id === grain.id);
+        const to = list.findIndex((item) => item.id === anchor.id) + 1;
+        const { grains: reordered, changed } = moveGrain(list, from, to);
+        setGrains(reordered);
+        await Promise.all(changed.map((item) => saveGrain(item)));
       }
       scrollToGrain(grain);
     },
@@ -475,24 +539,47 @@ export function SubjectEditor() {
     : undefined;
 
   const renderGrains = (groupGrains: Grain[]) =>
-    groupGrains.map((grain) => (
-      <GrainCard
-        key={grain.id}
-        grain={grain}
-        grains={grains}
-        grainTypes={grainTypes}
-        onChange={onChange}
-        onPickType={pickType}
-        onChangeType={changeType}
-        onDuplicate={duplicate.mutate}
-        onRemove={setToRemove}
-        sectionTargets={sectionTargets}
-        onMoveToSection={(target, sectionId) => {
-          void applyGroups(moveGrainToSection(groups, target.id, sectionId));
-          if (focus !== 'all') setFocus(sectionId ?? 'ungrouped');
-          scrollToGrain(target);
-        }}
-      />
+    groupGrains.map((grain, index) => (
+      <Fragment key={grain.id}>
+        <GrainCard
+          grain={grain}
+          position={{ index: index + 1, total: groupGrains.length }}
+          active={grain.id === activeId}
+          onActivate={(item) => setActiveId(item.id)}
+          collapsed={collapsed.has(grain.id)}
+          onToggleCollapsed={toggleCollapsed}
+          grains={grains}
+          grainTypes={grainTypes}
+          onChange={onChange}
+          onPickType={pickType}
+          onChangeType={changeType}
+          onDuplicate={duplicate.mutate}
+          onRemove={setToRemove}
+          sectionTargets={sectionTargets}
+          onMoveToSection={(target, sectionId) => {
+            void applyGroups(moveGrainToSection(groups, target.id, sectionId));
+            if (focus !== 'all') setFocus(sectionId ?? 'ungrouped');
+            scrollToGrain(target);
+          }}
+        />
+        {/* Entre deux grains : de quoi en insérer un nouveau à cet endroit précis. */}
+        {index < groupGrains.length - 1 && !subject.is_library_subject && (
+          <div className="exercizer-insert d-flex align-items-center gap-12 mb-16">
+            <hr className="flex-fill m-0" aria-hidden="true" />
+            <Button
+              color="tertiary"
+              variant="outline"
+              size="sm"
+              leftIcon={<IconPlus />}
+              isLoading={insertAfter.isPending && insertAfter.variables?.id === grain.id}
+              onClick={() => insertAfter.mutate(grain)}
+            >
+              {t('exercizer.grain.insert.here', { defaultValue: 'Insérer un bloc ici' })}
+            </Button>
+            <hr className="flex-fill m-0" aria-hidden="true" />
+          </div>
+        )}
+      </Fragment>
     ));
 
   return (
@@ -507,9 +594,12 @@ export function SubjectEditor() {
           {t('exercizer.revert.error')}
         </Alert>
       )}
-      <div className="d-flex flex-wrap align-items-center justify-content-between gap-16 mb-24">
-        <div className="d-flex align-items-center gap-8">
-          <Heading level="h2" headingStyle="h4" className="m-0">
+      {/* Barre d'actions, collée en haut de la fenêtre au défilement : un seul bouton principal
+          (Distribuer), le témoin d'enregistrement à la place du bouton « Enregistrer » absent, et
+          l'action destructrice rangée dans le menu « … ». */}
+      <div className="exercizer-editor-bar d-flex flex-wrap align-items-center gap-16 mb-16 py-12">
+        <div className="d-flex flex-wrap align-items-center gap-8 flex-fill" style={{ minWidth: 0 }}>
+          <Heading level="h2" headingStyle="h4" className="m-0 text-truncate">
             {subject.title}
           </Heading>
           <IconButton
@@ -517,37 +607,51 @@ export function SubjectEditor() {
             title={t('exercizer.edit')}
             color="tertiary"
             variant="ghost"
+            size="sm"
             icon={<IconEdit />}
             onClick={() => setEditingProperties(true)}
           />
+          {/* Sans lui, rien ne dirait que la frappe est partie — ni qu'elle ne l'est pas encore. */}
+          <SaveStatus pending={pending} failed={failed} onRetry={retryAll} />
         </div>
-        <div className="d-flex flex-wrap gap-8">
-          {/* Le témoin d'enregistrement remplace le bouton absent : sans lui, rien ne dirait que
-              la frappe est partie — ni qu'elle ne l'est pas encore. */}
-          <SaveStatus className="align-self-center" pending={pending} failed={failed} onRetry={retryAll} />
+        <div className="d-flex flex-wrap align-items-center gap-8">
           <Button
             color="tertiary"
             variant="ghost"
             onClick={() => navigate(`/subject/copy/preview/perform/${subject.id}/`)}
           >
-            {t('exercizer.preview')}
+            {t('exercizer.preview.student', { defaultValue: 'Voir comme un élève' })}
           </Button>
-          {/* Tout est déjà enregistré : annuler, c'est revenir au sujet tel qu'à l'ouverture. */}
-          <Button
-            color="tertiary"
-            variant="ghost"
-            disabled={!openingState}
-            isLoading={revert.isPending}
-            onClick={discardChanges}
-          >
-            {t('exercizer.revert')}
-          </Button>
+          <Dropdown placement="bottom-end">
+            <Dropdown.Trigger
+              variant="ghost"
+              hideCarret
+              icon={<IconOptions />}
+              aria-label={t('exercizer.editor.more', { defaultValue: "Plus d'actions" })}
+              title={t('exercizer.editor.more', { defaultValue: "Plus d'actions" })}
+            />
+            <Dropdown.Menu>
+              <Dropdown.Item icon={<IconEdit />} onClick={() => setEditingProperties(true)}>
+                {t('exercizer.edit')}
+              </Dropdown.Item>
+              <Dropdown.Separator />
+              {/* Tout est déjà enregistré : annuler, c'est revenir au sujet tel qu'à l'ouverture. */}
+              <Dropdown.Item
+                icon={<IconUndoAll />}
+                disabled={!openingState || revert.isPending}
+                onClick={() => void discardChanges()}
+              >
+                {t('exercizer.revert')}
+              </Dropdown.Item>
+            </Dropdown.Menu>
+          </Dropdown>
           <Button color="primary" variant="outline" onClick={leave}>
-            {t('exercizer.back.subject')}
+            {t('exercizer.editor.leave', { defaultValue: 'Quitter' })}
           </Button>
           <Button
             color="primary"
             variant="filled"
+            leftIcon={<IconSend />}
             onClick={async () => {
               // Ce qui est en attente part d'abord : on ne distribue pas une version du sujet
               // qui n'est pas encore enregistrée.
@@ -564,11 +668,13 @@ export function SubjectEditor() {
 
       <div className="grid gap-24">
         <aside className="g-col-12 g-col-lg-3">
+          <div className="card p-16 exercizer-plan">
           {withSections ? (
             <SectionOrganizer
               groups={groups}
               grains={grains}
               grainTypes={grainTypes}
+              activeId={activeId}
               focus={focus}
               onFocus={setFocus}
               onSelectGrain={(grain) => {
@@ -592,6 +698,7 @@ export function SubjectEditor() {
               <GrainOrganizer
                 grains={grains}
                 grainTypes={grainTypes}
+                activeId={activeId}
                 onMove={move}
                 onSelect={scrollToGrain}
               />
@@ -608,6 +715,7 @@ export function SubjectEditor() {
               )}
             </>
           )}
+          </div>
           {/* Une question reprise d'un autre sujet arrive en fin de sujet — donc dans la dernière
               partie quand il y en a : c'est le serveur qui tient les rangs. */}
           <ReuseGrains
@@ -620,6 +728,21 @@ export function SubjectEditor() {
         </aside>
 
         <section className="g-col-12 g-col-lg-9">
+          {grains.length > 1 && (
+            <div className="d-flex justify-content-end gap-8 mb-8">
+              <Button color="tertiary" variant="ghost" size="sm" onClick={() => setCollapsed(new Set())}>
+                {t('exercizer.grain.expand.all', { defaultValue: 'Tout déplier' })}
+              </Button>
+              <Button
+                color="tertiary"
+                variant="ghost"
+                size="sm"
+                onClick={() => setCollapsed(new Set(grains.map((grain) => grain.id)))}
+              >
+                {t('exercizer.grain.collapse.all', { defaultValue: 'Tout replier' })}
+              </Button>
+            </div>
+          )}
           {grainsQuery.isLoading ? (
             <LoadingScreen position={false} />
           ) : grains.length === 0 && !withSections ? (
@@ -672,7 +795,8 @@ export function SubjectEditor() {
           <div className="d-flex flex-wrap gap-16 mt-16">
             <Button
               color="primary"
-              variant="filled"
+              variant="outline"
+              leftIcon={<IconPlus />}
               isLoading={addGrain.isPending && addGrain.variables === GRAIN.STATEMENT}
               onClick={() => addGrain.mutate(GRAIN.STATEMENT)}
             >
@@ -680,7 +804,8 @@ export function SubjectEditor() {
             </Button>
             <Button
               color="primary"
-              variant="filled"
+              variant="outline"
+              leftIcon={<IconPlus />}
               isLoading={addGrain.isPending && addGrain.variables === GRAIN.CHOOSE_ANSWER}
               onClick={() => addGrain.mutate(GRAIN.CHOOSE_ANSWER)}
             >

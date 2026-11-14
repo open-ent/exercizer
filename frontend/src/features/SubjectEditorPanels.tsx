@@ -1,4 +1,5 @@
 import { Alert, Button, FormControl, Heading, Input, SearchBar } from '@open-ent/react';
+import { IconLink, IconPlus } from '@open-ent/react/icons';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useId, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -28,6 +29,7 @@ export function ExternalResources({ subjectId }: { subjectId: number }) {
   const { t } = useTranslation(['exercizer', 'common']);
   const id = useId();
   const queryClient = useQueryClient();
+  const [adding, setAdding] = useState(false);
   const [url, setUrl] = useState('');
   const [title, setTitle] = useState('');
   const [renaming, setRenaming] = useState<{ id: ExternalResource['id']; title: string } | null>(
@@ -44,6 +46,7 @@ export function ExternalResources({ subjectId }: { subjectId: number }) {
     onSuccess: () => {
       setUrl('');
       setTitle('');
+      setAdding(false);
       setMessage({ type: 'success', text: t('exercizer.external.resource.imported') });
       void refresh();
     },
@@ -69,21 +72,41 @@ export function ExternalResources({ subjectId }: { subjectId: number }) {
 
   const resources = query.data ?? [];
 
+  // Bande compacte : tant qu'on n'ajoute rien, le formulaire ne repousse pas le contenu du sujet.
   return (
-    <section className="card p-16 mb-24">
-      <Heading level="h3" headingStyle="h5" className="mb-8">
-        {t('exercizer.external.resource.title')}
-      </Heading>
+    <section className="card px-16 py-8 mb-16">
+      <div className="d-flex flex-wrap align-items-center gap-8">
+        <IconLink style={{ width: 18, height: 18 }} aria-hidden="true" />
+        <Heading level="h3" headingStyle="h6" className="m-0">
+          {t('exercizer.external.resource.title')}
+        </Heading>
+        <span className="small text-gray-700">
+          {resources.length === 0
+            ? t('exercizer.external.resource.none', { defaultValue: "Aucune pour l'instant" })
+            : t('exercizer.external.resource.count', { count: resources.length, defaultValue: '[[count]] ressource(s)' })}
+        </span>
+        <Button
+          className="ms-auto"
+          size="sm"
+          color="tertiary"
+          variant="outline"
+          leftIcon={adding ? undefined : <IconPlus />}
+          aria-expanded={adding}
+          onClick={() => setAdding(!adding)}
+        >
+          {adding
+            ? t('exercizer.cancel')
+            : t('exercizer.external.resource.add', { defaultValue: 'Importer une ressource' })}
+        </Button>
+      </div>
       {message && (
-        <Alert type={message.type} isDismissible onClose={() => setMessage(null)} className="mb-8">
+        <Alert type={message.type} isDismissible onClose={() => setMessage(null)} className="mt-8">
           {message.text}
         </Alert>
       )}
 
-      {resources.length === 0 ? (
-        <p className="text-muted small">{t('exercizer.external.resource.emptyscreen')}</p>
-      ) : (
-        <ul className="list-unstyled d-flex flex-column gap-8">
+      {resources.length > 0 && (
+        <ul className="list-unstyled d-flex flex-column gap-8 mt-8 mb-0">
           {resources.map((resource) => (
             <li key={resource.id} className="d-flex flex-wrap align-items-center gap-8">
               {renaming?.id === resource.id ? (
@@ -143,37 +166,39 @@ export function ExternalResources({ subjectId }: { subjectId: number }) {
         </ul>
       )}
 
-      <div className="d-flex flex-wrap align-items-end gap-8">
-        <FormControl id={`${id}-url`} className="flex-fill">
-          <Input
-            type="url"
-            size="md"
-            aria-label={t('exercizer.external.resource.url.placeholder')}
-            placeholder={t('exercizer.external.resource.url.placeholder')}
-            value={url}
-            onChange={(event) => setUrl(event.target.value)}
-          />
-        </FormControl>
-        <FormControl id={`${id}-title`}>
-          <Input
-            type="text"
-            size="md"
-            aria-label={t('exercizer.external.resource.title.placeholder')}
-            placeholder={t('exercizer.external.resource.title.placeholder')}
-            value={title}
-            onChange={(event) => setTitle(event.target.value)}
-          />
-        </FormControl>
-        <Button
-          color="primary"
-          variant="outline"
-          disabled={!url.trim() || !title.trim()}
-          isLoading={add.isPending}
-          onClick={() => add.mutate()}
-        >
-          {t('exercizer.external.resource.import')}
-        </Button>
-      </div>
+      {adding && (
+        <div className="d-flex flex-wrap align-items-end gap-8 mt-8 mb-8">
+          <FormControl id={`${id}-url`} className="flex-fill">
+            <Input
+              type="url"
+              size="md"
+              aria-label={t('exercizer.external.resource.url.placeholder')}
+              placeholder={t('exercizer.external.resource.url.placeholder')}
+              value={url}
+              onChange={(event) => setUrl(event.target.value)}
+            />
+          </FormControl>
+          <FormControl id={`${id}-title`}>
+            <Input
+              type="text"
+              size="md"
+              aria-label={t('exercizer.external.resource.title.placeholder')}
+              placeholder={t('exercizer.external.resource.title.placeholder')}
+              value={title}
+              onChange={(event) => setTitle(event.target.value)}
+            />
+          </FormControl>
+          <Button
+            color="primary"
+            variant="outline"
+            disabled={!url.trim() || !title.trim()}
+            isLoading={add.isPending}
+            onClick={() => add.mutate()}
+          >
+            {t('exercizer.external.resource.import')}
+          </Button>
+        </div>
+      )}
     </section>
   );
 }

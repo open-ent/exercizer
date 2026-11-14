@@ -153,6 +153,32 @@ export function moveGrainToSection(
   });
 }
 
+/**
+ * Range un grain JUSTE APRÈS un autre — « Insérer un bloc ici », entre deux grains de l'éditeur.
+ * Le grain prend la section de celui qu'il suit ; `afterId` nul le place en tête de la section
+ * `sectionId`. Ancre introuvable : les groupes sont rendus tels quels.
+ */
+export function placeGrainAfter(
+  groups: EditorGroup[],
+  grainId: number,
+  afterId: number | null,
+  sectionId: number | null = null,
+): EditorGroup[] {
+  const grain = groups.flatMap((group) => group.grains).find((item) => item.id === grainId);
+  if (!grain || afterId === grainId) return groups;
+  const target =
+    afterId === null
+      ? groups.findIndex((group) => (group.section?.id ?? null) === sectionId)
+      : groups.findIndex((group) => group.grains.some((item) => item.id === afterId));
+  if (target < 0) return groups;
+  return groups.map((group, index) => {
+    const grains = group.grains.filter((item) => item.id !== grainId);
+    if (index !== target) return { ...group, grains };
+    const at = afterId === null ? 0 : grains.findIndex((item) => item.id === afterId) + 1;
+    return { ...group, grains: [...grains.slice(0, at), grain, ...grains.slice(at)] };
+  });
+}
+
 /** Le barème d'une section : la somme de ses questions, comme pour le sujet entier. */
 export const sectionMaxScore = (grains: Grain[]): number => computedMaxScore(grains);
 

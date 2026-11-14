@@ -15,14 +15,14 @@ import {
   verticalListSortingStrategy,
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import { Button, Heading } from '@open-ent/react';
+import { Button } from '@open-ent/react';
 import { CSSProperties, ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 
 import { computedMaxScore } from '../grains';
 import { EditorGroup, sectionMaxScore } from '../sections';
 import { Grain, GrainType, Section } from '../types';
-import { GrainOrganizerRow } from './GrainOrganizer';
+import { GrainOrganizerRow, PlanHeader } from './GrainOrganizer';
 
 /** La partie du sujet ouverte dans l'éditeur : une section, les grains hors section, ou tout. */
 export type EditorFocus = number | 'ungrouped' | 'all';
@@ -53,6 +53,7 @@ export function SectionOrganizer({
   groups,
   grains,
   grainTypes,
+  activeId,
   focus,
   onFocus,
   onSelectGrain,
@@ -65,6 +66,8 @@ export function SectionOrganizer({
   groups: EditorGroup[];
   grains: Grain[];
   grainTypes: GrainType[];
+  /** Le grain en cours d'édition, surligné dans le sommaire. */
+  activeId?: number | null;
   focus: EditorFocus;
   onFocus: (focus: EditorFocus) => void;
   onSelectGrain: (grain: Grain) => void;
@@ -149,15 +152,17 @@ export function SectionOrganizer({
         {group.grains.length > 0 && (
           <ol className="list-unstyled d-flex flex-column gap-4 ps-16">
             {group.grains.map((grain) => (
-              <GrainOrganizerRow
-                key={grain.id}
-                grain={grain}
-                grains={grains}
-                grainTypes={grainTypes}
-                onSelect={onSelectGrain}
-                onUp={grain.id === firstId ? undefined : () => onMoveGrain(grain.id, -1)}
-                onDown={grain.id === lastId ? undefined : () => onMoveGrain(grain.id, 1)}
-              />
+              <li key={grain.id}>
+                <GrainOrganizerRow
+                  grain={grain}
+                  grains={grains}
+                  grainTypes={grainTypes}
+                  active={grain.id === activeId}
+                  onSelect={onSelectGrain}
+                  onUp={grain.id === firstId ? undefined : () => onMoveGrain(grain.id, -1)}
+                  onDown={grain.id === lastId ? undefined : () => onMoveGrain(grain.id, 1)}
+                />
+              </li>
             ))}
           </ol>
         )}
@@ -169,12 +174,7 @@ export function SectionOrganizer({
 
   return (
     <section>
-      <Heading level="h2" headingStyle="h4" className="mb-8">
-        {t('exercizer.rank')}
-      </Heading>
-      <p className="mb-8">
-        {t('exercizer.score.total')} <strong>{computedMaxScore(grains)}</strong>
-      </p>
+      <PlanHeader total={computedMaxScore(grains)} />
       <button
         type="button"
         className={`btn btn-sm mb-16 ${focus === 'all' ? 'btn-filled btn-secondary' : 'btn-ghost btn-tertiary'}`}
