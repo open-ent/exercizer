@@ -24,6 +24,10 @@ public final class GrainType {
     public static final long ORDER_BY = 9L;
     /** Texte à trous. */
     public static final long TEXT_TO_FILL = 10L;
+    /** Zones de texte sur une image : {@code custom_data._guideImage} + {@code zones}. */
+    public static final long AREA_SELECT = 11L;
+    /** Zones d'images sur une image : chaque zone attend l'adresse d'une vignette. */
+    public static final long AREA_SELECT_IMAGE = 12L;
 
     private GrainType() {
     }

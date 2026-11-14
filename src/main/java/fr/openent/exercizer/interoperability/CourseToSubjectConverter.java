@@ -209,6 +209,8 @@ public class CourseToSubjectConverter {
                 return orderingGrain(question);
             case CLOZE:
                 return clozeGrain(question, location);
+            case DRAG_DROP_IMAGE:
+                return dragDropImageGrain(question, location);
             default:
                 report.dropped("exercizer.question.unsupported",
                         "Question de type " + question.type() + " sans équivalent dans "
@@ -409,6 +411,106 @@ public class CourseToSubjectConverter {
         // grain_data.statement l'afficherait deux fois.
         data.remove("statement");
         return grain(GrainType.TEXT_TO_FILL, data);
+    }
+
+    /**
+     * Glisser-déposer sur une image (Moodle {@code ddimageortext}).
+     *
+     * <p>Les éléments à glisser sont des images : grain « zones d'images » (12), chaque zone
+     * attendant l'image de son élément. Ce sont des étiquettes : grain « zones de texte » (11) en
+     * mode étiquettes à glisser. Les images sont désignées par leur identifiant d'asset, que le
+     * navigateur remplace par l'adresse obtenue en les déposant dans l'espace documentaire
+     * ({@code PackageImportService#embedImages}). Les coordonnées de Moodle (coin supérieur
+     * gauche, en pixels de l'image d'origine) sont celles qu'attendent les zones d'exercizer.</p>
+     */
+    private JsonObject dragDropImageGrain(Question question, String location) {
+        if (question.backgroundAssetRef() == null) {
+            report.dropped("exercizer.dragdrop.no.background",
+                    "Le glisser-déposer de " + location + " n'a pas d'image de fond dans l'archive : "
+                            + "il n'est pas repris.", question.id());
+            return null;
+        }
+
+        java.util.Map<Integer, Answer> drags = new java.util.LinkedHashMap<Integer, Answer>();
+        boolean allImages = true;
+        boolean allLabelled = true;
+        for (Answer drag : question.answers()) {
+            drags.put(drag.order(), drag);
+            allImages &= drag.assetRef() != null;
+            allLabelled &= !plainText(drag.textHtml()).isEmpty();
+        }
+        // Un mélange d'images et d'étiquettes n'a pas d'équivalent : on se rabat sur les
+        // étiquettes si toutes en ont une, sinon sur les images (les zones sans image tombent).
+        boolean images = allImages || !allLabelled;
+        if (!allImages && allLabelled && hasAnyImage(question)) {
+            report.degraded("exercizer.dragdrop.mixed",
+                    "Le glisser-déposer de " + location + " mêle images et étiquettes : les images "
+                            + "sont remplacées par leur libellé.", question.id());
+        }
+
+        JsonArray zones = new JsonArray();
+        JsonArray options = new JsonArray();
+        java.util.Set<Integer> used = new java.util.HashSet<Integer>();
+        int skipped = 0;
+        for (fr.tech.openent.interoperability.model.DropZone drop : question.dropZones()) {
+            Answer drag = drags.get(drop.choice());
+            String value = drag == null ? null : images ? drag.assetRef() : plainText(drag.textHtml());
+            if (value == null || value.isEmpty()) {
+                skipped++;
+                continue;
+            }
+            used.add(drop.choice());
+            zones.add(new JsonObject()
+                    .put("position", new JsonObject()
+                            .put("x", drop.x())
+                            .put("y", drop.y())
+                            .put("z", drop.no() > 0 ? drop.no() : zones.size() + 1))
+                    .put("answer", value));
+            // Une vignette par zone : un élément attendu dans deux zones doit pouvoir y être posé
+            // deux fois.
+            options.add(value);
+        }
+        // Les leurres — éléments qu'aucune zone n'attend — restent proposés.
+        for (java.util.Map.Entry<Integer, Answer> drag : drags.entrySet()) {
+            if (used.contains(drag.getKey())) {
+                continue;
+            }
+            String value = images ? drag.getValue().assetRef() : plainText(drag.getValue().textHtml());
+            if (value != null && !value.isEmpty()) {
+                options.add(value);
+            }
+        }
+
+        if (skipped > 0) {
+            report.degraded("exercizer.dragdrop.zone.skipped",
+                    skipped + " zone(s) du glisser-déposer de " + location + " attendent un élément "
+                            + "absent ou sans image : elles ne sont pas reprises.", question.id());
+        }
+        if (zones.isEmpty()) {
+            report.dropped("exercizer.dragdrop.no.zone",
+                    "Le glisser-déposer de " + location + " n'a aucune zone exploitable : il n'est "
+                            + "pas repris.", question.id());
+            return null;
+        }
+
+        JsonObject customData = new JsonObject()
+                .put("_guideImage", question.backgroundAssetRef())
+                .put("zones", zones)
+                .put("options", options);
+        if (!images) {
+            customData.put("answersType", "drag");
+        }
+        return grain(images ? GrainType.AREA_SELECT_IMAGE : GrainType.AREA_SELECT,
+                data(question, customData, zones.size()));
+    }
+
+    private static boolean hasAnyImage(Question question) {
+        for (Answer answer : question.answers()) {
+            if (answer.assetRef() != null) {
+                return true;
+            }
+        }
+        return false;
     }
 
     // ------------------------------------------------------------------ titres

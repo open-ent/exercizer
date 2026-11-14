@@ -9,6 +9,7 @@ import fr.tech.openent.interoperability.model.ActivityType;
 import fr.tech.openent.interoperability.model.Answer;
 import fr.tech.openent.interoperability.model.ConversionReport;
 import fr.tech.openent.interoperability.model.Course;
+import fr.tech.openent.interoperability.model.DropZone;
 import fr.tech.openent.interoperability.model.Notice;
 import fr.tech.openent.interoperability.model.Question;
 import fr.tech.openent.interoperability.model.QuestionType;
@@ -233,6 +234,91 @@ public class CourseToSubjectConverterTest {
         } finally {
             course.close();
         }
+    }
+
+    /** « Placement au LF » du cours de basket : 2 pions à placer, 1 leurre. */
+    private static Question dragDrop(boolean images) {
+        Question question = new Question().id("157672").type(QuestionType.DRAG_DROP_IMAGE)
+                .title("Placement au LF").promptHtml("<p>Place les joueurs</p>").defaultMark(2d)
+                .backgroundAssetRef("moodle/qtype_ddimageortext/bgimage/157672/DemiTerrain.jpg");
+        String[] names = {"A1", "B1", "R"};
+        for (int i = 0; i < names.length; i++) {
+            Answer drag = new Answer().id("46" + i).order(i + 1).textHtml(names[i])
+                    .fraction(i < 2 ? 1d : 0d);
+            if (images) {
+                drag.assetRef("moodle/qtype_ddimageortext/dragimage/46" + i + "/PION_" + names[i] + ".png");
+            }
+            question.addAnswer(drag);
+        }
+        question.addDropZone(new DropZone().no(1).x(183).y(183).choice(1));
+        question.addDropZone(new DropZone().no(2).x(81).y(268).choice(2));
+        return question;
+    }
+
+    private static JsonObject convertOne(Question question, ConversionReport report) {
+        Course course = new Course().title("Basket").addSection(new Section().id("s").title("LF")
+                .addActivity(new Activity().id("q").type(ActivityType.QUIZ).title("Test")
+                        .addQuestion(question)));
+        return new CourseToSubjectConverter(report).toImportPayload(course);
+    }
+
+    @Test
+    public void un_glisser_deposer_d_images_devient_des_zones_d_images() {
+        ConversionReport report = new ConversionReport();
+        JsonObject grain = grainOfType(convertOne(dragDrop(true), report).getJsonArray("grains"),
+                GrainType.AREA_SELECT_IMAGE, 0);
+        assertNotNull(grain);
+        JsonObject data = grain.getJsonObject("grain_data");
+        assertEquals(2d, data.getDouble("max_score"), 0d);
+        assertEquals("<p>Place les joueurs</p>", data.getString("statement"));
+        JsonObject custom = data.getJsonObject("custom_data");
+        // L'identifiant d'asset est remplacé par l'adresse de l'image dans le navigateur.
+        assertEquals("moodle/qtype_ddimageortext/bgimage/157672/DemiTerrain.jpg", custom.getString("_guideImage"));
+        JsonArray zones = custom.getJsonArray("zones");
+        assertEquals(2, zones.size());
+        JsonObject first = zones.getJsonObject(0);
+        assertEquals(183, (int) first.getJsonObject("position").getInteger("x"));
+        assertEquals(183, (int) first.getJsonObject("position").getInteger("y"));
+        assertEquals("moodle/qtype_ddimageortext/dragimage/460/PION_A1.png", first.getString("answer"));
+        assertEquals(81, (int) zones.getJsonObject(1).getJsonObject("position").getInteger("x"));
+        // Les deux attendus, plus le leurre.
+        JsonArray options = custom.getJsonArray("options");
+        assertEquals(3, options.size());
+        assertTrue(options.contains("moodle/qtype_ddimageortext/dragimage/462/PION_R.png"));
+        assertNull(custom.getString("answersType"));
+        assertEquals(0, report.count(Notice.Level.DROPPED));
+    }
+
+    @Test
+    public void un_glisser_deposer_d_etiquettes_devient_des_zones_de_texte_a_glisser() {
+        JsonObject grain = grainOfType(convertOne(dragDrop(false), new ConversionReport())
+                .getJsonArray("grains"), GrainType.AREA_SELECT, 0);
+        assertNotNull(grain);
+        JsonObject custom = grain.getJsonObject("grain_data").getJsonObject("custom_data");
+        assertEquals("drag", custom.getString("answersType"));
+        assertEquals("A1", custom.getJsonArray("zones").getJsonObject(0).getString("answer"));
+        assertEquals("B1", custom.getJsonArray("zones").getJsonObject(1).getString("answer"));
+        assertEquals(3, custom.getJsonArray("options").size());
+    }
+
+    @Test
+    public void un_glisser_deposer_sans_image_de_fond_est_ecarte_avec_notice() {
+        ConversionReport report = new ConversionReport();
+        Question question = dragDrop(true);
+        Question orphan = new Question().id(question.id()).type(QuestionType.DRAG_DROP_IMAGE)
+                .title(question.title());
+        for (Answer answer : question.answers()) {
+            orphan.addAnswer(answer);
+        }
+        for (DropZone zone : question.dropZones()) {
+            orphan.addDropZone(zone);
+        }
+        convertOne(orphan, report);
+        boolean dropped = false;
+        for (Notice notice : report.noticesOf(Notice.Level.DROPPED)) {
+            dropped |= "exercizer.dragdrop.no.background".equals(notice.code());
+        }
+        assertTrue(dropped);
     }
 
     @Test
