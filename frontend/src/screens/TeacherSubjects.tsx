@@ -192,12 +192,12 @@ export function TeacherSubjects() {
    */
   const duplicate = useMutation({
     mutationFn: (subjectId: number) => duplicateSubjectDeep(subjectId),
-    onMutate: () => setNotice({ type: 'info', text: t('duplicate.start') }),
+    onMutate: () => setNotice({ type: 'info', text: t('exercizer.duplicate.start') }),
     onSuccess: () => {
-      setNotice({ type: 'success', text: t('duplicate.done') });
+      setNotice({ type: 'success', text: t('exercizer.duplicate.done') });
       refresh();
     },
-    onError: () => setNotice({ type: 'danger', text: t('duplicate.error') }),
+    onError: () => setNotice({ type: 'danger', text: t('exercizer.duplicate.error') }),
   });
 
   /**
