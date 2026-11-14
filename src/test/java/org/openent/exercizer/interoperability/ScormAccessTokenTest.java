@@ -81,4 +81,31 @@ public class ScormAccessTokenTest {
             // attendu
         }
     }
+
+    @Test
+    public void porte_l_origine_parente_signee() {
+        String token = tokens.issue(42L, "user-1", NOW, "https://cd04.ent-scolaire.fr");
+        ScormAccessToken.Claims claims = tokens.verify(token, 42L, NOW + 1_000L);
+        assertNotNull(claims);
+        assertEquals("https://cd04.ent-scolaire.fr", claims.parentOrigin());
+        assertEquals("user-1", claims.userId());
+    }
+
+    @Test
+    public void un_jeton_sans_origine_reste_valide() {
+        // Les jetons délivrés avant l'ajout de l'origine vivent encore une heure après la livraison.
+        ScormAccessToken.Claims claims = tokens.verify(tokens.issue(42L, "user-1", NOW), 42L, NOW);
+        assertNotNull(claims);
+        assertNull(claims.parentOrigin());
+    }
+
+    @Test
+    public void l_origine_parente_ne_se_remplace_pas() {
+        String token = tokens.issue(42L, "user-1", NOW, "https://cd04.ent-scolaire.fr");
+        String signature = token.substring(token.lastIndexOf('.') + 1);
+        String forged = java.util.Base64.getUrlEncoder().withoutPadding().encodeToString(
+                ("42.user-1." + (NOW + 60_000L) + "." + java.util.Base64.getUrlEncoder()
+                        .withoutPadding().encodeToString("https://evil.org".getBytes())).getBytes());
+        assertNull(tokens.verify(forged + "." + signature, 42L, NOW + 1_000L));
+    }
 }

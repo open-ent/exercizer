@@ -25,6 +25,8 @@ import org.entcore.common.user.UserUtils;
 import org.vertx.java.core.http.RouteMatcher;
 
 import java.io.File;
+import java.net.URI;
+import java.util.Locale;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -62,20 +64,98 @@ public class ScormController extends ControllerHelper {
     private final ScormService scormService;
     private final ScormAccessToken tokens;
     private final String contentOrigin;
+    /** {@code hôte[:port]} du domaine du contenu : le seul sous lequel il est servi. */
+    private final String contentAuthority;
     private final String entOrigin;
+    private final String entParentDomain;
     private String bridgeScript = "";
 
     public ScormController(Vertx vertx, Storage storage, JsonObject configuration) {
         JsonObject scorm = configuration == null
                 ? new JsonObject() : configuration.getJsonObject("scorm", new JsonObject());
         this.scormService = new ScormService(vertx, storage);
-        this.contentOrigin = scorm.getString("content-origin");
-        this.entOrigin = scorm.getString("ent-origin");
+        // `${SCORM_CONTENT_ORIGIN:-}` non renseignée arrive ici en chaîne VIDE, pas en null : sans
+        // cette normalisation, le lecteur se croyait configuré et encadrait le contenu à l'adresse
+        // relative « /exercizer/scorm/content/… » — c'est-à-dire sur l'origine de l'ENT.
+        String content = origin(scorm.getString("content-origin"));
+        String ent = origin(scorm.getString("ent-origin"));
+        if (content != null && ent != null && authority(content).equals(authority(ent))) {
+            log.error("Lecteur SCORM éteint : scorm.content-origin doit être un domaine DISTINCT "
+                    + "de l'ENT (" + content + ").");
+            content = null;
+        }
+        this.contentOrigin = content;
+        this.contentAuthority = content == null ? null : authority(content);
+        this.entOrigin = ent;
+        this.entParentDomain = ent == null ? null : parentDomain(URI.create(ent).getHost());
         String secret = scorm.getString("token-secret");
         // Sans secret ni domaine de contenu distinct, le lecteur reste éteint : servir malgré
         // tout depuis l'origine de l'ENT serait exactement ce qu'on cherche à éviter.
         this.tokens = secret == null || secret.trim().isEmpty()
                 ? null : new ScormAccessToken(secret, scorm.getLong("token-ttl-ms", 3_600_000L));
+    }
+
+    /** Une origine ({@code https://hôte[:port]}) sans barre finale, ou {@code null} si vide. */
+    static String origin(String value) {
+        if (value == null || value.trim().isEmpty()) {
+            return null;
+        }
+        String trimmed = value.trim();
+        while (trimmed.endsWith("/")) {
+            trimmed = trimmed.substring(0, trimmed.length() - 1);
+        }
+        return trimmed;
+    }
+
+    /** {@code hôte[:port]} d'une origine, en minuscules — ce que porte l'en-tête Host. */
+    static String authority(String origin) {
+        String authority = URI.create(origin).getRawAuthority();
+        return authority == null ? "" : authority.toLowerCase(Locale.ROOT);
+    }
+
+    /**
+     * {@code ent-scolaire.fr} pour {@code www.ent-scolaire.fr}. {@code null} sous trois étiquettes :
+     * pour un apex ({@code ent-scolaire.fr}), le « parent » serait {@code scolaire.fr}, et tous ses
+     * sous-domaines passeraient pour des hôtes de l'ENT.
+     */
+    static String parentDomain(String host) {
+        if (host == null || host.split("\\.").length < 3) {
+            return null;
+        }
+        return host.substring(host.indexOf('.') + 1).toLowerCase(Locale.ROOT);
+    }
+
+    /** L'hôte demandé par le navigateur, port compris, en minuscules. */
+    private static String requestAuthority(HttpServerRequest request) {
+        String host = request.headers().get("Host");
+        return host == null ? "" : host.trim().toLowerCase(Locale.ROOT);
+    }
+
+    /**
+     * L'origine de la page de l'ENT qui ouvre le paquet : celle à qui le pont parlera.
+     *
+     * L'ENT est servi sous plusieurs hôtes ({@code www}, {@code cd04}…) : figer l'origine sur
+     * {@code ent-origin} perdait le suivi partout ailleurs. L'hôte de la requête est retenu s'il
+     * est l'origine déclarée ou l'un de ses voisins ({@code *.ent-scolaire.fr}), jamais le domaine
+     * du contenu lui-même ; sinon, l'origine déclarée. Le schéma est celui de l'origine déclarée :
+     * derrière Traefik, qui termine TLS, la requête arrive toujours en {@code http}.
+     */
+    String parentOriginOf(String requestAuthority) {
+        if (entOrigin == null || requestAuthority == null || requestAuthority.isEmpty()) {
+            return entOrigin;
+        }
+        String candidate = URI.create(entOrigin).getScheme() + "://" + requestAuthority;
+        if (candidate.equals(entOrigin)) {
+            return candidate;
+        }
+        String host = requestAuthority.indexOf(':') < 0
+                ? requestAuthority : requestAuthority.substring(0, requestAuthority.indexOf(':'));
+        boolean sibling = entParentDomain != null && host.endsWith("." + entParentDomain)
+                && host.indexOf('.') == host.length() - entParentDomain.length() - 1;
+        if (sibling && !requestAuthority.equals(contentAuthority)) {
+            return candidate;
+        }
+        return entOrigin;
     }
 
     @Override
@@ -189,8 +269,9 @@ public class ScormController extends ControllerHelper {
                             return;
                         }
                         JsonObject scormPackage = found.right().getValue();
+                        String parentOrigin = parentOriginOf(requestAuthority(request));
                         String token = tokens.issue(packageId, user.getUserId(),
-                                System.currentTimeMillis());
+                                System.currentTimeMillis(), parentOrigin);
                         String url = contentOrigin + "/exercizer/scorm/content/" + packageId + "/"
                                 + scormPackage.getString("entry_point") + "?t=" + token;
                         renderJson(request, new JsonObject()
@@ -216,8 +297,17 @@ public class ScormController extends ControllerHelper {
      * qu'il n'y a pas de chemin — seulement une clé.
      */
     public void serveContent(final HttpServerRequest request) {
-        if (tokens == null) {
+        if (tokens == null || contentAuthority == null) {
             request.response().setStatusCode(503).end();
+            return;
+        }
+        // Le contenu n'est servi QUE sous son domaine. La même route répond aussi sous celui de
+        // l'ENT (tous les hôtes mènent au même verticle) : un enseignant malveillant pourrait y
+        // déposer un paquet, se délivrer un jeton puis envoyer le lien www.…/scorm/content/… à
+        // un élève — dont le navigateur exécuterait alors le JavaScript du paquet AVEC sa
+        // session. Le cloisonnement par l'origine ne vaut que si l'origine est imposée.
+        if (!contentAuthority.equals(requestAuthority(request))) {
+            notFound(request);
             return;
         }
         final String path = request.path();
@@ -289,7 +379,8 @@ public class ScormController extends ControllerHelper {
                                 ? ScormService.asJson(state.right().getValue().getValue("cmi"))
                                 : new JsonObject();
                         String html = inject(content.toString("UTF-8"),
-                                scormPackage.getString("scorm_version"), cmi);
+                                scormPackage.getString("scorm_version"), cmi,
+                                claims.parentOrigin() != null ? claims.parentOrigin() : entOrigin);
                         respond(request, "text/html", Buffer.buffer(html));
                     }
                 });
@@ -302,10 +393,10 @@ public class ScormController extends ControllerHelper {
      * document : le SCO cherche son API dès son premier script, et un pont injecté après lui
      * arriverait trop tard.
      */
-    String inject(String html, String scormVersion, JsonObject cmi) {
+    String inject(String html, String scormVersion, JsonObject cmi, String parentOrigin) {
         String config = "<script>window.__OPENENT_SCORM__="
                 + new JsonObject()
-                        .put("parentOrigin", entOrigin)
+                        .put("parentOrigin", parentOrigin)
                         .put("version", ScormCmi.VERSION_2004.equals(scormVersion)
                                 ? ScormCmi.VERSION_2004 : ScormCmi.VERSION_12)
                         .put("initial", cmi).encode()

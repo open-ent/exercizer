@@ -16,8 +16,14 @@ import java.util.Base64;
  * contenu ne voit donc aucune session, et ne peut pas en voir — c'est le but.
  *
  * L'autorisation voyage donc dans l'URL, sous forme d'un jeton signé que seul l'ENT sait
- * produire : il nomme le paquet, l'usager et une échéance. Il n'ouvre rien d'autre que la
- * lecture des fichiers de ce paquet, et il expire.
+ * produire : il nomme le paquet, l'usager, une échéance et l'origine de la page de l'ENT qui
+ * encadre le contenu. Il n'ouvre rien d'autre que la lecture des fichiers de ce paquet, et il
+ * expire.
+ *
+ * <p>L'origine parente est signée avec le reste parce que l'ENT est servi sous plusieurs hôtes
+ * ({@code www}, {@code cd04}, {@code eclat-bfc}…) : le pont injecté dans le contenu ne parle qu'à
+ * cette origine, et elle ne peut donc être ni une constante de la plateforme (le suivi serait
+ * perdu hors de {@code www}), ni un paramètre libre de l'URL.</p>
  *
  * Le secret est celui de la plateforme ; il ne quitte jamais le serveur.
  */
@@ -40,8 +46,20 @@ public final class ScormAccessToken {
     }
 
     public String issue(long packageId, String userId, long now) {
+        return issue(packageId, userId, now, null);
+    }
+
+    /**
+     * @param parentOrigin origine de la page de l'ENT qui encadre le contenu, ou {@code null}
+     *                     pour s'en remettre à l'origine déclarée de la plateforme.
+     */
+    public String issue(long packageId, String userId, long now, String parentOrigin) {
         long expiry = now + lifetimeMillis;
         String payload = packageId + SEPARATOR + userId + SEPARATOR + expiry;
+        if (parentOrigin != null && !parentOrigin.isEmpty()) {
+            // L'origine porte des points : encodée, elle ne se confond pas avec le séparateur.
+            payload += SEPARATOR + encode(parentOrigin);
+        }
         return encode(payload) + SEPARATOR + sign(payload);
     }
 
@@ -49,10 +67,17 @@ public final class ScormAccessToken {
     public static final class Claims {
         private final long packageId;
         private final String userId;
+        private final String parentOrigin;
 
-        Claims(long packageId, String userId) {
+        Claims(long packageId, String userId, String parentOrigin) {
             this.packageId = packageId;
             this.userId = userId;
+            this.parentOrigin = parentOrigin;
+        }
+
+        /** Origine de la page qui encadre le contenu, ou {@code null} si le jeton n'en nomme pas. */
+        public String parentOrigin() {
+            return parentOrigin;
         }
 
         public long packageId() {
@@ -93,7 +118,7 @@ public final class ScormAccessToken {
         }
 
         String[] parts = payload.split("\\" + SEPARATOR);
-        if (parts.length != 3) {
+        if (parts.length != 3 && parts.length != 4) {
             return null;
         }
         try {
@@ -102,8 +127,10 @@ public final class ScormAccessToken {
             if (packageId != expectedPackageId || expiry < now) {
                 return null;
             }
-            return new Claims(packageId, parts[1]);
-        } catch (NumberFormatException e) {
+            String parentOrigin = parts.length == 4
+                    ? new String(Base64.getUrlDecoder().decode(parts[3]), UTF8) : null;
+            return new Claims(packageId, parts[1], parentOrigin);
+        } catch (IllegalArgumentException e) {
             return null;
         }
     }
