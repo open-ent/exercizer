@@ -364,18 +364,20 @@ export function ImportPackageSubject() {
               l'analyse nomme ensuite chaque question écartée ou simplifiée du fichier déposé. */}
           <details className="mt-16" data-testid="import-package-limits">
             <summary>{t('exercizer.package.limits')}</summary>
-            <ul className="small text-gray-700 mb-0 mt-8">
-              {[
-                'exercizer.package.limits.dropped',
-                'exercizer.import.info.cloze',
-                'exercizer.import.info.markers',
-                'exercizer.import.info.calculatedsimple',
-                'exercizer.import.info1',
-                'exercizer.import.info2',
-              ].map((key) => (
-                <li key={key}>{t(key)}</li>
-              ))}
-            </ul>
+            <div className="small text-gray-700 mt-8">
+              <p className="fw-bold mb-4">{t('exercizer.package.limits.dropped')}</p>
+              <ul className="mb-12">
+                {['randomsa', 'calculated', 'cloze'].map((key) => (
+                  <li key={key}>{t(`exercizer.package.limits.dropped.${key}`)}</li>
+                ))}
+              </ul>
+              <p className="fw-bold mb-4">{t('exercizer.package.limits.check')}</p>
+              <ul className="mb-0">
+                {['cloze', 'dragdrop', 'calculatedsimple', 'images'].map((key) => (
+                  <li key={key}>{t(`exercizer.package.limits.check.${key}`)}</li>
+                ))}
+              </ul>
+            </div>
           </details>
         </section>
       )}
