@@ -553,7 +553,7 @@ export function TeacherSubjects() {
               isLoading={duplicate.isPending}
               onClick={() => duplicate.mutate(onlySubject.id)}
             >
-              {t('duplicate')}
+              {t('exercizer.duplicate')}
             </Button>
           )}
           {onlySubject && atLeast(right, 'manager') && (
