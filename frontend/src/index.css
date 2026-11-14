@@ -138,6 +138,23 @@
   color: var(--openent-gray-600);
 }
 
+/* Passation : deux colonnes dès que le sommaire latéral s'affiche (`d-lg-block`, 1024 px dans ce
+   thème) ; en dessous, la question seule, sous la barre compacte. */
+.exercizer-copy-columns {
+  display: block;
+}
+@media (min-width: 1024px) {
+  .exercizer-copy-columns {
+    display: grid;
+    grid-template-columns: clamp(22rem, 28%, 32rem) minmax(0, 1fr);
+    gap: 2.4rem;
+    align-items: start;
+  }
+  .exercizer-copy-columns > aside {
+    align-self: stretch;
+  }
+}
+
 /* Passation : sommaire et page (CopyNavigator). L'en-tête de l'ENT défile avec la page : le
    sommaire peut donc se coller au haut de la fenêtre, et y défiler seul. */
 .exercizer-copy-nav {

@@ -299,8 +299,11 @@ export function CopyNavigator({
         )}
       </div>
 
-      <div className="grid gap-24">
-        <aside className="d-none d-lg-block g-col-lg-3">
+      {/* Pas la grille du thème : entre 1024 et 1279 px elle n'a que 8 colonnes, et un
+          « 3 + 9 » y repoussait la question SOUS le sommaire. Deux colonnes à nous, le sommaire
+          de largeur bornée, la question dans tout le reste (cf. index.css). */}
+      <div className="exercizer-copy-columns">
+        <aside className="d-none d-lg-block">
           <nav
             ref={navRef}
             aria-label={t('exercizer.rank')}
@@ -311,7 +314,7 @@ export function CopyNavigator({
           </nav>
         </aside>
 
-        <section ref={stageRef} tabIndex={-1} className="exercizer-copy-stage g-col-12 g-col-lg-9">
+        <section ref={stageRef} tabIndex={-1} className="exercizer-copy-stage">
           {children}
         </section>
       </div>
