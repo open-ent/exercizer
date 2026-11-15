@@ -124,7 +124,8 @@ public class PublicCatalogController extends ControllerHelper {
 				.put("title", conf.getString("title", "Exercices"))
 				.put("signupUrl", conf.getString("signup-url", "/auth/login"))
 				.put("entUrl", conf.getString("ent-url", ""))
-				.put("canonicalHost", conf.getString("canonical-host", "")));
+				.put("canonicalHost", conf.getString("canonical-host", ""))
+				.put("allPacks", PracticeServiceSqlImpl.allPacks()));
 	}
 
 	@Get("/practice/referential")

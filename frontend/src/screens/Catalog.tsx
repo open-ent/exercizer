@@ -1076,6 +1076,8 @@ function CatalogPreview({
   });
 
   const subject = detail.data?.subject;
+  // Tous les packs sont publics (public-catalog.all-packs) : la case ne décide plus pour eux.
+  const publicByPack = !!practice.data?.allPacks && !!subject?.pack_global_id;
   const grains = detail.data?.grains ?? [];
   const canManage = subject ? canManageCatalogSubject(subject, user?.userId, !!isModerator) : false;
 
@@ -1168,12 +1170,14 @@ function CatalogPreview({
               {isModerator && practice.isSuccess && (
                 <div className="mb-16" data-testid="catalog-public-toggle">
                   <Checkbox
-                    checked={!!subject.is_public}
-                    disabled={publish.isPending}
+                    checked={!!subject.is_public || publicByPack}
+                    disabled={publish.isPending || publicByPack}
                     onChange={(event) => publish.mutate(event.target.checked)}
                     label={t('exercizer.catalog.public.toggle', { title: practice.data.title })}
                   />
-                  <div className="small text-muted">{t('exercizer.catalog.public.help')}</div>
+                  <div className="small text-muted">
+                    {t(publicByPack ? 'exercizer.catalog.public.pack' : 'exercizer.catalog.public.help')}
+                  </div>
                   {publish.isError && <div className="small text-danger">{t('exercizer.error')}</div>}
                 </div>
               )}

@@ -874,6 +874,7 @@
   "exercizer.catalog.copy": "Copier dans mes sujets",
   "exercizer.catalog.remove": "Retirer du catalogue",
   "exercizer.catalog.public.toggle": "Visible sur le site public « [[title]] »",
+  "exercizer.catalog.public.pack": "Ce sujet vient d'un pack : comme tous les packs offerts à tous les établissements, il est public d'office.",
   "exercizer.catalog.public.help": "Tout internaute peut alors faire cet exercice, sans compte. Les réponses attendues ne quittent pas le serveur, qui corrige lui-même.",
   "exercizer.practice.discover.ent": "Découvrir l'ENT",
   "exercizer.practice.login": "Se connecter",

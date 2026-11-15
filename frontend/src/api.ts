@@ -1053,7 +1053,9 @@ export const removeCatalogSubject = (id: number) =>
  * (`public-catalog.enabled`) : la requête échoue alors, et rien n'en est montré.
  */
 export const getPracticeConfig = () =>
-  get<{ title: string; signupUrl: string; entUrl: string; canonicalHost: string }>('/exercizer/practice/config');
+  get<{ title: string; signupUrl: string; entUrl: string; canonicalHost: string; allPacks?: boolean }>(
+    '/exercizer/practice/config',
+  );
 
 /** Publie un sujet du catalogue sur le site public d'entraînement, ou l'en retire (modérateurs). */
 export const setCatalogSubjectPublic = (id: number, value: boolean) =>

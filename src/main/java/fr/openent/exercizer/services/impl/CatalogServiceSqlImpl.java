@@ -243,9 +243,9 @@ public class CatalogServiceSqlImpl extends AbstractExercizerServiceSqlImpl imple
      */
     private static String visibleFilter(final JsonObject criteria, final JsonArray values, final boolean programmes) {
         final StringBuilder where = new StringBuilder(CATALOG_GUARD);
-        // Site public : les seuls sujets publiés par un modérateur. Sans établissement (structures
+        // Site public : les seuls sujets publiés (cf. PracticeServiceSqlImpl.published). Sans établissement (structures
         // vide), la garde des packs ne laisse passer que les packs offerts à tous.
-        if (criteria.getBoolean("public", false)) where.append(" AND s.is_public = true");
+        if (criteria.getBoolean("public", false)) where.append(" AND ").append(PracticeServiceSqlImpl.published());
         where.append(CatalogSql.packAccessGuard(criteria.getJsonArray("structures", new JsonArray()).getList(), values));
 
         final String q = criteria.getString("q");

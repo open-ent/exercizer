@@ -874,6 +874,7 @@
   "exercizer.catalog.copy": "Copy to my subjects",
   "exercizer.catalog.remove": "Remove from the catalogue",
   "exercizer.catalog.public.toggle": "Visible on the public site “[[title]]”",
+  "exercizer.catalog.public.pack": "This subject comes from a pack: like every pack offered to all schools, it is public automatically.",
   "exercizer.catalog.public.help": "Anyone can then do this exercise, without an account. The expected answers never leave the server, which does the marking.",
   "exercizer.practice.discover.ent": "Discover the platform",
   "exercizer.practice.login": "Log in",

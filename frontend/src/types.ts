@@ -425,6 +425,8 @@ export interface CatalogSubject extends Classification {
   pending_alignments?: PendingAlignment[];
   /** Publié par un modérateur sur le site public d'entraînement (aperçu seulement). */
   is_public?: boolean;
+  /** Sujet installé depuis un pack pédagogique. */
+  pack_global_id?: string | null;
 }
 
 /** Un rattachement proposé, que le rangement par programme ne compte qu'une fois validé. */

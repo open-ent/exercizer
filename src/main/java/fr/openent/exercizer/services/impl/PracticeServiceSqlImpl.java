@@ -15,7 +15,8 @@ import java.util.Collections;
  *
  * Un sujet est PUBLIC s'il est au catalogue, publié par un modérateur ({@code is_public}) et, s'il vient
  * d'un pack, si ce pack est offert à tous : un pack réservé aux établissements abonnés n'est jamais
- * montré, même marqué.
+ * montré, même marqué. Avec {@code public-catalog.all-packs}, tout sujet d'un pack offert à tous est
+ * public d'office, sans marque : les packs installés plus tard le sont aussi.
  */
 public class PracticeServiceSqlImpl {
 
@@ -26,9 +27,25 @@ public class PracticeServiceSqlImpl {
 	private final Sql sql = Sql.getInstance();
 	private final CatalogServiceSqlImpl catalog = new CatalogServiceSqlImpl();
 
+	private static volatile boolean allPacks = false;
+
+	/** Lit le bloc {@code public-catalog} de la configuration du module. */
+	public static void configure(final JsonObject publicCatalog) {
+		allPacks = publicCatalog != null && publicCatalog.getBoolean("all-packs", false);
+	}
+
+	public static boolean allPacks() {
+		return allPacks;
+	}
+
+	/** « Publié sur le site public » : marqué par un modérateur, ou venu d'un pack si all-packs. */
+	static String published() {
+		return allPacks ? "(s.is_public = true OR s.pack_global_id IS NOT NULL)" : "s.is_public = true";
+	}
+
 	/** La condition « sujet public » sur {@code s}, sans paramètre. */
 	static String publicGuard() {
-		return "s.is_library_subject = true AND s.is_deleted = false AND s.is_public = true"
+		return "s.is_library_subject = true AND s.is_deleted = false AND " + published()
 				+ CatalogSql.packAccessGuard(Collections.emptyList(), new JsonArray());
 	}
 
