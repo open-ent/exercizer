@@ -121,7 +121,7 @@ public class PracticeServiceSqlImpl {
 						"COALESCE((SELECT json_agg(al.cfitem_id) FROM " + S + "subject_alignment AS al " +
 						"WHERE al.subject_id = a.subject_id), '[]'::json) AS cfitem_ids " +
 						"FROM " + S + "practice_attempt AS a JOIN " + S + "subject AS s ON s.id = a.subject_id " +
-						"WHERE a.user_id = ? ORDER BY a.created DESC LIMIT " + ATTEMPTS_LIMIT,
+						"WHERE a.user_id = ? AND s.is_deleted = false ORDER BY a.created DESC LIMIT " + ATTEMPTS_LIMIT,
 				new JsonArray().add(userId), SqlResult.validResultHandler(handler, "cfitem_ids"));
 	}
 }

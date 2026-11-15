@@ -96,6 +96,19 @@ export const checkAnswers = (id: number, answers: Array<{ grain_id: number; cust
     body: JSON.stringify({ answers }),
   }).then((r) => json<CheckResult>(r));
 
+export type PracticeAttempt = {
+  id: number;
+  subject_id: number;
+  title: string;
+  score: number;
+  max_score: number;
+  created: string;
+};
+
+/** Les tentatives de l'usager connecté, les plus récentes d'abord. */
+export const getAttempts = () =>
+  fetch(`${BASE}/attempts`, { credentials: 'same-origin' }).then((r) => json<PracticeAttempt[]>(r));
+
 /** L'usager est-il connecté ? (sans session : 401) */
 export const getConnectedUser = () =>
   fetch('/auth/oauth2/userinfo', { credentials: 'same-origin' })

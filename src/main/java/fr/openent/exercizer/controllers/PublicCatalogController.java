@@ -49,13 +49,12 @@ import java.util.Random;
  *    {@link PublicCopyData} (liste blanche), jamais filtrés ;
  *  - le score est calculé ici ({@link AutomaticCorrection}), jamais reçu du client.
  *
- * Un usager connecté qui détient le droit {@code exercizer.practice} voit sa tentative enregistrée, et
- * publiée sur le bus ({@value #COMPLETED_ADDRESS}) si {@code practice-badges} est actif.
+ * Un usager connecté, quel que soit son profil, voit sa tentative enregistrée dans son compte : elle
+ * n'appartient qu'à lui, et le site entier est derrière {@code public-catalog.enabled}. Elle est publiée sur le bus ({@value #COMPLETED_ADDRESS}) si {@code practice-badges} est actif.
  */
 public class PublicCatalogController extends ControllerHelper {
 
 	public static final String COMPLETED_ADDRESS = "exercizer.practice.completed";
-	private static final String PRACTICE_ACTION = "fr.openent.exercizer.controllers.PublicCatalogController|practice";
 	/** Nombre de grains au plus dans une réponse : un corps plus gros n'est pas une copie. */
 	private static final int MAX_ANSWERS = 500;
 
@@ -84,14 +83,7 @@ public class PublicCatalogController extends ControllerHelper {
 		return rateLimiter;
 	}
 
-	// ── Droit d'entraînement ────────────────────────────────────────────────────
-
-	@Get("/practice/right")
-	@ApiDoc("Declares the free practice right: an attempt made on the public site is recorded for its author.")
-	@SecuredAction("exercizer.practice")
-	public void practice(final HttpServerRequest request) {
-		renderJson(request, new JsonObject().put("practice", true));
-	}
+	// ── Tentatives de l'usager ──────────────────────────────────────────────────
 
 	@Get("/practice/attempts")
 	@ApiDoc("Lists the user's own practice attempts (most recent first).")
@@ -472,7 +464,7 @@ public class PublicCatalogController extends ControllerHelper {
 
 	private void record(final HttpServerRequest request, final UserInfos user, final Long subjectId,
 						final JsonObject result, final JsonArray given) {
-		if (user == null || !hasAction(user, PRACTICE_ACTION)) {
+		if (user == null) {
 			renderJson(request, result.put("recorded", false));
 			return;
 		}
@@ -536,11 +528,6 @@ public class PublicCatalogController extends ControllerHelper {
 				renderError(request);
 			}
 		};
-	}
-
-	private static boolean hasAction(final UserInfos user, final String action) {
-		return user.getAuthorizedActions() != null &&
-				user.getAuthorizedActions().stream().anyMatch(a -> action.equals(a.getName()));
 	}
 
 	/**

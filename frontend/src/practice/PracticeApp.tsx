@@ -13,9 +13,11 @@ import { sanitizeHtml } from '../zones';
 import {
   checkAnswers,
   CheckResult,
+  getAttempts,
   getConnectedUser,
   getPublicSubject,
   getReferential,
+  PracticeAttempt,
   PracticeBoot,
   PracticeDetail,
   PracticeSubject,
@@ -24,6 +26,7 @@ import {
   searchPublic,
   takePending,
 } from './api';
+import { bestBySubject } from './results';
 
 /**
  * Site public d'entraînement : l'accueil (recherche parmi les exercices publiés) et la page d'un
@@ -62,7 +65,7 @@ export function PracticeApp({ boot }: { boot: PracticeBoot }) {
         {boot.page === 'exercise' && boot.subjectId ? (
           <Exercise subjectId={boot.subjectId} boot={boot} connected={!!user.data} />
         ) : (
-          <Home />
+          <Home connected={!!user.data} />
         )}
       </main>
       <footer className="border-top py-16">
@@ -74,7 +77,35 @@ export function PracticeApp({ boot }: { boot: PracticeBoot }) {
 
 // ── Accueil ─────────────────────────────────────────────────────────────────
 
-function Home() {
+function MyResults() {
+  const { t } = useTranslation(['exercizer', 'common']);
+  const attempts = useQuery({ queryKey: ['practice', 'attempts'], queryFn: getAttempts, retry: false });
+  const rows = useMemo(() => bestBySubject(attempts.data ?? []).slice(0, 6), [attempts.data]);
+  if (!rows.length) return null;
+  return (
+    <section className="card p-16 mb-24" data-testid="practice-my-results">
+      <Heading level="h2" headingStyle="h4" className="mb-12">
+        {t('exercizer.practice.my.results')}
+      </Heading>
+      <ul className="list-unstyled m-0 d-flex flex-column gap-8">
+        {rows.map((row) => (
+          <li key={row.subject_id} className="d-flex justify-content-between gap-12 flex-wrap">
+            <a href={`${PAGE}/exercice/${row.subject_id}`}>{row.title}</a>
+            <span className="text-muted small">
+              {t('exercizer.practice.my.best', {
+                score: formatScore(row.score),
+                max: formatScore(row.max_score),
+                tries: row.tries,
+              })}
+            </span>
+          </li>
+        ))}
+      </ul>
+    </section>
+  );
+}
+
+function Home({ connected }: { connected: boolean }) {
   const { t } = useTranslation(['exercizer', 'common']);
   const [q, setQ] = useState('');
   const [query, setQuery] = useState('');
@@ -111,6 +142,7 @@ function Home() {
         {t('exercizer.practice.home.title')}
       </Heading>
       <p className="text-muted mb-24">{t('exercizer.practice.home.intro')}</p>
+      {connected && <MyResults />}
       <div className="row g-12 mb-24" role="search">
         <div className="col-12 col-md-6">
           <input
