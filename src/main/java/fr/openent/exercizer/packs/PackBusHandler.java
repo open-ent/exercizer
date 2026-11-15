@@ -61,6 +61,9 @@ public class PackBusHandler implements Handler<Message<JsonObject>> {
             case "alignedResults":
                 alignedResults(body.getJsonArray("students", new JsonArray()), reply);
                 break;
+            case "practiceResults":
+                practiceResults(body.getString("userId"), reply);
+                break;
             default:
                 reply.handle(new Either.Left<>("action inconnue : " + action));
         }
@@ -90,6 +93,28 @@ public class PackBusHandler implements Handler<Message<JsonObject>> {
                 + "JOIN " + S + "subject_alignment a ON a.subject_id = ss.subject_id "
                 + "WHERE c.submitted_date IS NOT NULL AND c.owner IN (" + in + ") "
                 + "ORDER BY c.submitted_date DESC", students, SqlResult.validResultHandler(result ->
+                handler.handle(result.isRight()
+                        ? new Either.Right<>(new JsonObject().put("results", result.right().getValue()))
+                        : new Either.Left<>(result.left().getValue()))));
+    }
+
+    /**
+     * Tentatives d'entraînement libre de cet usager (site public, sql/050) sur des sujets alignés sur
+     * le référentiel, une ligne par énoncé travaillé : de quoi décerner un badge d'entraînement
+     * (module openbadges, {@code practice-badges}).
+     */
+    private void practiceResults(String userId, Handler<Either<String, JsonObject>> handler) {
+        if (userId == null || userId.isEmpty()) {
+            handler.handle(new Either.Left<>("userId requis"));
+            return;
+        }
+        sql.prepared("SELECT p.id AS \"attemptId\", p.subject_id AS \"subjectId\", a.cfitem_id AS cfitem, "
+                + "s.title, p.score, p.max_score AS \"maxScore\", p.created AS date "
+                + "FROM " + S + "practice_attempt p "
+                + "JOIN " + S + "subject s ON s.id = p.subject_id "
+                + "JOIN " + S + "subject_alignment a ON a.subject_id = p.subject_id "
+                + "WHERE p.user_id = ? AND s.is_deleted = false ORDER BY p.created DESC",
+                new JsonArray().add(userId), SqlResult.validResultHandler(result ->
                 handler.handle(result.isRight()
                         ? new Either.Right<>(new JsonObject().put("results", result.right().getValue()))
                         : new Either.Left<>(result.left().getValue()))));
