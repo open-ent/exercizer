@@ -28,6 +28,9 @@ export default defineConfig(({ mode }) => ({
   build: {
     assetsDir: 'public',
     rollupOptions: {
+      // Deux pages : l'application de l'ENT (index.html → view/exercizer-react.html) et le site public
+      // d'entraînement (practice.html → view/exercizer-practice.html), sans session.
+      input: { index: resolve(__dirname, 'index.html'), practice: resolve(__dirname, 'practice.html') },
       output: {
         /**
          * Tout porte une empreinte de contenu, y compris l'entrée — comme blog, wiki, video et

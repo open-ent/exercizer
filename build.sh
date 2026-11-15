@@ -150,6 +150,8 @@ buildReactFrontend () {
     -regex '.*-[A-Za-z0-9_-]{8}\.[a-z0-9]+' -delete
   cp -r ./frontend/dist/public/. ./src/main/resources/public/
   cp ./frontend/dist/index.html ./src/main/resources/view/exercizer-react.html
+  # Site public d'entraînement (PublicCatalogController) : seconde entrée Vite.
+  cp ./frontend/dist/practice.html ./src/main/resources/view/exercizer-practice.html
 }
 
 publish() {

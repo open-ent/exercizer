@@ -423,6 +423,8 @@ export interface CatalogSubject extends Classification {
   rating_count?: number;
   /** Rattachements proposés par un enseignant, en attente de validation (aperçu seulement). */
   pending_alignments?: PendingAlignment[];
+  /** Publié par un modérateur sur le site public d'entraînement (aperçu seulement). */
+  is_public?: boolean;
 }
 
 /** Un rattachement proposé, que le rangement par programme ne compte qu'une fois validé. */

@@ -87,6 +87,8 @@ jobs:
           # seul le build connaît les noms. Elle ne vient donc pas de view-src/, et doit être
           # copiée APRÈS l'étape gulp qui produit view/ depuis view-src/.
           cp dist/index.html ../src/main/resources/view/exercizer-react.html
+          # Site public d'entraînement (PublicCatalogController) : seconde entrée Vite.
+          cp dist/practice.html ../src/main/resources/view/exercizer-practice.html
 
       - name: Upload frontend assets
         uses: actions/upload-artifact@v7

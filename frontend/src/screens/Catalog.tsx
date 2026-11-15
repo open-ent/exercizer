@@ -28,11 +28,13 @@ import {
   getCatalogFacets,
   getCatalogObjectives,
   getCatalogSubject,
+  getPracticeConfig,
   getProgrammeTree,
   getUiPreference,
   reclassifyCatalogSubject,
   removeCatalogSubject,
   searchCatalog,
+  setCatalogSubjectPublic,
   setClassification,
   setUiPreference,
   UiPreference,
@@ -1059,6 +1061,20 @@ function CatalogPreview({
     },
   });
 
+  // Site public d'entraînement : la case n'existe que si le site est allumé (404 sinon) et pour un
+  // modérateur — publier un sujet le rend lisible par tout internaute.
+  const practice = useQuery({
+    queryKey: ['exercizer', 'practice', 'config'],
+    queryFn: getPracticeConfig,
+    enabled: !!isModerator,
+    retry: false,
+    staleTime: Infinity,
+  });
+  const publish = useMutation({
+    mutationFn: (value: boolean) => setCatalogSubjectPublic(subjectId, value),
+    onSuccess: () => void queryClient.invalidateQueries({ queryKey: ['exercizer', 'catalog', 'subject', subjectId] }),
+  });
+
   const subject = detail.data?.subject;
   const grains = detail.data?.grains ?? [];
   const canManage = subject ? canManageCatalogSubject(subject, user?.userId, !!isModerator) : false;
@@ -1149,6 +1165,18 @@ function CatalogPreview({
                 )
               )}
               <UsagePanel subjectId={subjectId} userId={user?.userId} isModerator={!!isModerator} />
+              {isModerator && practice.isSuccess && (
+                <div className="mb-16" data-testid="catalog-public-toggle">
+                  <Checkbox
+                    checked={!!subject.is_public}
+                    disabled={publish.isPending}
+                    onChange={(event) => publish.mutate(event.target.checked)}
+                    label={t('exercizer.catalog.public.toggle', { title: practice.data.title })}
+                  />
+                  <div className="small text-muted">{t('exercizer.catalog.public.help')}</div>
+                  {publish.isError && <div className="small text-danger">{t('exercizer.error')}</div>}
+                </div>
+              )}
               <Alert type="info" className="mb-16">
                 {t('exercizer.catalog.preview.help')}
               </Alert>

@@ -54,6 +54,8 @@ public class CatalogController extends ControllerHelper {
 	private static final int REVIEW_MAX_LENGTH = 2000;
 
 	private final ICatalogService catalogService = new CatalogServiceSqlImpl();
+	private final fr.openent.exercizer.services.impl.PracticeServiceSqlImpl practiceService =
+			new fr.openent.exercizer.services.impl.PracticeServiceSqlImpl();
 
 	@Get("/catalog/manage")
 	@ApiDoc("Declares the catalog moderation right (remove or reclassify any catalog subject).")
@@ -181,6 +183,22 @@ public class CatalogController extends ControllerHelper {
 		withCatalogAuthorOrModerator(request, id, user -> RequestUtils.bodyToJson(request, body ->
 				catalogService.reclassify(id, ids(body, "level_ids"), ids(body, "discipline_ids"),
 						alignmentIds(body), user, hasAction(user, MANAGE_ACTION), defaultResponseHandler(request))));
+	}
+
+	@Put("/catalog/subject/:id/public")
+	@ApiDoc("Publishes a catalog subject on the public practice site, or withdraws it: body {public: boolean}. Moderators only.")
+	@SecuredAction(value = "", type = ActionType.AUTHENTICATED)
+	public void setPublic(final HttpServerRequest request) {
+		final Long id = idParam(request, "id");
+		if (id == null) return;
+		// Un sujet public est lisible par tout internaute : seul un modérateur en décide, jamais l'auteur.
+		withAction(request, MANAGE_ACTION, user -> RequestUtils.bodyToJson(request, body -> {
+			if (!(body.getValue("public") instanceof Boolean)) {
+				badRequest(request, "exercizer.catalog.public.required");
+				return;
+			}
+			practiceService.setPublic(id, body.getBoolean("public"), notFoundOr(request));
+		}));
 	}
 
 	@Delete("/catalog/subject/:id")

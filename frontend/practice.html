@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="fr" data-product="{{product}}">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <!-- Site public d'entraînement : vue rendue par le serveur (PublicCatalogController, PracticePages).
+         Moustaches doubles = valeurs échappées par le moteur ; triples = HTML ou JSON construits et
+         échappés par PracticePages. Pas de moustache dans ce commentaire : le moteur la lirait. -->
+    <title>{{title}}</title>
+    <meta name="description" content="{{description}}" />
+    <link rel="canonical" href="{{canonical}}" />
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="{{title}}" />
+    <meta property="og:description" content="{{description}}" />
+    <meta property="og:url" content="{{canonical}}" />
+    <link rel="stylesheet" href="/assets/themes/openent-bootstrap/index.css" />
+    <script type="application/ld+json">{{{jsonld}}}</script>
+    <script id="practice-boot" type="application/json">{{{boot}}}</script>
+  </head>
+  <body class="app-react practice-site">
+    <div id="root">{{{content}}}</div>
+    <div id="portal"></div>
+    <script type="module" src="/src/practice/main.tsx"></script>
+  </body>
+</html>

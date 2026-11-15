@@ -151,6 +151,9 @@ public class Exercizer extends BaseServer {
             addController(new GrainTypeController());
             addController(new SectionController());
             addController(new CatalogController());
+            // Site public d'entraînement : routes toujours déclarées, mais 404 tant que
+            // public-catalog.enabled n'est pas vrai dans la configuration (éteint par défaut).
+            addController(new PublicCatalogController(storage));
             // Création assistée en arrière-plan : le brouillon est demandé à l'IA du dashboard.
             addController(new AssistedGenerationController(vertx, config));
             // Packs pédagogiques : sujets communs installés et ouverts par le module d'interopérabilité.

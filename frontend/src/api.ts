@@ -1048,6 +1048,17 @@ export const copyCatalogSubject = (id: number, folderId: number | null) =>
 export const removeCatalogSubject = (id: number) =>
   sendVoid('DELETE', `/exercizer/catalog/subject/${id}`);
 
+/**
+ * Réglages du site public d'entraînement. La route répond 404 quand le site est éteint
+ * (`public-catalog.enabled`) : la requête échoue alors, et rien n'en est montré.
+ */
+export const getPracticeConfig = () =>
+  get<{ title: string; signupUrl: string; entUrl: string; canonicalHost: string }>('/exercizer/practice/config');
+
+/** Publie un sujet du catalogue sur le site public d'entraînement, ou l'en retire (modérateurs). */
+export const setCatalogSubjectPublic = (id: number, value: boolean) =>
+  sendVoid('PUT', `/exercizer/catalog/subject/${id}/public`, { public: value });
+
 export const reclassifyCatalogSubject = (id: number, classification: Classification) =>
   sendVoid('PUT', `/exercizer/catalog/subject/${id}/classification`, classification);
 

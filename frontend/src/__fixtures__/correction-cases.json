@@ -1,0 +1,577 @@
+[
+  {
+    "name": "réponse simple juste malgré casse, accents, espaces et apostrophe",
+    "type": 4,
+    "max": 2,
+    "reference": {
+      "correct_answer": "L’Œuvre d’Émile"
+    },
+    "filled": {
+      "filled_answer": " l'oeuvre  d'emile "
+    },
+    "score": 2,
+    "answers": {
+      "0": true
+    }
+  },
+  {
+    "name": "réponse simple : espace insécable et largeur nulle",
+    "type": 4,
+    "max": 1,
+    "reference": {
+      "correct_answer": "12 500"
+    },
+    "filled": {
+      "filled_answer": "12 ​500"
+    },
+    "score": 1,
+    "answers": {
+      "0": true
+    }
+  },
+  {
+    "name": "réponse simple vide contre vide",
+    "type": 4,
+    "max": 1,
+    "reference": {
+      "correct_answer": ""
+    },
+    "filled": {
+      "filled_answer": ""
+    },
+    "score": 0,
+    "answers": {
+      "0": false
+    }
+  },
+  {
+    "name": "réponse simple fausse",
+    "type": 4,
+    "max": 3,
+    "reference": {
+      "correct_answer": "Paris"
+    },
+    "filled": {
+      "filled_answer": "Lyon"
+    },
+    "score": 0,
+    "answers": {
+      "0": false
+    }
+  },
+  {
+    "name": "réponses multiples au prorata, doublon non compté",
+    "type": 6,
+    "max": 3,
+    "reference": {
+      "correct_answer_list": [
+        {
+          "text": "rouge"
+        },
+        {
+          "text": "vert"
+        },
+        {
+          "text": "bleu"
+        }
+      ]
+    },
+    "filled": {
+      "filled_answer_list": [
+        {
+          "text": "Rouge"
+        },
+        {
+          "text": "rouge"
+        },
+        {
+          "text": "bleu"
+        }
+      ]
+    },
+    "score": 2,
+    "answers": {
+      "0": true,
+      "1": false,
+      "2": true
+    }
+  },
+  {
+    "name": "réponses multiples sans erreur admise",
+    "type": 6,
+    "max": 2,
+    "reference": {
+      "no_error_allowed": true,
+      "correct_answer_list": [
+        {
+          "text": "a"
+        },
+        {
+          "text": "b"
+        }
+      ]
+    },
+    "filled": {
+      "filled_answer_list": [
+        {
+          "text": "a"
+        },
+        {
+          "text": "x"
+        },
+        {
+          "text": "b"
+        }
+      ]
+    },
+    "score": 0,
+    "answers": {
+      "0": true,
+      "1": false,
+      "2": true
+    }
+  },
+  {
+    "name": "QCM : cases qui départagent seulement",
+    "type": 7,
+    "max": 4,
+    "reference": {
+      "correct_answer_list": [
+        {
+          "text": "1",
+          "isChecked": true
+        },
+        {
+          "text": "2",
+          "isChecked": false
+        },
+        {
+          "text": "3",
+          "isChecked": true
+        }
+      ]
+    },
+    "filled": {
+      "filled_answer_list": [
+        {
+          "text": "1",
+          "isChecked": true
+        },
+        {
+          "text": "2",
+          "isChecked": false
+        },
+        {
+          "text": "3",
+          "isChecked": false
+        }
+      ]
+    },
+    "score": 2,
+    "answers": {
+      "0": true,
+      "2": true
+    }
+  },
+  {
+    "name": "QCM : case cochée à tort",
+    "type": 7,
+    "max": 1,
+    "reference": {
+      "correct_answer_list": [
+        {
+          "text": "1",
+          "isChecked": true
+        },
+        {
+          "text": "2"
+        }
+      ]
+    },
+    "filled": {
+      "filled_answer_list": [
+        {
+          "text": "1",
+          "isChecked": true
+        },
+        {
+          "text": "2",
+          "isChecked": true
+        }
+      ]
+    },
+    "score": 0.5,
+    "answers": {
+      "0": true,
+      "1": false
+    }
+  },
+  {
+    "name": "QCM sans erreur admise",
+    "type": 7,
+    "max": 2,
+    "reference": {
+      "no_error_allowed": true,
+      "correct_answer_list": [
+        {
+          "isChecked": false
+        },
+        {
+          "isChecked": true
+        },
+        {
+          "isChecked": true
+        }
+      ]
+    },
+    "filled": {
+      "filled_answer_list": [
+        {
+          "isChecked": true
+        },
+        {
+          "isChecked": true
+        },
+        {
+          "isChecked": true
+        }
+      ]
+    },
+    "score": 0,
+    "answers": {
+      "0": false,
+      "1": true,
+      "2": true
+    }
+  },
+  {
+    "name": "QCM sans bonne réponse, rien coché",
+    "type": 7,
+    "max": 1.5,
+    "reference": {
+      "correct_answer_list": [
+        {
+          "isChecked": false
+        },
+        {
+          "isChecked": false
+        }
+      ]
+    },
+    "filled": {
+      "filled_answer_list": [
+        {
+          "isChecked": false
+        },
+        {}
+      ]
+    },
+    "score": 1.5,
+    "answers": {}
+  },
+  {
+    "name": "association avec colonne de gauche",
+    "type": 8,
+    "max": 3,
+    "reference": {
+      "show_left_column": true,
+      "correct_answer_list": [
+        {
+          "text_left": "chat",
+          "text_right": "miaou"
+        },
+        {
+          "text_left": "chien",
+          "text_right": "ouaf"
+        },
+        {
+          "text_left": "vache",
+          "text_right": "meuh"
+        }
+      ]
+    },
+    "filled": {
+      "filled_answer_list": [
+        {
+          "text_left": "chat",
+          "text_right": "miaou"
+        },
+        {
+          "text_left": "chien",
+          "text_right": "meuh"
+        },
+        {
+          "text_left": "vache",
+          "text_right": "ouaf"
+        }
+      ]
+    },
+    "score": 1,
+    "answers": {
+      "0": true,
+      "1": false,
+      "2": false
+    }
+  },
+  {
+    "name": "association sans colonne de gauche, paires inversées",
+    "type": 8,
+    "max": 2,
+    "reference": {
+      "show_left_column": false,
+      "correct_answer_list": [
+        {
+          "text_left": "2+2",
+          "text_right": "4"
+        },
+        {
+          "text_left": "3×3",
+          "text_right": "9"
+        }
+      ]
+    },
+    "filled": {
+      "filled_answer_list": [
+        {
+          "text_left": "4",
+          "text_right": "2+2"
+        },
+        {
+          "text_left": "3×3",
+          "text_right": "6"
+        }
+      ]
+    },
+    "score": 1,
+    "answers": {
+      "0": true,
+      "1": false
+    }
+  },
+  {
+    "name": "association : show_left_column absent vaut faux à la correction",
+    "type": 8,
+    "max": 1,
+    "reference": {
+      "correct_answer_list": [
+        {
+          "text_left": "a",
+          "text_right": "b"
+        }
+      ]
+    },
+    "filled": {
+      "filled_answer_list": [
+        {
+          "text_left": "b",
+          "text_right": "a"
+        }
+      ]
+    },
+    "score": 1,
+    "answers": {
+      "0": true
+    }
+  },
+  {
+    "name": "mise en ordre",
+    "type": 9,
+    "max": 4,
+    "reference": {
+      "correct_answer_list": [
+        {
+          "text": "un",
+          "order_by": 1
+        },
+        {
+          "text": "deux",
+          "order_by": 2
+        },
+        {
+          "text": "trois",
+          "order_by": 3
+        },
+        {
+          "text": "quatre",
+          "order_by": 4
+        }
+      ]
+    },
+    "filled": {
+      "filled_answer_list": [
+        {
+          "text": "un",
+          "order_by": 1
+        },
+        {
+          "text": "trois",
+          "order_by": 2
+        },
+        {
+          "text": "deux",
+          "order_by": 3
+        },
+        {
+          "text": "quatre",
+          "order_by": 4
+        }
+      ]
+    },
+    "score": 2,
+    "answers": {
+      "1": true,
+      "2": false,
+      "3": false,
+      "4": true
+    }
+  },
+  {
+    "name": "mise en ordre sans erreur admise",
+    "type": 9,
+    "max": 2,
+    "reference": {
+      "no_error_allowed": true,
+      "correct_answer_list": [
+        {
+          "text": "a",
+          "order_by": 1
+        },
+        {
+          "text": "b",
+          "order_by": 2
+        }
+      ]
+    },
+    "filled": {
+      "filled_answer_list": [
+        {
+          "text": "b",
+          "order_by": 1
+        },
+        {
+          "text": "b",
+          "order_by": 2
+        }
+      ]
+    },
+    "score": 0,
+    "answers": {
+      "1": false,
+      "2": true
+    }
+  },
+  {
+    "name": "texte à trous",
+    "type": 10,
+    "max": 3,
+    "reference": {
+      "zones": [
+        {
+          "answer": "Lyon"
+        },
+        {
+          "answer": "Rhône"
+        },
+        {
+          "answer": ""
+        }
+      ]
+    },
+    "filled": {
+      "zones": [
+        {
+          "answer": "lyon"
+        },
+        {
+          "answer": "Saône"
+        },
+        {
+          "answer": ""
+        }
+      ]
+    },
+    "score": 1,
+    "answers": {
+      "0": true,
+      "1": false,
+      "2": false
+    }
+  },
+  {
+    "name": "zones d'image, copie plus courte",
+    "type": 12,
+    "max": 2,
+    "reference": {
+      "zones": [
+        {
+          "answer": "A"
+        },
+        {
+          "answer": "B"
+        }
+      ]
+    },
+    "filled": {
+      "zones": [
+        {
+          "answer": "a"
+        }
+      ]
+    },
+    "score": 1,
+    "answers": {
+      "0": true,
+      "1": false
+    }
+  },
+  {
+    "name": "réponse ouverte : pas de correction automatique",
+    "type": 5,
+    "max": 5,
+    "reference": {
+      "model_answer": "x"
+    },
+    "filled": {
+      "filled_answer": "x"
+    },
+    "score": 0,
+    "answers": {}
+  },
+  {
+    "name": "barème fractionnaire, arrondi",
+    "type": 6,
+    "max": 1,
+    "reference": {
+      "correct_answer_list": [
+        {
+          "text": "a"
+        },
+        {
+          "text": "b"
+        },
+        {
+          "text": "c"
+        }
+      ]
+    },
+    "filled": {
+      "filled_answer_list": [
+        {
+          "text": "a"
+        },
+        {
+          "text": "z"
+        },
+        {
+          "text": "c"
+        }
+      ]
+    },
+    "score": 0.67,
+    "answers": {
+      "0": true,
+      "1": false,
+      "2": true
+    }
+  }
+]
