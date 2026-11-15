@@ -6,6 +6,7 @@ import fr.openent.exercizer.practice.AutomaticCorrection;
 import fr.openent.exercizer.practice.PracticePages;
 import fr.openent.exercizer.practice.PublicCopyData;
 import fr.openent.exercizer.practice.RateLimiter;
+import fr.openent.exercizer.practice.SiteIndex;
 import fr.openent.exercizer.services.ICatalogService;
 import fr.openent.exercizer.services.impl.CatalogServiceSqlImpl;
 import fr.openent.exercizer.services.impl.PracticeServiceSqlImpl;
@@ -233,34 +234,183 @@ public class PublicCatalogController extends ControllerHelper {
 
 	// ── Pages (rendues par le serveur, pour les moteurs de recherche) ───────────
 
+	/** Durée de vie de l'index du site : une publication apparaît sur les pages au plus tard après ce délai. */
+	private static final long INDEX_TTL_MS = 5 * 60 * 1000L;
+	/** Plafond de l'index : au-delà, le site public n'est plus une vitrine mais un catalogue. */
+	private static final int INDEX_MAX = 3000;
+	private static volatile SiteIndex siteIndex;
+	private static volatile long siteIndexBuilt;
+
+	/** Une publication ou un retrait du site public : l'index se reconstruit à la prochaine page. */
+	public static void invalidateSiteIndex() {
+		siteIndexBuilt = 0;
+	}
+
+	/**
+	 * L'index du site (exercices publics, référentiel, place dans le programme), gardé en mémoire
+	 * {@value #INDEX_TTL_MS} ms. Si sa reconstruction échoue, l'ancien sert encore.
+	 */
+	private void withIndex(final HttpServerRequest request, final Handler<SiteIndex> handler) {
+		final SiteIndex cached = siteIndex;
+		if (cached != null && System.currentTimeMillis() - siteIndexBuilt < INDEX_TTL_MS) {
+			handler.handle(cached);
+			return;
+		}
+		buildIndex(index -> {
+			if (index != null) {
+				siteIndex = index;
+				siteIndexBuilt = System.currentTimeMillis();
+				handler.handle(index);
+			} else if (cached != null) {
+				handler.handle(cached);
+			} else {
+				renderError(request);
+			}
+		});
+	}
+
+	private void buildIndex(final Handler<SiteIndex> handler) {
+		catalogService.referential(referential -> {
+			if (referential.isLeft()) {
+				handler.handle(null);
+				return;
+			}
+			final JsonObject labels = translated(referential);
+			allPublicSubjects(new JsonArray(), subjects -> {
+				if (subjects == null) {
+					handler.handle(null);
+					return;
+				}
+				final java.util.Set<String> programmes = new java.util.LinkedHashSet<>();
+				subjects.forEach(o -> ((JsonObject) o).getJsonArray("alignments", new JsonArray()).forEach(a -> {
+					if (a instanceof JsonObject && ((JsonObject) a).getString("programme") != null) {
+						programmes.add(((JsonObject) a).getString("programme"));
+					}
+				}));
+				trees(new java.util.ArrayList<>(programmes), new JsonArray(), nodes ->
+						handler.handle(SiteIndex.build(subjects, labels, nodes)));
+			});
+		});
+	}
+
+	/** Tous les sujets publics, par pages de 100 (le plafond de la requête du catalogue). */
+	private void allPublicSubjects(final JsonArray acc, final Handler<JsonArray> handler) {
+		catalogService.list(new JsonObject().put("public", true).put("structures", new JsonArray())
+				.put("limit", 100).put("offset", acc.size()), page -> {
+			if (page.isLeft()) {
+				handler.handle(null);
+				return;
+			}
+			final JsonArray rows = page.right().getValue().getJsonArray("subjects", new JsonArray());
+			rows.forEach(row -> acc.add(publicSubject((JsonObject) row)));
+			final long total = page.right().getValue().getLong("total", 0L);
+			if (rows.isEmpty() || acc.size() >= total || acc.size() >= INDEX_MAX) handler.handle(acc);
+			else allPublicSubjects(acc, handler);
+		});
+	}
+
+	/** Les nœuds des arbres de programme cités ; un arbre illisible est seulement ignoré (pas de rangement). */
+	private void trees(final java.util.List<String> programmes, final JsonArray acc, final Handler<JsonArray> handler) {
+		if (programmes.isEmpty()) {
+			handler.handle(acc);
+			return;
+		}
+		final String programme = programmes.remove(0);
+		catalogService.programmeTree(programme, false, new JsonObject().put("public", true).put("structures", new JsonArray()),
+				tree -> {
+					if (tree.isRight()) acc.addAll(tree.right().getValue().getJsonArray("nodes", new JsonArray()));
+					else log.warn("[Exercizer] practice site: programme tree " + programme + " unreadable: " + tree.left().getValue());
+					trees(programmes, acc, handler);
+				});
+	}
+
+	private void page(final HttpServerRequest request, final JsonObject params) {
+		request.response().putHeader("Content-Language", "fr");
+		renderView(request, params, "exercizer-practice.html", null);
+	}
+
 	@Get("/practice")
-	@ApiDoc("Public practice site home page (server-rendered, then the React reader).")
+	@ApiDoc("Public practice site home page (server-rendered).")
 	public void homePage(final HttpServerRequest request) {
 		if (!enabled()) {
 			notFound(request);
 			return;
 		}
-		catalogService.list(new JsonObject().put("public", true).put("structures", new JsonArray()).put("limit", 100),
-				page -> {
-					if (page.isLeft()) {
-						renderError(request);
-						return;
-					}
-					catalogService.referential(referential -> {
-						final JsonArray subjects = new JsonArray();
-						page.right().getValue().getJsonArray("subjects", new JsonArray())
-								.forEach(row -> subjects.add(publicSubject((JsonObject) row)));
-						renderView(request, PracticePages.home(publicConfig(), origin(request), subjects,
-								translated(request, referential)),
-								"exercizer-practice.html", null);
-					});
-				});
+		withIndex(request, index -> page(request, PracticePages.home(publicConfig(), origin(request), index)));
 	}
 
 	@Get("/practice/")
 	@ApiDoc("Same as /practice (trailing slash).")
 	public void homePageSlash(final HttpServerRequest request) {
 		homePage(request);
+	}
+
+	@Get("/practice/niveau/:level")
+	@ApiDoc("Public practice page of a school level: its subjects and curriculum domains (server-rendered).")
+	public void levelPage(final HttpServerRequest request) {
+		if (!enabled()) {
+			notFound(request);
+			return;
+		}
+		withIndex(request, index -> {
+			final SiteIndex.Level level = index.level(request.params().get("level"));
+			if (level == null || index.entries(level, null).isEmpty()) {
+				notFound(request);
+				return;
+			}
+			page(request, PracticePages.level(publicConfig(), origin(request), index, level));
+		});
+	}
+
+	@Get("/practice/niveau/:level/:discipline")
+	@ApiDoc("Public practice page of a subject at a school level, ordered by the curriculum (server-rendered).")
+	public void disciplinePage(final HttpServerRequest request) {
+		if (!enabled()) {
+			notFound(request);
+			return;
+		}
+		withIndex(request, index -> {
+			final SiteIndex.Level level = index.level(request.params().get("level"));
+			final SiteIndex.Discipline discipline = index.discipline(request.params().get("discipline"));
+			if (level == null || discipline == null || index.entries(level, discipline).isEmpty()) {
+				notFound(request);
+				return;
+			}
+			page(request, PracticePages.discipline(publicConfig(), origin(request), index, level, discipline));
+		});
+	}
+
+	@Get("/practice/recherche")
+	@ApiDoc("Public practice search page: q, niveau, matiere, page (server-rendered, not indexed).")
+	public void searchPage(final HttpServerRequest request) {
+		if (!enabled()) {
+			notFound(request);
+			return;
+		}
+		withIndex(request, index -> {
+			final String q = request.params().get("q");
+			final SiteIndex.Level level = index.level(request.params().get("niveau"));
+			final SiteIndex.Discipline discipline = index.discipline(request.params().get("matiere"));
+			final Integer asked = intParam(request.params().get("page"));
+			final int pageNumber = asked == null ? 1 : Math.max(1, Math.min(asked, 1000));
+			final JsonObject criteria = new JsonObject().put("public", true).put("structures", new JsonArray())
+					.put("q", q == null ? null : (q.length() > 100 ? q.substring(0, 100) : q))
+					.put("levels", level == null ? new JsonArray() : new JsonArray().add(level.id))
+					.put("disciplines", discipline == null ? new JsonArray() : new JsonArray().add(discipline.id))
+					.put("limit", PracticePages.SEARCH_PAGE)
+					.put("offset", (pageNumber - 1) * PracticePages.SEARCH_PAGE);
+			catalogService.list(criteria, result -> {
+				if (result.isLeft()) {
+					renderError(request);
+					return;
+				}
+				final JsonObject found = result.right().getValue();
+				final JsonArray subjects = new JsonArray();
+				found.getJsonArray("subjects", new JsonArray()).forEach(row -> subjects.add(publicSubject((JsonObject) row)));
+				page(request, PracticePages.search(publicConfig(), origin(request), index, q, level, discipline,
+						subjects, found.getLong("total", 0L), pageNumber));
+			});
+		});
 	}
 
 	@Get("/practice/exercice/:id")
@@ -279,12 +429,15 @@ public class PublicCatalogController extends ControllerHelper {
 				return;
 			}
 			final JsonObject detail = publicDetail(event.right().getValue(), random);
-			catalogService.referential(referential -> renderView(request,
-					PracticePages.exercise(publicConfig(), origin(request), detail.getJsonObject("subject"),
-							detail.getJsonArray("grains"),
-							translated(request, referential)),
-					"exercizer-practice.html", null));
+			withIndex(request, index -> page(request, PracticePages.exercise(publicConfig(), origin(request), index,
+					detail.getJsonObject("subject"), detail.getJsonArray("grains"))));
 		});
+	}
+
+	@Get("/practice/exercice/:id/:slug")
+	@ApiDoc("Same as /practice/exercice/:id; the slug is the exercise title, for readable addresses.")
+	public void exercisePageSlug(final HttpServerRequest request) {
+		exercisePage(request);
 	}
 
 	@Get("/practice/sitemap.xml")
@@ -294,14 +447,8 @@ public class PublicCatalogController extends ControllerHelper {
 			notFound(request);
 			return;
 		}
-		practiceService.sitemap(event -> {
-			if (event.isLeft()) {
-				renderError(request);
-				return;
-			}
-			request.response().putHeader("Content-Type", "application/xml; charset=utf-8")
-					.end(PracticePages.sitemap(origin(request), event.right().getValue()));
-		});
+		withIndex(request, index -> request.response().putHeader("Content-Type", "application/xml; charset=utf-8")
+				.end(PracticePages.sitemap(origin(request), index)));
 	}
 
 	@Get("/practice/robots.txt")
@@ -344,17 +491,18 @@ public class PublicCatalogController extends ControllerHelper {
 		});
 	}
 
-	/** Le référentiel des niveaux et matières, libellés traduits : la base n'en garde que les clés. */
-	private static JsonObject translated(final HttpServerRequest request, final Either<String, JsonObject> referential) {
+	/**
+	 * Le référentiel des niveaux et matières, libellés traduits EN FRANÇAIS : la base n'en garde que les
+	 * clés, et le site public est en français quelle que soit la langue du navigateur (ses exercices le sont).
+	 */
+	private static JsonObject translated(final Either<String, JsonObject> referential) {
 		if (referential.isLeft()) return new JsonObject();
 		final JsonObject result = referential.right().getValue().copy();
-		final String host = getHost(request);
-		final String lang = I18n.acceptLanguage(request);
 		for (final String list : new String[]{"levels", "disciplines"}) {
 			for (final Object item : result.getJsonArray(list, new JsonArray())) {
 				final JsonObject row = (JsonObject) item;
 				final String label = row.getString("label");
-				if (label != null) row.put("label", I18n.getInstance().translate(label, host, lang));
+				if (label != null) row.put("label", I18n.getInstance().translate(label, I18n.DEFAULT_DOMAIN, "fr"));
 			}
 		}
 		return result;

@@ -88,12 +88,6 @@ public class PracticeServiceSqlImpl {
 						handler.handle(event.isRight() && !event.right().getValue().isEmpty())));
 	}
 
-	/** Les sujets publics pour le plan du site : id, titre, date de modification. */
-	public void sitemap(final Handler<Either<String, JsonArray>> handler) {
-		sql.raw("SELECT s.id, s.title, s.modified FROM " + S + "subject AS s WHERE " + publicGuard() +
-				" ORDER BY s.id", SqlResult.validResultHandler(handler));
-	}
-
 	/** Publie ou retire un sujet DU CATALOGUE du site public. */
 	public void setPublic(final Long id, final boolean value, final Handler<Either<String, JsonObject>> handler) {
 		sql.prepared("UPDATE " + S + "subject SET is_public = ? WHERE id = ? AND is_library_subject = true " +

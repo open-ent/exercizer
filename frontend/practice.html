@@ -4,21 +4,427 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <!-- Site public d'entraînement : vue rendue par le serveur (PublicCatalogController, PracticePages).
-         Moustaches doubles = valeurs échappées par le moteur ; triples = HTML ou JSON construits et
-         échappés par PracticePages. Pas de moustache dans ce commentaire : le moteur la lirait. -->
+         Moustaches doubles = valeurs échappées par le moteur ; triples = JSON construit et échappé par
+         PracticePages. Pas de moustache dans ce commentaire : le moteur la lirait. -->
     <title>{{title}}</title>
     <meta name="description" content="{{description}}" />
+    <meta name="robots" content="{{robots}}" />
     <link rel="canonical" href="{{canonical}}" />
     <meta property="og:type" content="website" />
+    <meta property="og:locale" content="fr_FR" />
+    <meta property="og:site_name" content="{{site.name}}" />
     <meta property="og:title" content="{{title}}" />
     <meta property="og:description" content="{{description}}" />
     <meta property="og:url" content="{{canonical}}" />
+    {{#hasOgImage}}<meta property="og:image" content="{{ogImage}}" />{{/hasOgImage}}
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="theme-color" content="#2f45c5" />
     <link rel="stylesheet" href="/assets/themes/openent-bootstrap/index.css" />
     <script type="application/ld+json">{{{jsonld}}}</script>
     <script id="practice-boot" type="application/json">{{{boot}}}</script>
   </head>
-  <body class="app-react practice-site">
-    <div id="root">{{{content}}}</div>
+  <body class="app-react ps-site">
+    <a class="ps-skip" href="#contenu">Aller au contenu</a>
+
+    <header class="ps-header">
+      <div class="ps-wrap ps-header__bar">
+        <a class="ps-brand" href="{{site.home}}">
+          <span class="ps-brand__mark" aria-hidden="true">
+            <svg viewBox="0 0 24 24" width="20" height="20"><path d="M5 12.5l4.2 4.2L19 7" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          </span>
+          <span class="ps-brand__text"><strong>{{site.short}}</strong>{{#site.hasEnt}}<small>par {{site.ent}}</small>{{/site.hasEnt}}</span>
+        </a>
+        <nav class="ps-nav" aria-label="Navigation principale">
+          <a href="{{site.home}}#niveaux">Niveaux</a>
+          <a href="{{site.home}}#matieres">Matières</a>
+          <a href="{{site.searchUrl}}">Recherche</a>
+          {{#site.hasEnt}}<a class="ps-nav__ent" href="{{site.entUrl}}">Découvrir {{site.ent}}</a>{{/site.hasEnt}}
+        </nav>
+        <div id="ps-account" class="ps-account">
+          <a class="ps-btn ps-btn--ghost" href="/auth/login">Se connecter</a>
+          <a class="ps-btn ps-btn--primary" href="{{site.signupUrl}}">Créer un compte</a>
+        </div>
+      </div>
+    </header>
+
+    <main id="contenu" class="ps-main">
+      <section class="ps-head ps-g-{{group}}{{#isHome}} ps-head--hero{{/isHome}}{{#isExercise}} ps-head--exercise{{/isExercise}}">
+        <div class="ps-wrap ps-head__grid">
+          <div class="ps-head__main">
+            {{#hasBreadcrumb}}
+            <nav class="ps-crumbs" aria-label="Fil d'Ariane">
+              <ol>
+                {{#breadcrumb}}<li>{{#last}}<span aria-current="page">{{label}}</span>{{/last}}{{^last}}<a href="{{url}}">{{label}}</a>{{/last}}</li>{{/breadcrumb}}
+              </ol>
+            </nav>
+            {{/hasBreadcrumb}}
+
+            {{#isHome}}
+            <p class="ps-eyebrow">Gratuit · Sans inscription · Conforme aux programmes</p>
+            <h1 class="ps-title ps-title--hero">Des exercices <span class="ps-mark">corrigés</span> pour réviser {{range}}</h1>
+            <p class="ps-lead">Choisissez votre niveau, faites l'exercice : la correction s'affiche aussitôt, question par question. Chaque exercice est rattaché à une notion du programme officiel.</p>
+            {{/isHome}}
+
+            {{#isDiscipline}}
+            <div class="ps-title-row">
+              {{#discipline}}<span class="ps-mono ps-a-{{accent}}" aria-hidden="true">{{monogram}}</span>{{/discipline}}
+              <h1 class="ps-title">{{heading}}</h1>
+            </div>
+            <p class="ps-lead">{{lead}}</p>
+            {{/isDiscipline}}
+
+            {{#isLevel}}
+            <h1 class="ps-title">{{heading}}</h1>
+            <p class="ps-lead">{{lead}}</p>
+            {{/isLevel}}
+
+            {{#isSearch}}
+            <h1 class="ps-title">{{heading}}</h1>
+            <p class="ps-lead">{{lead}}</p>
+            {{/isSearch}}
+
+            {{#isExercise}}
+            <ul class="ps-chips">{{#chips}}<li class="ps-chip">{{.}}</li>{{/chips}}</ul>
+            <h1 class="ps-title">{{heading}}</h1>
+            {{#hasNotion}}
+            <p class="ps-notion"><span class="ps-notion__label">Au programme{{#hasDomain}} · {{domain}}{{/hasDomain}}</span>{{notion}}</p>
+            {{/hasNotion}}
+            {{/isExercise}}
+
+            {{#hasSearch}}
+            {{#search}}
+            <form class="ps-search" role="search" action="{{site.searchUrl}}" method="get">
+              <label class="ps-visually-hidden" for="ps-q">Rechercher un exercice ou une notion</label>
+              <span class="ps-search__icon" aria-hidden="true"><svg viewBox="0 0 24 24" width="20" height="20"><circle cx="11" cy="11" r="7" fill="none" stroke="currentColor" stroke-width="2"/><path d="M20 20l-4-4" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg></span>
+              <input id="ps-q" class="ps-field ps-search__q" type="search" name="q" value="{{q}}" placeholder="Fractions, Pythagore, accord du participe…" autocomplete="off" />
+              <label class="ps-visually-hidden" for="ps-level">Niveau</label>
+              <select id="ps-level" class="ps-field ps-search__select" name="niveau">
+                <option value="">Tous les niveaux</option>
+                {{#levels}}<option value="{{value}}" {{selected}}>{{label}}</option>{{/levels}}
+              </select>
+              <label class="ps-visually-hidden" for="ps-discipline">Matière</label>
+              <select id="ps-discipline" class="ps-field ps-search__select" name="matiere">
+                <option value="">Toutes les matières</option>
+                {{#disciplines}}<option value="{{value}}" {{selected}}>{{label}}</option>{{/disciplines}}
+              </select>
+              <button class="ps-btn ps-btn--primary ps-search__go" type="submit">Rechercher</button>
+            </form>
+            {{/search}}
+            {{/hasSearch}}
+
+            {{#isHome}}
+            {{#stats}}
+            <ul class="ps-stats">
+              <li><strong>{{exercises}}</strong><span>exercices</span></li>
+              <li><strong>{{questions}}</strong><span>questions</span></li>
+              <li><strong>{{levels}}</strong><span>niveaux</span></li>
+              <li><strong>0 €</strong><span>sans publicité</span></li>
+            </ul>
+            {{/stats}}
+            {{/isHome}}
+
+            {{#hasSiblings}}
+            <nav class="ps-pills" aria-label="Autres niveaux">
+              {{#siblings}}{{#current}}<span class="ps-pill is-current" aria-current="page">{{label}}</span>{{/current}}{{^current}}<a class="ps-pill" href="{{url}}">{{label}}</a>{{/current}}{{/siblings}}
+            </nav>
+            {{/hasSiblings}}
+          </div>
+
+          {{#isHome}}
+          <div class="ps-art" aria-hidden="true">
+            <div class="ps-art__sheet">
+              <div class="ps-art__title">Les fractions · 6e</div>
+              <div class="ps-art__q"><span class="ps-art__ok">✓</span><span class="ps-art__line" style="width:78%"></span></div>
+              <div class="ps-art__q"><span class="ps-art__ok">✓</span><span class="ps-art__line" style="width:64%"></span></div>
+              <div class="ps-art__q"><span class="ps-art__ko">✗</span><span class="ps-art__line" style="width:70%"></span></div>
+              <div class="ps-art__hint">Pour comparer deux fractions, on les écrit avec le même dénominateur.</div>
+              <div class="ps-art__q"><span class="ps-art__ok">✓</span><span class="ps-art__line" style="width:55%"></span></div>
+            </div>
+            <div class="ps-art__score"><strong>9/10</strong><span>Bravo !</span></div>
+            <div class="ps-art__badge"><span>★</span>Badge obtenu</div>
+          </div>
+          {{/isHome}}
+        </div>
+      </section>
+
+      {{#isHome}}
+      <div class="ps-wrap"><div id="ps-my-results"></div></div>
+
+      <section class="ps-section" id="niveaux" aria-labelledby="t-niveaux">
+        <div class="ps-wrap">
+          <h2 class="ps-h2" id="t-niveaux">Choisissez votre niveau</h2>
+          <p class="ps-sub">Les exercices sont rangés comme le programme : par matière, puis par domaine et par chapitre.</p>
+          {{#groups}}
+          <div class="ps-group ps-g-{{group}}">
+            <h3 class="ps-group__title">{{label}}</h3>
+            <ul class="ps-levels">
+              {{#levels}}
+              <li>
+                <a class="ps-level" href="{{url}}">
+                  <span class="ps-level__name">{{label}}</span>
+                  <span class="ps-level__count">{{count}}</span>
+                  <span class="ps-level__subjects">{{disciplines}}</span>
+                  <span class="ps-level__go" aria-hidden="true">→</span>
+                </a>
+              </li>
+              {{/levels}}
+            </ul>
+          </div>
+          {{/groups}}
+        </div>
+      </section>
+
+      <section class="ps-section ps-section--tint" id="matieres" aria-labelledby="t-matieres">
+        <div class="ps-wrap">
+          <h2 class="ps-h2" id="t-matieres">Par matière</h2>
+          <p class="ps-sub">Toutes les matières du programme, de la grammaire à la géographie.</p>
+          <ul class="ps-subjects">
+            {{#disciplines}}
+            <li class="ps-subject ps-a-{{accent}}">
+              <div class="ps-subject__head">
+                <span class="ps-mono ps-a-{{accent}}" aria-hidden="true">{{monogram}}</span>
+                <div>
+                  <h3 class="ps-subject__name">{{label}}</h3>
+                  <span class="ps-subject__count">{{count}}</span>
+                </div>
+              </div>
+              <nav class="ps-subject__levels" aria-label="{{label}} par niveau">
+                {{#levels}}<a class="ps-pill" href="{{url}}" title="{{title}}">{{label}}</a>{{/levels}}
+              </nav>
+            </li>
+            {{/disciplines}}
+          </ul>
+        </div>
+      </section>
+
+      <section class="ps-section" aria-labelledby="t-comment">
+        <div class="ps-wrap">
+          <h2 class="ps-h2" id="t-comment">Comment ça marche</h2>
+          <ol class="ps-steps">
+            <li class="ps-step">
+              <span class="ps-step__num">1</span>
+              <h3>Choisissez un exercice</h3>
+              <p>Par niveau, par matière ou par notion : chaque exercice cible un point précis du programme.</p>
+            </li>
+            <li class="ps-step">
+              <span class="ps-step__num">2</span>
+              <h3>Répondez en ligne</h3>
+              <p>QCM, textes à trous, associations, remises en ordre… sur ordinateur, tablette ou téléphone.</p>
+            </li>
+            <li class="ps-step">
+              <span class="ps-step__num">3</span>
+              <h3>Comprenez vos erreurs</h3>
+              <p>La correction est immédiate, avec une explication quand l'enseignant en a prévu une.</p>
+            </li>
+            <li class="ps-step">
+              <span class="ps-step__num">4</span>
+              <h3>Gardez vos progrès</h3>
+              <p>Avec un compte gratuit, vos résultats sont enregistrés et vous voyez votre meilleur score.</p>
+            </li>
+          </ol>
+        </div>
+      </section>
+      {{/isHome}}
+
+      {{#isLevel}}
+      <section class="ps-section">
+        <div class="ps-wrap">
+          <ul class="ps-dblocks">
+            {{#disciplines}}
+            <li class="ps-dblock ps-a-{{accent}}">
+              <div class="ps-dblock__head">
+                <span class="ps-mono ps-a-{{accent}}" aria-hidden="true">{{monogram}}</span>
+                <div>
+                  <h2 class="ps-dblock__name"><a href="{{url}}">{{label}}</a></h2>
+                  <span class="ps-dblock__count">{{count}}</span>
+                </div>
+              </div>
+              <ul class="ps-domains">
+                {{#domains}}<li><a href="{{url}}"><span>{{label}}</span><span class="ps-domains__n">{{count}}</span></a></li>{{/domains}}
+              </ul>
+              <a class="ps-btn ps-btn--soft ps-dblock__more" href="{{url}}">{{more}} →</a>
+            </li>
+            {{/disciplines}}
+          </ul>
+        </div>
+      </section>
+      {{/isLevel}}
+
+      {{#isDiscipline}}
+      <section class="ps-section">
+        <div class="ps-wrap ps-layout{{#hasToc}} ps-layout--toc{{/hasToc}}">
+          {{#hasToc}}
+          <aside class="ps-toc" aria-label="Chapitres">
+            <p class="ps-toc__title">Au programme</p>
+            <ol>
+              {{#domains}}<li><a href="#{{anchor}}">{{label}}<span>{{count}}</span></a></li>{{/domains}}
+            </ol>
+          </aside>
+          {{/hasToc}}
+          <div class="ps-layout__main">
+            {{#domains}}
+            <section class="ps-domain" id="{{anchor}}" aria-labelledby="d-{{anchor}}">
+              <h2 class="ps-domain__title" id="d-{{anchor}}">{{label}}</h2>
+              {{#themes}}
+              {{#hasLabel}}<h3 class="ps-theme">{{label}}</h3>{{/hasLabel}}
+              <ul class="ps-cards">
+                {{#cards}}
+                <li>
+                  <a class="ps-card ps-a-{{accent}}" href="{{url}}">
+                    <span class="ps-card__title">{{title}}</span>
+                    {{#hasNotion}}<span class="ps-card__notion">{{notion}}</span>{{/hasNotion}}
+                    {{^hasNotion}}{{#hasSummary}}<span class="ps-card__notion">{{summary}}</span>{{/hasSummary}}{{/hasNotion}}
+                    <span class="ps-card__meta"><span>{{questions}}</span><span class="ps-card__go">Faire l'exercice →</span></span>
+                  </a>
+                </li>
+                {{/cards}}
+              </ul>
+              {{/themes}}
+            </section>
+            {{/domains}}
+
+            {{#hasOtherLevels}}
+            <nav class="ps-also" aria-label="Autres niveaux">
+              <h2 class="ps-also__title">{{#discipline}}{{label}}{{/discipline}} dans les autres niveaux</h2>
+              <div class="ps-pills">{{#otherLevels}}<a class="ps-pill" href="{{url}}">{{label}}</a>{{/otherLevels}}</div>
+              <p><a href="{{levelUrl}}">Toutes les matières en {{levelLabel}} →</a></p>
+            </nav>
+            {{/hasOtherLevels}}
+          </div>
+        </div>
+      </section>
+      {{/isDiscipline}}
+
+      {{#isSearch}}
+      <section class="ps-section">
+        <div class="ps-wrap">
+          {{^empty}}
+          <ul class="ps-cards ps-cards--wide">
+            {{#cards}}
+            <li>
+              <a class="ps-card ps-a-{{accent}}" href="{{url}}">
+                <span class="ps-card__kicker"><span class="ps-mono ps-mono--sm ps-a-{{accent}}" aria-hidden="true">{{monogram}}</span>{{levels}} · {{discipline}}</span>
+                <span class="ps-card__title">{{title}}</span>
+                {{#hasNotion}}<span class="ps-card__notion">{{notion}}</span>{{/hasNotion}}
+                <span class="ps-card__meta"><span>{{questions}}</span><span class="ps-card__go">Faire l'exercice →</span></span>
+              </a>
+            </li>
+            {{/cards}}
+          </ul>
+          {{/empty}}
+          {{#pagination}}{{#show}}
+          <nav class="ps-pager" aria-label="Pages de résultats">
+            {{#hasPrev}}<a class="ps-btn ps-btn--soft" href="{{prev}}" rel="prev">← Précédents</a>{{/hasPrev}}
+            <span>Page {{page}} sur {{pages}}</span>
+            {{#hasNext}}<a class="ps-btn ps-btn--soft" href="{{next}}" rel="next">Suivants →</a>{{/hasNext}}
+          </nav>
+          {{/show}}{{/pagination}}
+          {{#empty}}
+          <div class="ps-pills ps-pills--center">{{#browse}}<a class="ps-pill" href="{{url}}">{{label}}</a>{{/browse}}</div>
+          {{/empty}}
+        </div>
+      </section>
+      {{/isSearch}}
+
+      {{#isExercise}}
+      <section class="ps-section ps-section--exercise">
+        <div class="ps-wrap ps-layout ps-layout--aside">
+          <div class="ps-layout__main">
+            {{#hasSummary}}<p class="ps-summary">{{summary}}</p>{{/hasSummary}}
+            <div id="ps-player" class="ps-player">
+              <ol class="ps-preview">
+                {{#questions}}<li><strong>{{title}}</strong> {{text}}</li>{{/questions}}
+              </ol>
+              <noscript><p class="ps-note">Activez JavaScript pour faire l'exercice et obtenir votre score.</p></noscript>
+            </div>
+          </div>
+          <aside class="ps-aside">
+            {{#hasRelated}}
+            <div class="ps-panel">
+              <h2 class="ps-panel__title">Dans le même chapitre</h2>
+              <ul class="ps-related">
+                {{#related}}<li><a href="{{url}}"><span>{{title}}</span><small>{{questions}}</small></a></li>{{/related}}
+              </ul>
+              {{#hasMore}}<a class="ps-panel__more" href="{{moreUrl}}">{{moreLabel}} →</a>{{/hasMore}}
+            </div>
+            {{/hasRelated}}
+            {{#site.hasEnt}}
+            <div class="ps-panel ps-panel--ent">
+              <h2 class="ps-panel__title">Enseignant ?</h2>
+              <p>Donnez cet exercice à votre classe et suivez les résultats de chaque élève avec {{site.ent}}.</p>
+              <a class="ps-btn ps-btn--primary" href="{{site.entUrl}}">Découvrir {{site.ent}}</a>
+            </div>
+            {{/site.hasEnt}}
+          </aside>
+        </div>
+      </section>
+      {{/isExercise}}
+
+      {{#site.hasEnt}}
+      {{^isExercise}}
+      <section class="ps-section ps-ent" aria-labelledby="t-ent">
+        <div class="ps-wrap">
+          <div class="ps-ent__intro">
+            <p class="ps-eyebrow ps-eyebrow--light">Pour les établissements scolaires</p>
+            <h2 class="ps-h2" id="t-ent">Votre établissement sur {{site.ent}}</h2>
+            <p class="ps-ent__lead">Ces exercices viennent de {{site.ent}}, l'espace numérique de travail libre et hébergé en France. Les enseignants les donnent à leur classe, suivent les résultats et créent leurs propres exercices — et tout l'établissement communique au même endroit.</p>
+          </div>
+          <ul class="ps-services">
+            <li><span class="ps-services__icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M4 5h16v14H4z M8 9l2 2 4-4 M8 15h8"/></svg></span><h3>Exercices et compétences</h3><p>Exercices autocorrigés, évaluation par compétences et badges de réussite.</p></li>
+            <li><span class="ps-services__icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M5 4h11l3 3v13H5z M9 9h6 M9 13h6 M9 17h4"/></svg></span><h3>Cahier de textes</h3><p>Séances et devoirs, consultables par les élèves et leurs familles.</p></li>
+            <li><span class="ps-services__icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 3a4 4 0 110 8 4 4 0 010-8z M4 21c0-4 4-7 8-7s8 3 8 7"/></svg></span><h3>Vie scolaire</h3><p>Appel en classe, absences et retards, avec l'information des familles.</p></li>
+            <li><span class="ps-services__icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M3 6h18v12H3z M3 6l9 7 9-7"/></svg></span><h3>Messagerie sécurisée</h3><p>Entre l'établissement, les élèves et les parents, sans adresse personnelle.</p></li>
+            <li><span class="ps-services__icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M3 7h7l2 2h9v10H3z"/></svg></span><h3>Espace documentaire</h3><p>Cours, documents et ressources partagés, accessibles de partout.</p></li>
+            <li><span class="ps-services__icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M4 4h16v16H4z M8 8h8 M8 12h8 M8 16h5"/></svg></span><h3>Blogs, wikis et actualités</h3><p>Pour raconter la vie de la classe et informer les familles.</p></li>
+            <li><span class="ps-services__icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M4 6h16v14H4z M4 10h16 M8 3v5 M16 3v5"/></svg></span><h3>Agenda et réservations</h3><p>Agendas partagés, réservation de salles et de matériel.</p></li>
+            <li><span class="ps-services__icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M3 7h12v10H3z M15 11l6-4v10l-6-4"/></svg></span><h3>Visioconférence</h3><p>Classes virtuelles et réunions parents-professeurs, sans installation.</p></li>
+          </ul>
+          <div class="ps-ent__cta">
+            <a class="ps-btn ps-btn--light ps-btn--lg" href="{{site.entUrl}}">Découvrir {{site.ent}}</a>
+            <a class="ps-btn ps-btn--outline-light ps-btn--lg" href="{{site.signupUrl}}">Créer un compte gratuit</a>
+          </div>
+        </div>
+      </section>
+      {{/isExercise}}
+      {{/site.hasEnt}}
+
+      {{#isHome}}
+      <section class="ps-section" aria-labelledby="t-faq">
+        <div class="ps-wrap ps-faq">
+          <h2 class="ps-h2" id="t-faq">Questions fréquentes</h2>
+          {{#faq}}
+          <details class="ps-faq__item">
+            <summary>{{q}}</summary>
+            <p>{{a}}</p>
+          </details>
+          {{/faq}}
+        </div>
+      </section>
+      {{/isHome}}
+    </main>
+
+    <footer class="ps-footer">
+      <div class="ps-wrap ps-footer__grid">
+        <div>
+          <p class="ps-footer__brand">{{site.name}}</p>
+          <p>Exercices corrigés, gratuits et sans publicité, rattachés aux programmes officiels de l'Éducation nationale.</p>
+          {{#site.hasEnt}}<p><a href="{{site.entUrl}}">Découvrir {{site.ent}} →</a></p>{{/site.hasEnt}}
+        </div>
+        <nav class="ps-footer__levels" aria-label="Exercices par niveau">
+          <p class="ps-footer__title">Par niveau</p>
+          <ul>{{#footerLevels}}<li><a href="{{url}}">{{label}}</a></li>{{/footerLevels}}</ul>
+        </nav>
+        <nav aria-label="Compte">
+          <p class="ps-footer__title">Votre compte</p>
+          <ul>
+            <li><a href="{{site.signupUrl}}">Créer un compte gratuit</a></li>
+            <li><a href="/auth/login">Se connecter</a></li>
+            <li><a href="{{site.searchUrl}}">Rechercher un exercice</a></li>
+          </ul>
+        </nav>
+      </div>
+      <div class="ps-wrap ps-footer__legal">Propulsé par Open ENT, l'espace numérique de travail libre.</div>
+    </footer>
     <div id="portal"></div>
     <script type="module" src="/src/practice/main.tsx"></script>
   </body>

@@ -197,7 +197,10 @@ public class CatalogController extends ControllerHelper {
 				badRequest(request, "exercizer.catalog.public.required");
 				return;
 			}
-			practiceService.setPublic(id, body.getBoolean("public"), notFoundOr(request));
+			practiceService.setPublic(id, body.getBoolean("public"), event -> {
+				if (event.isRight()) PublicCatalogController.invalidateSiteIndex();
+				notFoundOr(request).handle(event);
+			});
 		}));
 	}
 

@@ -8,10 +8,11 @@ export interface PracticeConfig {
   title: string;
   signupUrl: string;
   entUrl: string;
+  entName?: string;
 }
 
 export interface PracticeBoot {
-  page: 'home' | 'exercise';
+  page: 'home' | 'level' | 'discipline' | 'search' | 'exercise';
   subjectId?: number;
   config: PracticeConfig;
 }
@@ -49,11 +50,6 @@ export interface CheckResult {
   grains: GrainResult[];
 }
 
-export interface Referential {
-  levels: Array<{ id: number; code: string; label: string; rank?: number | null }>;
-  disciplines: Array<{ id: number; code: string; label: string }>;
-}
-
 const BASE = '/exercizer/practice';
 
 async function json<T>(response: Response): Promise<T> {
@@ -74,16 +70,6 @@ export const readBoot = (): PracticeBoot => {
   } catch {
     return fallback;
   }
-};
-
-export const getReferential = () => fetch(`${BASE}/referential`).then((r) => json<Referential>(r));
-
-export const searchPublic = (params: { q?: string; levels?: number[]; disciplines?: number[]; offset?: number }) => {
-  const search = new URLSearchParams({ limit: '24', offset: String(params.offset ?? 0) });
-  if (params.q?.trim()) search.set('q', params.q.trim());
-  if (params.levels?.length) search.set('levels', params.levels.join(','));
-  if (params.disciplines?.length) search.set('disciplines', params.disciplines.join(','));
-  return fetch(`${BASE}/catalog?${search}`).then((r) => json<{ total: number; subjects: PracticeSubject[] }>(r));
 };
 
 export const getPublicSubject = (id: number) => fetch(`${BASE}/subject/${id}`).then((r) => json<PracticeDetail>(r));
