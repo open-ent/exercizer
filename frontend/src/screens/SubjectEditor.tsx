@@ -10,7 +10,7 @@ import {
 } from '@open-ent/react';
 import { IconEdit, IconOptions, IconPlus, IconSend, IconUndoAll } from '@open-ent/react/icons';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Fragment, useCallback, useEffect, useMemo, useState } from 'react';
+import { Fragment, useCallback, useEffect, useMemo, useState, type CSSProperties } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 
@@ -117,6 +117,16 @@ export function SubjectEditor() {
       else next.add(grain.id);
       return next;
     });
+  // Hauteur de la barre d'actions collée en haut : le plan se colle juste dessous. Elle varie
+  // (la barre passe sur deux lignes en écran étroit), d'où la mesure plutôt qu'une constante.
+  const [editorBar, setEditorBar] = useState<HTMLDivElement | null>(null);
+  const [editorBarHeight, setEditorBarHeight] = useState(0);
+  useEffect(() => {
+    if (!editorBar) return;
+    const observer = new ResizeObserver(() => setEditorBarHeight(editorBar.offsetHeight));
+    observer.observe(editorBar);
+    return () => observer.disconnect();
+  }, [editorBar]);
   // Le sujet tel qu'à l'ouverture de l'éditeur, pour « Annuler les modifications » (cf. `revert.ts`).
   const [snapshot, setSnapshot] = useState<(EditorSnapshot & { subjectId: number }) | null>(null);
 
@@ -597,7 +607,7 @@ export function SubjectEditor() {
       {/* Barre d'actions, collée en haut de la fenêtre au défilement : un seul bouton principal
           (Distribuer), le témoin d'enregistrement à la place du bouton « Enregistrer » absent, et
           l'action destructrice rangée dans le menu « … ». */}
-      <div className="exercizer-editor-bar d-flex flex-wrap align-items-center gap-16 mb-16 py-12">
+      <div ref={setEditorBar} className="exercizer-editor-bar d-flex flex-wrap align-items-center gap-16 mb-16 py-12">
         <div className="d-flex flex-wrap align-items-center gap-8 flex-fill" style={{ minWidth: 0 }}>
           <Heading level="h2" headingStyle="h4" className="m-0 text-truncate">
             {subject.title}
@@ -666,8 +676,13 @@ export function SubjectEditor() {
 
       <ExternalResources subjectId={subject.id} />
 
-      <div className="grid gap-24">
-        <aside className="g-col-12 g-col-lg-3">
+      {/* Pas la grille du thème : entre 1024 et 1279 px elle n'a que 8 colonnes, et un « 3 + 9 »
+          repoussait le détail SOUS le plan — de même qu'en passation (cf. index.css). */}
+      <div
+        className="exercizer-side-columns"
+        style={{ '--exercizer-editor-bar-height': `${editorBarHeight}px` } as CSSProperties}
+      >
+        <aside className="exercizer-editor-aside">
           <div className="card p-16 exercizer-plan">
           {withSections ? (
             <SectionOrganizer
@@ -727,7 +742,7 @@ export function SubjectEditor() {
           />
         </aside>
 
-        <section className="g-col-12 g-col-lg-9">
+        <section className="exercizer-editor-main">
           {grains.length > 1 && (
             <div className="d-flex justify-content-end gap-8 mb-8">
               <Button color="tertiary" variant="ghost" size="sm" onClick={() => setCollapsed(new Set())}>

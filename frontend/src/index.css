@@ -196,13 +196,46 @@
 }
 
 /* Éditeur de sujet — barre d'actions collée en haut de la fenêtre au défilement (l'en-tête de
-   l'ENT défile avec la page). Fond plein : le contenu passe dessous sans transparaître. */
+   l'ENT défile avec la page). Fond plein : le contenu passe dessous sans transparaître — le blanc
+   de la page, pas `--openent-body-bg`, qui vaut `transparent` dans les thèmes à fond illustré. */
 .exercizer-editor-bar {
   position: sticky;
   top: 0;
   z-index: 20;
-  background: var(--openent-body-bg, var(--openent-white));
+  background: var(--openent-white, #fff);
   border-bottom: 0.1rem solid var(--openent-gray-300);
+}
+
+/* Éditeur de sujet — plan et détail. Deux colonnes à nous dès 768 px (la grille du thème
+   repoussait le détail sous le plan jusqu'à 1279 px) : le plan, de largeur bornée, se colle sous
+   la barre d'actions et défile seul. En dessous, il reste au-dessus du détail mais plafonné à un
+   tiers d'écran, pour que le détail soit atteint sans faire défiler toute la liste. */
+.exercizer-side-columns {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 2.4rem;
+  align-items: start;
+}
+.exercizer-editor-aside .exercizer-plan {
+  max-height: 33vh;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+@media (min-width: 768px) {
+  .exercizer-side-columns {
+    grid-template-columns: clamp(24rem, 30%, 34rem) minmax(0, 1fr);
+  }
+  .exercizer-editor-aside {
+    position: sticky;
+    top: calc(var(--exercizer-editor-bar-height, 0px) + 1.6rem);
+    max-height: calc(100vh - var(--exercizer-editor-bar-height, 0px) - 3.2rem);
+    overflow-y: auto;
+    overscroll-behavior: contain;
+  }
+  .exercizer-editor-aside .exercizer-plan {
+    max-height: none;
+    overflow: visible;
+  }
 }
 
 /* Un grain : en-tête compact (type, titre, position, actions), corps repliable. Le cadre du bloc
