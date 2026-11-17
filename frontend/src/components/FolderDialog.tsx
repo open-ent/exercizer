@@ -47,7 +47,7 @@ export function FolderDialog({
           </FormControl>
         </Modal.Body>
         <Modal.Footer>
-          <Button type="button" color="tertiary" variant="ghost" onClick={onClose}>
+          <Button type="button" color="primary" variant="outline" onClick={onClose}>
             {t('exercizer.cancel')}
           </Button>
           <Button type="submit" color="primary" variant="filled" disabled={!label.trim()}>

@@ -261,7 +261,7 @@ export function ImportPackageSubject() {
           {t('exercizer.package.title')}
         </Heading>
         <div className="d-flex flex-wrap gap-8">
-          <Button color="tertiary" variant="ghost" onClick={leave}>
+          <Button color="primary" variant="outline" onClick={leave}>
             {t(step === 'done' ? 'exercizer.close' : 'exercizer.cancel')}
           </Button>
           {step === 'review' && (
@@ -564,7 +564,7 @@ export function ImportPackageSubject() {
                 {t('exercizer.package.next.subject')}
               </Button>
             )}
-            <Button color="tertiary" variant="ghost" onClick={restart}>
+            <Button color="primary" variant="outline" onClick={restart}>
               {t('exercizer.package.other')}
             </Button>
           </div>

@@ -120,7 +120,7 @@ export function ReminderDialog({
             {t('exercizer.back')}
           </Button>
         )}
-        <Button color="tertiary" variant="ghost" onClick={onClose}>
+        <Button color="primary" variant="outline" onClick={onClose}>
           {t('exercizer.cancel')}
         </Button>
         {step !== 'choose' && (

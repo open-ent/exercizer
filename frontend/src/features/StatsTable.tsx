@@ -297,7 +297,7 @@ export function ExportStatsDialog({
         </div>
       </Modal.Body>
       <Modal.Footer>
-        <Button color="tertiary" variant="ghost" onClick={onClose}>
+        <Button color="primary" variant="outline" onClick={onClose}>
           {t('exercizer.cancel')}
         </Button>
         <Button color="primary" variant="filled" disabled={isLoading} onClick={run}>

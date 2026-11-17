@@ -1127,7 +1127,7 @@ function CatalogPreview({
                     text={`${subject.title} ${plainText(subject.description)}`}
                   />
                   <div className="d-flex justify-content-end gap-8 mt-12">
-                    <Button color="tertiary" variant="ghost" onClick={() => setAligning(null)}>
+                    <Button color="primary" variant="outline" onClick={() => setAligning(null)}>
                       {t('exercizer.cancel')}
                     </Button>
                     <Button
@@ -1196,7 +1196,7 @@ function CatalogPreview({
           {confirmRemove ? (
             <>
               <span className="me-auto small">{t('exercizer.catalog.remove.confirm')}</span>
-              <Button color="tertiary" variant="ghost" onClick={() => setConfirmRemove(false)}>
+              <Button color="primary" variant="outline" onClick={() => setConfirmRemove(false)}>
                 {t('exercizer.cancel')}
               </Button>
               <Button
@@ -1231,7 +1231,8 @@ function CatalogPreview({
                   {t('exercizer.catalog.align.edit')}
                 </Button>
               )}
-              <Button color="tertiary" variant="ghost" onClick={onClose}>
+              {/* Étiré à la hauteur de ses voisins, qui passent sur deux lignes. */}
+              <Button color="primary" variant="outline" className="align-self-stretch" onClick={onClose}>
                 {t('exercizer.cancel')}
               </Button>
               <Button

@@ -232,7 +232,7 @@ function CreateSequenceDialog({
         </FormControl>
       </Modal.Body>
       <Modal.Footer>
-        <Button color="tertiary" variant="ghost" onClick={onClose}>
+        <Button color="primary" variant="outline" onClick={onClose}>
           {t('exercizer.cancel')}
         </Button>
         <Button
@@ -288,7 +288,7 @@ function SchedulesDialog({ sequence, onClose }: { sequence: SubjectSequence; onC
         )}
       </Modal.Body>
       <Modal.Footer>
-        <Button color="tertiary" variant="ghost" onClick={onClose}>
+        <Button color="primary" variant="outline" onClick={onClose}>
           {t('exercizer.close')}
         </Button>
       </Modal.Footer>
@@ -761,7 +761,7 @@ function ScheduleSequenceDialog({
         )}
       </Modal.Body>
       <Modal.Footer>
-        <Button color="tertiary" variant="ghost" onClick={onClose}>
+        <Button color="primary" variant="outline" onClick={onClose}>
           {t('exercizer.cancel')}
         </Button>
         {step !== 'confirm' ? (

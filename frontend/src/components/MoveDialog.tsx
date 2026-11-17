@@ -68,7 +68,7 @@ export function MoveDialog({
         </p>
       </Modal.Body>
       <Modal.Footer>
-        <Button color="tertiary" variant="ghost" onClick={onClose}>
+        <Button color="primary" variant="outline" onClick={onClose}>
           {t('exercizer.cancel')}
         </Button>
         <Button

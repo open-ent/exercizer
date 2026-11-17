@@ -242,7 +242,7 @@ function ZoneDialog({
         <p className="text-muted small mt-8 mb-0">{t('exercizer.grain.zonetxt.limit')}</p>
       </Modal.Body>
       <Modal.Footer>
-        <Button color="tertiary" variant="ghost" onClick={onClose}>
+        <Button color="primary" variant="outline" onClick={onClose}>
           {t('exercizer.cancel')}
         </Button>
         <Button

@@ -371,7 +371,7 @@ export function DigitizeSubject({ assisted = false }: { assisted?: boolean }) {
           {t(assisted ? 'exercizer.choose.assist.title' : 'exercizer.digitize.title')}
         </Heading>
         <div className="d-flex flex-wrap gap-8">
-          <Button color="tertiary" variant="ghost" onClick={leave}>
+          <Button color="primary" variant="outline" onClick={leave}>
             {t('exercizer.cancel')}
           </Button>
           {step === 'review' && (

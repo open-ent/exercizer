@@ -194,8 +194,8 @@ export function PilotageBanner({ pilotage }: { pilotage: ReturnType<typeof usePi
             <span>{message.text}</span>
             <Button
               size="sm"
-              color="tertiary"
-              variant="ghost"
+              color="primary"
+              variant="outline"
               onClick={() => pilotage.dismissMessage(message.id)}
             >
               {t('exercizer.close')}

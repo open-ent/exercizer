@@ -193,7 +193,7 @@ export function CreateSequenceDialog({
             {t('exercizer.catalog.sequence.progress', { done: progress.done, total: progress.total })}
           </span>
         )}
-        <Button color="tertiary" variant="ghost" onClick={onClose} disabled={create.isPending}>
+        <Button color="primary" variant="outline" onClick={onClose} disabled={create.isPending}>
           {t('exercizer.cancel')}
         </Button>
         <Button

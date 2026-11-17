@@ -129,7 +129,7 @@ export function ExternalResources({ subjectId }: { subjectId: number }) {
                   >
                     {t('exercizer.validate')}
                   </Button>
-                  <Button size="sm" color="tertiary" variant="ghost" onClick={() => setRenaming(null)}>
+                  <Button size="sm" color="primary" variant="outline" onClick={() => setRenaming(null)}>
                     {t('exercizer.cancel')}
                   </Button>
                 </>

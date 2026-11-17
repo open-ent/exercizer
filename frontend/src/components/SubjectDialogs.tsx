@@ -347,7 +347,7 @@ export function NewSubjectDialog({
         )}
       </Modal.Body>
       <Modal.Footer>
-        <Button color="tertiary" variant="ghost" onClick={onClose}>
+        <Button color="primary" variant="outline" onClick={onClose}>
           {t('exercizer.cancel')}
         </Button>
         {step === 'subject' && (
@@ -416,7 +416,7 @@ export function SubjectPropertiesDialog({
         <SubjectFields value={fields} onChange={setFields} />
       </Modal.Body>
       <Modal.Footer>
-        <Button color="tertiary" variant="ghost" onClick={onClose}>
+        <Button color="primary" variant="outline" onClick={onClose}>
           {t('exercizer.cancel')}
         </Button>
         <Button
@@ -471,7 +471,7 @@ export function PrintDialog({ subject, onClose }: { subject: Subject; onClose: (
         </div>
       </Modal.Body>
       <Modal.Footer>
-        <Button color="tertiary" variant="ghost" onClick={onClose}>
+        <Button color="primary" variant="outline" onClick={onClose}>
           {t('exercizer.cancel')}
         </Button>
         <Button
@@ -570,7 +570,7 @@ export function ExportSubjectDialog({
         )}
       </Modal.Body>
       <Modal.Footer>
-        <Button color="tertiary" variant="ghost" onClick={onClose}>
+        <Button color="primary" variant="outline" onClick={onClose}>
           {partial !== null ? t('exercizer.close') : t('exercizer.cancel')}
         </Button>
         <Button

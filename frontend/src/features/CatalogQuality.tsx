@@ -178,7 +178,7 @@ export function UsagePanel({
             </FormControl>
             <div className="d-flex justify-content-end gap-8 mt-8">
               {mine && (
-                <Button color="tertiary" variant="ghost" size="sm" onClick={() => setEditing(false)}>
+                <Button color="primary" variant="outline" size="sm" onClick={() => setEditing(false)}>
                   {t('exercizer.cancel')}
                 </Button>
               )}
@@ -203,12 +203,12 @@ export function UsagePanel({
               </span>
               {mine.comment && <span className="text-muted"> — {mine.comment}</span>}
             </span>
-            <Button color="tertiary" variant="ghost" size="sm" onClick={() => setEditing(true)}>
+            <Button color="primary" variant="outline" size="sm" onClick={() => setEditing(true)}>
               {t('exercizer.catalog.review.edit')}
             </Button>
             <Button
               color="danger"
-              variant="ghost"
+              variant="outline"
               size="sm"
               isLoading={remove.isPending}
               onClick={() => remove.mutate(undefined)}
@@ -230,7 +230,7 @@ export function UsagePanel({
                 {isModerator && (
                   <Button
                     color="danger"
-                    variant="ghost"
+                    variant="outline"
                     size="sm"
                     onClick={() => remove.mutate(review.user_id)}
                     aria-label={t('exercizer.catalog.review.moderate', { name: review.username })}
@@ -366,7 +366,7 @@ function ModerationDialog({ proposals, onClose }: { proposals: AlignmentProposal
                       <Button
                         size="sm"
                         color="danger"
-                        variant="ghost"
+                        variant="outline"
                         disabled={decide.isPending}
                         aria-label={t('exercizer.catalog.moderation.rejectOne', { code: proposal.code ?? proposal.label })}
                         onClick={() => decide.mutate([{ proposal, accept: false }])}
@@ -392,7 +392,7 @@ function ModerationDialog({ proposals, onClose }: { proposals: AlignmentProposal
         )}
       </Modal.Body>
       <Modal.Footer>
-        <Button color="tertiary" variant="ghost" onClick={onClose}>
+        <Button color="primary" variant="outline" onClick={onClose}>
           {t('exercizer.close')}
         </Button>
       </Modal.Footer>

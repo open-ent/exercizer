@@ -926,8 +926,8 @@ function ScheduleCard({
           {editing ? (
             <>
               <Button
-                color="tertiary"
-                variant="ghost"
+                color="primary"
+                variant="outline"
                 onClick={() => {
                   setForm(initial());
                   setEditing(false);

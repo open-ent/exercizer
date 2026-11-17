@@ -33,7 +33,7 @@ export function ConfirmModal({
       <Modal.Header onModalClose={onClose}>{title}</Modal.Header>
       <Modal.Body>{children}</Modal.Body>
       <Modal.Footer>
-        <Button color="tertiary" variant="ghost" onClick={onClose}>
+        <Button color="primary" variant="outline" onClick={onClose}>
           {cancelLabel ?? t('exercizer.cancel')}
         </Button>
         <Button color="danger" variant="filled" isLoading={isLoading} onClick={onConfirm}>
